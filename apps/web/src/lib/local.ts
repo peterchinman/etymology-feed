@@ -1,8 +1,14 @@
 import type { Card } from '@etymology-feed/shared/card';
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
+import {
+  DEFAULT_THEME,
+  isTheme,
+  THEME_COLORS,
+  THEMES,
+  type Theme,
+} from './themes';
 
 export type Verdict = 1 | -1;
-export type Palette = 'pink' | 'blue';
 export type ColorMode = 'system' | 'light' | 'dark';
 export type LocalSwipe = {
   id: string;
@@ -23,7 +29,7 @@ interface FeedDB extends DBSchema {
     value: LocalSwipe;
     indexes: { 'by-word': string; 'by-swiped-at': number };
   };
-  settings: { key: string; value: Palette | ColorMode | boolean };
+  settings: { key: string; value: string | boolean };
 }
 
 let database: Promise<IDBPDatabase<FeedDB>> | undefined;
@@ -126,95 +132,106 @@ export async function removeSwipe(id: string): Promise<void> {
   await (await getDatabase()).delete('swipes', id);
 }
 
+function isMode(value: unknown): value is Exclude<ColorMode, 'system'> {
+  return value === 'light' || value === 'dark';
+}
+
+function mirror(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // IndexedDB remains the persistent setting when localStorage is unavailable.
+  }
+}
+
 export async function getSettings(): Promise<{
   showDefinitions: boolean;
-  palette: Palette;
+  theme: Theme;
   colorMode: ColorMode;
 }> {
   const db = await getDatabase();
-  const [showDefinitions, palette, colorMode, legacyTheme] = await Promise.all([
+  const [showDefinitions, storedTheme, storedMode] = await Promise.all([
     db.get('settings', 'showDefinitions'),
-    db.get('settings', 'palette'),
-    db.get('settings', 'colorMode'),
     db.get('settings', 'theme'),
+    db.get('settings', 'colorMode'),
   ]);
-  let mirroredPalette: string | null = null;
+  let mirroredTheme: string | null = null;
   let mirroredMode: string | null = null;
   try {
-    mirroredPalette = localStorage.getItem('etymology-palette');
-    mirroredMode =
-      localStorage.getItem('etymology-color-mode') ||
-      localStorage.getItem('etymology-theme');
+    mirroredTheme = localStorage.getItem('etymology-theme');
+    mirroredMode = localStorage.getItem('etymology-color-mode');
   } catch {
     // IndexedDB is enough when the pre-paint mirror is unavailable.
   }
-  const selectedPalette: Palette =
-    mirroredPalette === 'pink' || mirroredPalette === 'blue'
-      ? mirroredPalette
-      : palette === 'blue'
-        ? 'blue'
-        : 'pink';
-  const storedMode = colorMode ?? legacyTheme;
-  const selectedMode: ColorMode =
-    mirroredMode === 'light' || mirroredMode === 'dark'
-      ? mirroredMode
-      : storedMode === 'light' || storedMode === 'dark'
-        ? storedMode
-        : 'system';
-  if (mirroredPalette && palette !== selectedPalette)
-    await db.put('settings', selectedPalette, 'palette');
-  if (mirroredMode && colorMode !== selectedMode)
-    await db.put('settings', selectedMode, 'colorMode');
-  return {
-    showDefinitions: showDefinitions === true,
-    palette: selectedPalette,
-    colorMode: selectedMode,
-  };
+  const theme: Theme = isTheme(mirroredTheme)
+    ? mirroredTheme
+    : isTheme(storedTheme)
+      ? storedTheme
+      : DEFAULT_THEME;
+  // Before the theme picker, `theme` held the light/dark choice. Honor it
+  // until a color mode has been saved on its own, then move it over.
+  const legacyMode = isMode(mirroredTheme)
+    ? mirroredTheme
+    : isMode(storedTheme)
+      ? storedTheme
+      : null;
+  const colorMode: ColorMode = isMode(mirroredMode)
+    ? mirroredMode
+    : isMode(storedMode)
+      ? storedMode
+      : (legacyMode ?? 'system');
+  if (legacyMode && colorMode === legacyMode) {
+    mirror('etymology-color-mode', legacyMode);
+    await db.put('settings', legacyMode, 'colorMode');
+  }
+  if (isTheme(mirroredTheme) && storedTheme !== theme)
+    await db.put('settings', theme, 'theme');
+  if (isMode(mirroredMode) && storedMode !== colorMode)
+    await db.put('settings', colorMode, 'colorMode');
+  return { showDefinitions: showDefinitions === true, theme, colorMode };
 }
 
 export async function setShowDefinitions(value: boolean): Promise<void> {
   await (await getDatabase()).put('settings', value, 'showDefinitions');
 }
 
-export function applyTheme(palette: Palette, mode: ColorMode): boolean {
+export function applyTheme(theme: Theme, mode: ColorMode): boolean {
   const root = document.documentElement;
   const dark =
     mode === 'dark' ||
     (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-  root.classList.remove('pink', 'blue', 'light', 'dark');
-  root.classList.add(palette, dark ? 'dark' : 'light');
+  root.classList.remove(...THEMES.map((option) => option.id), 'light', 'dark');
+  root.classList.add(theme, dark ? 'dark' : 'light');
   root.dataset.colorMode = mode;
-  const canvas = getComputedStyle(root)
-    .getPropertyValue('--color-canvas')
-    .trim();
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', canvas);
+    ?.setAttribute('content', THEME_COLORS[theme][dark ? 'dark' : 'light']);
   return dark;
 }
 
-export async function setPalette(value: Palette): Promise<void> {
+function currentTheme(): Theme {
+  const root = document.documentElement;
+  return (
+    THEMES.find((option) => root.classList.contains(option.id))?.id ??
+    DEFAULT_THEME
+  );
+}
+
+function currentMode(): ColorMode {
   const mode = document.documentElement.dataset.colorMode;
-  applyTheme(value, mode === 'light' || mode === 'dark' ? mode : 'system');
-  try {
-    localStorage.setItem('etymology-palette', value);
-  } catch {
-    // IndexedDB remains the persistent setting when localStorage is unavailable.
-  }
-  await (await getDatabase()).put('settings', value, 'palette');
+  return isMode(mode) ? mode : 'system';
+}
+
+export async function setTheme(value: Theme): Promise<void> {
+  applyTheme(value, currentMode());
+  mirror('etymology-theme', value);
+  await (await getDatabase()).put('settings', value, 'theme');
 }
 
 export async function setColorMode(
   value: Exclude<ColorMode, 'system'>,
 ): Promise<void> {
-  applyTheme(
-    document.documentElement.classList.contains('blue') ? 'blue' : 'pink',
-    value,
-  );
-  try {
-    localStorage.setItem('etymology-color-mode', value);
-  } catch {
-    // The current page can still switch themes when localStorage is unavailable.
-  }
+  applyTheme(currentTheme(), value);
+  mirror('etymology-color-mode', value);
   await (await getDatabase()).put('settings', value, 'colorMode');
 }

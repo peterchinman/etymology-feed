@@ -84,3 +84,29 @@ faded in; it grows to full size with drag progress. All of this runs through
 the Web Animations API with implicit end keyframes so a card can be caught
 mid-flight. The stack shifts the moment a swipe commits; queued swipes are
 written in one IndexedDB transaction so quick bursts never fall behind.
+
+## 2026-09-26 — M2 theme concepts
+
+Replace the RWG palette family (above) with complete design concepts, chosen
+by a segmented control in Settings and still crossed with light/dark. The RWG
+hard offset shadows and shared shapes did not suit this site, so each theme
+now owns the whole contract: type, color, spacing, stroke, radius, and shadow
+tokens live in `styles/themes/<id>.css`, and a theme may add a few structural
+flourishes of its own. Three remain after review. **Gallery** (default) is
+white on white: no borders, layered soft shadows, rounded rectangles, EB
+Garamond for reading with Bricolage Grotesque for the word and all
+informational text. **Nocturne** treats words as light: a midnight canvas
+with a halo, glass cards with a sky-blue-to-violet gradient edge, the word in
+Instrument Serif italic with a glow. **Indigo** treats the word as a diagram:
+a cyanotype sheet over a dot grid, two small registration crosshairs on the
+word card, the word in B612 Mono capitals measured by a dimension line, a
+dashed callout for the definition. Five other concepts were built and cut in
+review: Swiss (Helvetica, hairlines, one red), Bauhaus (Futura on colored
+stock), Contour (a survey sheet with generated topographic contours), Preserve
+(Fraunces, stitched edges, plum and marmalade), and Riso (two-ink overprint on
+grainy paper). Fonts come from `@fontsource` latin subsets (10–80 KB per
+file), so they ship in the precached shell and work offline. The theme name
+is stored under the `theme` key in IndexedDB and `etymology-theme` in
+localStorage; a light/dark value found there is the pre-picker preference and
+is migrated to `colorMode`. `theme-color` comes from one map in
+`lib/themes.ts`, passed to the pre-paint script with `define:vars`.

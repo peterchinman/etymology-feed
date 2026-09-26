@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { SWIPE } from '../src/lib/swipe';
+import { THEME_COLORS } from '../src/lib/themes';
 
 test('a right swipe adds a word to Liked and survives reload', async ({
   page,
@@ -131,31 +132,32 @@ test('Settings opens from navigation and the definition choice survives reload',
   ).toBeVisible();
 });
 
-test('the four RWG palettes persist and system mode follows the device', async ({
+test('the themes persist and system mode follows the device', async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/?settings=1');
-  await expect(page.locator('html')).toHaveClass(/pink dark/);
+  await expect(page.locator('html')).toHaveClass(/gallery dark/);
   await page.emulateMedia({ colorScheme: 'light' });
-  await expect(page.locator('html')).toHaveClass(/pink light/);
+  await expect(page.locator('html')).toHaveClass(/gallery light/);
+  await expect(page.getByLabel('Gallery')).toBeChecked();
 
-  await page.getByLabel('Cool palette').check();
-  await expect(page.locator('html')).toHaveClass(/blue light/);
+  await page.getByLabel('Nocturne').check();
+  await expect(page.locator('html')).toHaveClass(/nocturne light/);
   await page.getByLabel('Dark mode').check();
-  await expect(page.locator('html')).toHaveClass(/blue dark/);
+  await expect(page.locator('html')).toHaveClass(/nocturne dark/);
   await page.reload();
-  await expect(page.getByLabel('Cool palette')).toBeChecked();
+  await expect(page.getByLabel('Nocturne')).toBeChecked();
   await expect(page.getByLabel('Dark mode')).toBeChecked();
-  await expect(page.locator('html')).toHaveClass(/blue dark/);
+  await expect(page.locator('html')).toHaveClass(/nocturne dark/);
 
-  await page.getByLabel('Cool palette').uncheck();
-  await expect(page.locator('html')).toHaveClass(/pink dark/);
+  await page.getByLabel('Indigo').check();
+  await expect(page.locator('html')).toHaveClass(/indigo dark/);
   await page.goto('/liked/');
-  await expect(page.locator('html')).toHaveClass(/pink dark/);
+  await expect(page.locator('html')).toHaveClass(/indigo dark/);
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
     'content',
-    '#25141B',
+    THEME_COLORS.indigo.dark,
   );
 });
 
