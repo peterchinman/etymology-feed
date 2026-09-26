@@ -258,8 +258,9 @@ export default function Feed() {
           aria-label="Settings"
         >
           <div class="settings-panel-heading">
-            <strong>Settings</strong>
+            <strong class="loud-voice">Settings</strong>
             <button
+              class="instructive-voice"
               type="button"
               aria-label="Close settings"
               onClick={() => {
@@ -270,7 +271,7 @@ export default function Feed() {
               ×
             </button>
           </div>
-          <label class="setting-row">
+          <label class="setting-row instructive-voice">
             <span>Always show definitions</span>
             <input
               type="checkbox"
@@ -280,7 +281,7 @@ export default function Feed() {
               }}
             />
           </label>
-          <label class="setting-row">
+          <label class="setting-row instructive-voice">
             <span>Theme</span>
             <select
               value={theme()}
@@ -293,7 +294,7 @@ export default function Feed() {
               <option value="dark">Dark</option>
             </select>
           </label>
-          <a class="settings-about" href="/about/">
+          <a class="settings-about instructive-voice" href="/about/">
             About
           </a>
         </section>
@@ -303,8 +304,8 @@ export default function Feed() {
           when={stack()[0]}
           fallback={
             <div class="word-card empty-card">
-              <span class="card-kicker">THE NEXT WORD</span>
-              <h2>
+              <span class="card-kicker instructive-voice">THE NEXT WORD</span>
+              <h2 class="loud-voice">
                 {ready()
                   ? online()
                     ? fetching()
@@ -313,14 +314,14 @@ export default function Feed() {
                     : 'Offline for now.'
                   : 'Opening your stack…'}
               </h2>
-              <p>
+              <p class="body-voice">
                 {online()
                   ? 'Your next story is on its way.'
                   : `Your saved stack is empty. Reconnect for more words; your swipes are safe on this device.`}
               </p>
               <Show when={online() && !fetching()}>
                 <button
-                  class="primary-button"
+                  class="primary-button instructive-voice"
                   type="button"
                   onClick={() => void fillStack(true)}
                 >
@@ -351,34 +352,34 @@ export default function Feed() {
                 }}
               >
                 <div
-                  class="swipe-cue cue-like"
+                  class="swipe-cue cue-like instructive-voice"
                   style={{ opacity: Math.max(0, Math.min(1, dragX() / 100)) }}
                 >
                   Interesting
                 </div>
                 <div
-                  class="swipe-cue cue-skip"
+                  class="swipe-cue cue-skip instructive-voice"
                   style={{ opacity: Math.max(0, Math.min(1, -dragX() / 100)) }}
                 >
                   Not for me
                 </div>
                 <div class="word-head">
-                  <h2>{card().word}</h2>
+                  <h2 class="loud-voice">{card().word}</h2>
                 </div>
                 <div class="card-body">
-                  <p class="etymology">{card().etymology}</p>
+                  <p class="etymology story-voice">{card().etymology}</p>
                   <Show when={definitionOpen()}>
                     <div class="definition" id="definition">
-                      <span class="definition-label">
+                      <span class="definition-label instructive-voice">
                         {card().pos.join(' · ') || card().defPos}
                       </span>
-                      <p>{card().definition}</p>
+                      <p class="story-voice">{card().definition}</p>
                     </div>
                   </Show>
                 </div>
                 <div class="card-bottom">
                   <button
-                    class="definition-toggle"
+                    class="definition-toggle instructive-voice"
                     type="button"
                     aria-expanded={definitionOpen()}
                     aria-controls="definition"
@@ -390,7 +391,7 @@ export default function Feed() {
                     </span>
                   </button>
                   <a
-                    class="source-line"
+                    class="source-line quiet-voice"
                     href={`https://en.wiktionary.org/wiki/${encodeURIComponent(card().word)}`}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -428,7 +429,7 @@ export default function Feed() {
         </button>
       </div>
       <Show when={error()}>
-        <p class="inline-error" role="alert">
+        <p class="inline-error instructive-voice" role="alert">
           {error()}
         </p>
       </Show>

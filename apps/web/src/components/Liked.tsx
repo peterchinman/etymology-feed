@@ -72,7 +72,7 @@ export default function Liked() {
     <section class="liked-page page-wrap">
       <h1 class="sr-only">Liked</h1>
       <Show when={banner()}>
-        <aside class="anon-banner">
+        <aside class="anon-banner body-voice">
           <div>
             <strong>You're not signed in.</strong> Your list is saved only on
             this device.
@@ -80,7 +80,7 @@ export default function Liked() {
           <div class="banner-actions">
             <button
               type="button"
-              class="banner-signin"
+              class="banner-signin instructive-voice"
               disabled
               title="Sign-in arrives in a later milestone"
             >
@@ -88,7 +88,7 @@ export default function Liked() {
             </button>
             <button
               type="button"
-              class="banner-dismiss"
+              class="banner-dismiss instructive-voice"
               aria-label="Dismiss sign-in reminder"
               onClick={() => {
                 sessionStorage.setItem('etymology-anon-banner-dismissed', '1');
@@ -101,7 +101,7 @@ export default function Liked() {
         </aside>
       </Show>
       <Show when={!online()}>
-        <p class="offline-note" role="status">
+        <p class="offline-note instructive-voice" role="status">
           Offline · {swipes().filter((swipe) => !swipe.synced).length} swipes
           waiting to sync
         </p>
@@ -111,6 +111,7 @@ export default function Liked() {
           <span class="sr-only">Search liked words</span>
           <span aria-hidden="true">⌕</span>
           <input
+            class="body-voice"
             type="search"
             value={query()}
             onInput={(event) => setQuery(event.currentTarget.value)}
@@ -119,7 +120,7 @@ export default function Liked() {
         </label>
         <button
           type="button"
-          class="copy-button"
+          class="copy-button instructive-voice"
           disabled={!liked().length}
           onClick={() => void copyAll()}
         >
@@ -131,13 +132,17 @@ export default function Liked() {
         fallback={
           <div class="liked-empty">
             <span aria-hidden="true">♡</span>
-            <h2>{query() ? 'No matching words.' : 'Your list begins here.'}</h2>
-            <p>
+            <h2 class="loud-voice">
+              {query() ? 'No matching words.' : 'Your list begins here.'}
+            </h2>
+            <p class="body-voice">
               {query()
                 ? 'Try another search.'
                 : 'Swipe right on a word that stays with you.'}
             </p>
-            <a href="/">Explore the feed →</a>
+            <a class="instructive-voice" href="/">
+              Explore the feed →
+            </a>
           </div>
         }
       >
@@ -165,21 +170,23 @@ export default function Liked() {
               >
                 <div class="liked-item-main">
                   <div>
-                    <h2>{swipe.word}</h2>
+                    <h2 class="loud-voice">{swipe.word}</h2>
                   </div>
                   <button
                     type="button"
-                    class="remove-button"
+                    class="remove-button instructive-voice"
                     aria-label={`Remove ${swipe.word} from Liked`}
                     onClick={() => void remove(swipe.id)}
                   >
                     ×
                   </button>
                 </div>
-                <p class="liked-etymology">{swipe.card.etymology}</p>
+                <p class="liked-etymology story-voice">
+                  {swipe.card.etymology}
+                </p>
                 <button
                   type="button"
-                  class="definition-toggle"
+                  class="definition-toggle instructive-voice"
                   aria-expanded={open() === swipe.id}
                   onClick={() => setOpen(open() === swipe.id ? null : swipe.id)}
                 >
@@ -189,14 +196,14 @@ export default function Liked() {
                 </button>
                 <Show when={open() === swipe.id}>
                   <div class="definition">
-                    <span class="definition-label">
+                    <span class="definition-label instructive-voice">
                       {swipe.card.pos.join(' · ') || swipe.card.defPos}
                     </span>
-                    <p>{swipe.card.definition}</p>
+                    <p class="story-voice">{swipe.card.definition}</p>
                   </div>
                 </Show>
                 <a
-                  class="source-line"
+                  class="source-line quiet-voice"
                   href={`https://en.wiktionary.org/wiki/${encodeURIComponent(swipe.word)}`}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -209,7 +216,7 @@ export default function Liked() {
         </div>
       </Show>
       <Show when={error()}>
-        <p class="inline-error" role="alert">
+        <p class="inline-error instructive-voice" role="alert">
           {error()}
         </p>
       </Show>

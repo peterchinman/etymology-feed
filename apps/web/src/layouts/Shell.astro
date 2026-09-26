@@ -18,13 +18,13 @@ const { title, page } = Astro.props;
       document.documentElement.dataset.theme = localStorage.getItem('etymology-theme') || 'system';
     </script>
   </head>
-  <body>
+  <body class="body-voice">
     <div class="site-shell">
       <header class="topbar">
-        <a class="brand" href="/" aria-label="Etymology Feed home">
+        <a class="brand instructive-voice" href="/" aria-label="Etymology Feed home">
           <span>Etymology Feed</span>
         </a>
-        <nav class="top-nav" aria-label="Main navigation">
+        <nav class="top-nav instructive-voice" aria-label="Main navigation">
           <a href="/" aria-current={page === 'feed' ? 'page' : undefined}>Feed</a>
           <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}>Liked</a>
           <a href="/?settings=1">Settings</a>
@@ -32,7 +32,7 @@ const { title, page } = Astro.props;
       </header>
       <main id="main"><slot /></main>
     </div>
-    <nav class="bottom-nav" aria-label="Main navigation">
+    <nav class="bottom-nav quiet-voice" aria-label="Main navigation">
       <a href="/" aria-current={page === 'feed' ? 'page' : undefined}><span aria-hidden="true">▤</span>Feed</a>
       <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}><span aria-hidden="true">♡</span>Liked</a>
       <a href="/?settings=1"><span aria-hidden="true">⚙</span>Settings</a>

@@ -28,3 +28,13 @@ every generated shell file, then writes `sw.js` with that precache. HTML is
 network-first; static assets are cache-first; `/api/*`, `/auth/*`, and `/healthz`
 are excluded. This keeps the PWA shell independent of a new build dependency.
 The anonymous banner's sign-in control stays disabled until M4 adds providers.
+
+## 2026-09-26 — M2 semantic visual system
+
+Use five reusable typography roles: `body-voice`, `loud-voice`, `story-voice`,
+`instructive-voice`, and `quiet-voice`. Components select a role and may adjust
+its size through a role custom property; they do not define their own font
+stacks or weights. The single stylesheet groups color, type, spacing, surface,
+layout, and motion tokens at the root, with dark-theme and narrow-layout token
+overrides. Source CSS contains no pixel literals. The two layout breakpoints
+use `rem`, since CSS custom properties cannot be used in media queries.
