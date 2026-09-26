@@ -4,11 +4,14 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build"
+    "build": "astro build && node scripts/generate-sw.mjs",
+    "check": "astro check"
   },
   "dependencies": {
     "@astrojs/solid-js": "7.0.2",
     "astro": "7.3.5",
+    "hono": "4.13.9",
+    "idb": "8.0.3",
     "solid-js": "1.9.15"
   }
 }

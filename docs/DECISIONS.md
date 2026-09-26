@@ -20,3 +20,11 @@ and reads 100 consecutive positions, wrapping at the end. Every word has the
 same 100/N inclusion probability. With the one-row `meta` lookup, a fetch reads
 101 rows, meeting the free-plan budget. M3's scored pools and served filtering
 will be measured separately.
+
+## 2026-09-26 — M2 offline shell (§3.1, §7.4, §10)
+
+Use the spec's hand-written service-worker option. The build lists and hashes
+every generated shell file, then writes `sw.js` with that precache. HTML is
+network-first; static assets are cache-first; `/api/*`, `/auth/*`, and `/healthz`
+are excluded. This keeps the PWA shell independent of a new build dependency.
+The anonymous banner's sign-in control stays disabled until M4 adds providers.
