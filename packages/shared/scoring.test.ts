@@ -1,13 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest';
 import {
   betaShapeParameters,
   DEFAULT_PRIOR_STRENGTH,
   MAX_PRIOR,
   MIN_PRIOR,
-} from "./scoring";
+} from './scoring';
 
-describe("cold-start Beta prior", () => {
-  it("keeps both shape parameters at least 1 for every emitted prior", () => {
+describe('cold-start Beta prior', () => {
+  it('keeps both shape parameters at least 1 for every emitted prior', () => {
     // The derive script rounds priors to four decimal places.
     for (let tick = MIN_PRIOR * 10_000; tick <= MAX_PRIOR * 10_000; tick++) {
       const prior = tick / 10_000;

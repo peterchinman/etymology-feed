@@ -1,0 +1,17 @@
+name = "etymology-feed-m1-scratch"
+main = "src/index.ts"
+compatibility_date = "2026-09-25"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "../web/dist"
+run_worker_first = ["/api/*", "/auth/*", "/healthz"]
+
+[[d1_databases]]
+binding = "DICT"
+database_name = "etymology-m1-scratch"
+database_id = "00000000-0000-4000-8000-000000000000" # local until scratch D1 is created
+
+[observability]
+enabled = true
+head_sampling_rate = 1
