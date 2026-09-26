@@ -31,13 +31,17 @@ The anonymous banner's sign-in control stays disabled until M4 adds providers.
 
 ## 2026-09-26 — M2 semantic visual system
 
-Use five reusable typography roles: `body-voice`, `loud-voice`, `story-voice`,
-`instructive-voice`, and `quiet-voice`. Components select a role and may adjust
-its size through a role custom property; they do not define their own font
-stacks or weights. The single stylesheet groups color, type, spacing, surface,
-layout, and motion tokens at the root, with dark-theme and narrow-layout token
-overrides. Source CSS contains no pixel literals. The two layout breakpoints
-use `rem`, since CSS custom properties cannot be used in media queries.
+Use five reusable typography roles: `display-voice` for words and headings,
+`reading-voice` for etymologies and definitions, `body-voice` for sentences and
+status, `label-voice` for short controls and navigation, and `caption-voice` for
+source credit. “Instructive” was too narrow for controls, while “quiet” made
+primary mobile navigation sound secondary. Icon glyphs use size tokens rather
+than a text voice. Components select a role and may adjust its size through a
+role custom property; they do not define their own font stacks or weights. The
+single stylesheet groups color, type, spacing, surface, layout, and motion
+tokens at the root, with dark-theme and narrow-layout overrides. Source CSS
+contains no pixel literals. The two layout breakpoints use `rem`, since CSS
+custom properties cannot be used in media queries.
 
 ## 2026-09-26 — M2 RWG theme family
 

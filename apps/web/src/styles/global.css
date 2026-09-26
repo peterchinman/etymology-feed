@@ -19,11 +19,13 @@
 
   --font-serif: Georgia, "Times New Roman", serif;
   --type-body: 1rem;
-  --type-quiet: 0.75rem;
-  --type-instructive: 0.875rem;
-  --type-story: clamp(1.125rem, 2.1vw, 1.5rem);
+  --type-caption: 0.8125rem;
+  --type-label: 0.875rem;
+  --type-label-tracking: 0.01em;
+  --type-label-caps-tracking: 0.12em;
+  --type-reading: clamp(1.125rem, 2.1vw, 1.5rem);
   --type-display: clamp(2.625rem, 6vw, 4.5rem);
-  --type-heading: clamp(1.875rem, 4vw, 3rem);
+  --type-display-compact: clamp(1.875rem, 4vw, 3rem);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -147,37 +149,37 @@
   --theme-focus: #ee9eab;
 }
 
-/* Five voices. Components choose a role and may change only its size token. */
+/* Five text roles: display, reading, body, label, and caption. */
 .body-voice {
   font-family: var(--font-serif);
   font-size: var(--type-body);
   font-weight: 400;
   line-height: 1.5;
 }
-.loud-voice {
+.display-voice {
   font-family: var(--font-serif);
-  font-size: var(--voice-loud-size, var(--type-display));
+  font-size: var(--voice-display-size, var(--type-display));
   font-weight: 400;
   line-height: 1.08;
   letter-spacing: -0.04em;
 }
-.story-voice {
+.reading-voice {
   font-family: var(--font-serif);
-  font-size: var(--voice-story-size, var(--type-story));
+  font-size: var(--voice-reading-size, var(--type-reading));
   font-weight: 400;
   line-height: 1.55;
 }
-.instructive-voice {
+.label-voice {
   font-family: var(--font-serif);
-  font-size: var(--type-instructive);
+  font-size: var(--type-label);
   font-weight: 700;
   line-height: 1.3;
-  letter-spacing: 0.01em;
+  letter-spacing: var(--voice-label-tracking, var(--type-label-tracking));
 }
-.quiet-voice {
+.caption-voice {
   font-family: var(--font-serif);
-  font-size: var(--type-quiet);
-  font-weight: 600;
+  font-size: var(--type-caption);
+  font-weight: 400;
   line-height: 1.4;
 }
 
@@ -321,8 +323,8 @@ a {
   justify-content: space-between;
   align-items: center;
 }
-.settings-panel-heading .loud-voice {
-  --voice-loud-size: var(--type-heading);
+.settings-panel-heading .display-voice {
+  --voice-display-size: var(--type-display-compact);
 }
 .settings-panel-heading button,
 .banner-dismiss {
@@ -460,11 +462,12 @@ a {
   animation: reveal var(--motion-gentle) var(--ease-out);
 }
 .definition-label {
+  --voice-label-tracking: var(--type-label-caps-tracking);
   color: var(--color-action);
   text-transform: uppercase;
 }
 .definition p {
-  --voice-story-size: var(--type-body);
+  --voice-reading-size: var(--type-body);
   margin: var(--space-1) 0 0;
 }
 .card-bottom {
@@ -556,13 +559,13 @@ a {
   padding: var(--space-6);
 }
 .card-kicker {
+  --voice-label-tracking: var(--type-label-caps-tracking);
   margin: 0;
   color: var(--color-action);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
 }
 .empty-card h2 {
-  --voice-loud-size: var(--type-heading);
+  --voice-display-size: var(--type-display-compact);
   margin: var(--space-4) 0 0;
 }
 .empty-card p {
@@ -665,8 +668,8 @@ a {
   gap: var(--space-4);
 }
 .liked-item {
-  --voice-loud-size: var(--type-heading);
-  --voice-story-size: var(--type-body);
+  --voice-display-size: var(--type-display-compact);
+  --voice-reading-size: var(--type-body);
   min-width: 0;
   background: var(--color-surface);
   border: var(--stroke) solid var(--color-line);
@@ -719,7 +722,7 @@ a {
   color: var(--color-action);
 }
 .liked-empty h2 {
-  --voice-loud-size: var(--type-heading);
+  --voice-display-size: var(--type-display-compact);
   color: var(--color-ink);
   margin: var(--space-3) 0 0;
 }
@@ -750,7 +753,7 @@ a {
     --deck-height: min(37.5rem, 70dvh);
     --deck-min-height: 22.5rem;
     --type-display: clamp(2.25rem, 10vw, 3.3125rem);
-    --type-story: 1.1875rem;
+    --type-reading: 1.1875rem;
   }
   .topbar {
     display: none;
@@ -823,6 +826,12 @@ a {
 @media (max-width: 24rem) {
   :root {
     --page-gutter: var(--space-3);
+  }
+  .liked-tools {
+    flex-direction: column;
+  }
+  .copy-button {
+    min-height: var(--field-height);
   }
   .card-bottom {
     align-items: flex-start;

@@ -80,7 +80,7 @@ export default function Liked() {
           <div class="banner-actions">
             <button
               type="button"
-              class="banner-signin instructive-voice"
+              class="banner-signin label-voice"
               disabled
               title="Sign-in arrives in a later milestone"
             >
@@ -88,7 +88,7 @@ export default function Liked() {
             </button>
             <button
               type="button"
-              class="banner-dismiss instructive-voice"
+              class="banner-dismiss"
               aria-label="Dismiss sign-in reminder"
               onClick={() => {
                 sessionStorage.setItem('etymology-anon-banner-dismissed', '1');
@@ -101,7 +101,7 @@ export default function Liked() {
         </aside>
       </Show>
       <Show when={!online()}>
-        <p class="offline-note instructive-voice" role="status">
+        <p class="offline-note body-voice" role="status">
           Offline · {swipes().filter((swipe) => !swipe.synced).length} swipes
           waiting to sync
         </p>
@@ -120,7 +120,7 @@ export default function Liked() {
         </label>
         <button
           type="button"
-          class="copy-button instructive-voice"
+          class="copy-button label-voice"
           disabled={!liked().length}
           onClick={() => void copyAll()}
         >
@@ -132,7 +132,7 @@ export default function Liked() {
         fallback={
           <div class="liked-empty">
             <span aria-hidden="true">♡</span>
-            <h2 class="loud-voice">
+            <h2 class="display-voice">
               {query() ? 'No matching words.' : 'Your list begins here.'}
             </h2>
             <p class="body-voice">
@@ -140,7 +140,7 @@ export default function Liked() {
                 ? 'Try another search.'
                 : 'Swipe right on a word that stays with you.'}
             </p>
-            <a class="instructive-voice" href="/">
+            <a class="label-voice" href="/">
               Explore the feed →
             </a>
           </div>
@@ -170,23 +170,23 @@ export default function Liked() {
               >
                 <div class="liked-item-main">
                   <div>
-                    <h2 class="loud-voice">{swipe.word}</h2>
+                    <h2 class="display-voice">{swipe.word}</h2>
                   </div>
                   <button
                     type="button"
-                    class="remove-button instructive-voice"
+                    class="remove-button"
                     aria-label={`Remove ${swipe.word} from Liked`}
                     onClick={() => void remove(swipe.id)}
                   >
                     ×
                   </button>
                 </div>
-                <p class="liked-etymology story-voice">
+                <p class="liked-etymology reading-voice">
                   {swipe.card.etymology}
                 </p>
                 <button
                   type="button"
-                  class="definition-toggle instructive-voice"
+                  class="definition-toggle label-voice"
                   aria-expanded={open() === swipe.id}
                   onClick={() => setOpen(open() === swipe.id ? null : swipe.id)}
                 >
@@ -196,14 +196,14 @@ export default function Liked() {
                 </button>
                 <Show when={open() === swipe.id}>
                   <div class="definition">
-                    <span class="definition-label instructive-voice">
+                    <span class="definition-label label-voice">
                       {swipe.card.pos.join(' · ') || swipe.card.defPos}
                     </span>
-                    <p class="story-voice">{swipe.card.definition}</p>
+                    <p class="reading-voice">{swipe.card.definition}</p>
                   </div>
                 </Show>
                 <a
-                  class="source-line quiet-voice"
+                  class="source-line caption-voice"
                   href={`https://en.wiktionary.org/wiki/${encodeURIComponent(swipe.word)}`}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -216,7 +216,7 @@ export default function Liked() {
         </div>
       </Show>
       <Show when={error()}>
-        <p class="inline-error instructive-voice" role="alert">
+        <p class="inline-error body-voice" role="alert">
           {error()}
         </p>
       </Show>
