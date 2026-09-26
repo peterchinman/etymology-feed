@@ -2,18 +2,28 @@
   "name": "etymology-feed",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
-  "workspaces": ["apps/*", "packages/*"],
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
+    "dev": "node apps/web/scripts/dev.mjs",
     "build:web": "npm run build -w @etymology-feed/web",
-    "lint": "biome check apps/api/src apps/api/test apps/api/vitest.config.ts apps/web/astro.config.mjs packages/shared",
+    "lint": "biome check apps/api/src apps/api/test apps/api/vitest.config.ts apps/web/astro.config.mjs apps/web/playwright.config.ts apps/web/tests apps/web/src/components apps/web/src/lib apps/web/src/styles apps/web/scripts packages/shared",
+    "test:e2e": "npm run build:web && playwright test --config apps/web/playwright.config.ts",
     "test:api": "npm run test -w @etymology-feed/api",
     "test:shared": "vitest run packages/shared",
     "typecheck:api": "tsc --project apps/api/tsconfig.json",
-    "typecheck:shared": "tsc --project packages/shared/tsconfig.json"
+    "typecheck:shared": "tsc --project packages/shared/tsconfig.json",
+    "typecheck:web": "tsc --noEmit --project apps/web/tsconfig.json && npm run check -w @etymology-feed/web"
   },
   "devDependencies": {
+    "@astrojs/check": "0.9.10",
     "@biomejs/biome": "2.5.14",
+    "@playwright/test": "1.63.0",
     "typescript": "5.9.3",
     "vitest": "4.1.11"
   },

@@ -1,0 +1,85 @@
+---
+import '../styles/global.css';
+import { DEFAULT_THEME, THEME_COLORS, THEMES } from '../lib/themes';
+
+type Props = { title: string; page: 'feed' | 'liked' };
+const { title, page } = Astro.props;
+const themeIds = THEMES.map((option) => option.id);
+---
+<!doctype html>
+<html lang="en" class={`${DEFAULT_THEME} light`}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content={THEME_COLORS[DEFAULT_THEME].light} />
+    <meta name="description" content="Discover the stories inside words, one card at a time." />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <title>{title} · Etymology Feed</title>
+    <script define:vars={{ themeIds, colors: THEME_COLORS, fallback: DEFAULT_THEME }}>
+      (() => {
+        let theme = fallback;
+        let mode = 'system';
+        try {
+          const storedTheme = localStorage.getItem('etymology-theme');
+          if (themeIds.includes(storedTheme)) theme = storedTheme;
+          // Before the theme picker, etymology-theme held the light/dark choice.
+          mode = localStorage.getItem('etymology-color-mode')
+            || (storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'system');
+        } catch {
+          // Use the device preference when localStorage is unavailable.
+        }
+        const root = document.documentElement;
+        const systemDark = matchMedia('(prefers-color-scheme: dark)');
+        const themeColor = document.querySelector('meta[name="theme-color"]');
+        root.dataset.colorMode = mode;
+        const apply = () => {
+          const dark = mode === 'dark' || (mode !== 'light' && systemDark.matches);
+          root.classList.remove(...themeIds, 'light', 'dark');
+          root.classList.add(theme, dark ? 'dark' : 'light');
+          themeColor?.setAttribute('content', colors[theme][dark ? 'dark' : 'light']);
+        };
+        apply();
+        systemDark.addEventListener('change', () => {
+          if (root.dataset.colorMode !== 'system') return;
+          mode = 'system';
+          theme = themeIds.find((id) => root.classList.contains(id)) || fallback;
+          apply();
+        });
+      })();
+    </script>
+  </head>
+  <body class="body-voice">
+    <div class="site-shell">
+      <header class="topbar">
+        <a class="brand label-voice" href="/" aria-label="Etymology Feed home">
+          <span>Etymology Feed</span>
+        </a>
+        <nav class="top-nav label-voice" aria-label="Main navigation">
+          <a href="/" aria-current={page === 'feed' ? 'page' : undefined}>Feed</a>
+          <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}>Liked</a>
+          <a href="/?settings=1">Settings</a>
+        </nav>
+      </header>
+      <main id="main"><slot /></main>
+    </div>
+    <nav class="bottom-nav label-voice" aria-label="Main navigation">
+      <a href="/" aria-current={page === 'feed' ? 'page' : undefined}><span aria-hidden="true">▤</span>Feed</a>
+      <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}>
+        <svg class="heart-icon" aria-hidden="true" viewBox="0 0 256 256">
+          <rect width="256" height="256" fill="none" />
+          <path d="M128,224l89.36-90.64a50,50,0,1,0-70.72-70.72L128,80,109.36,62.64a50,50,0,0,0-70.72,70.72Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="16" />
+        </svg>
+        Liked
+      </a>
+      <a href="/?settings=1"><span aria-hidden="true">⚙</span>Settings</a>
+    </nav>
+    <script>
+      if ('serviceWorker' in navigator && import.meta.env.PROD) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(console.error);
+        });
+      }
+    </script>
+  </body>
+</html>

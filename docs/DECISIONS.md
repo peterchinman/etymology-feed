@@ -20,3 +20,93 @@ and reads 100 consecutive positions, wrapping at the end. Every word has the
 same 100/N inclusion probability. With the one-row `meta` lookup, a fetch reads
 101 rows, meeting the free-plan budget. M3's scored pools and served filtering
 will be measured separately.
+
+## 2026-09-26 — M2 offline shell (§3.1, §7.4, §10)
+
+Use the spec's hand-written service-worker option. The build lists and hashes
+every generated shell file, then writes `sw.js` with that precache. HTML is
+network-first; static assets are cache-first; `/api/*`, `/auth/*`, and `/healthz`
+are excluded. This keeps the PWA shell independent of a new build dependency.
+The anonymous banner's sign-in control stays disabled until M4 adds providers.
+
+## 2026-09-26 — M2 semantic visual system
+
+Use five reusable typography roles: `display-voice` for words and headings,
+`reading-voice` for etymologies and definitions, `body-voice` for sentences and
+status, `label-voice` for short controls and navigation, and `caption-voice` for
+source credit. “Instructive” was too narrow for controls, while “quiet” made
+primary mobile navigation sound secondary. Icon glyphs use size tokens rather
+than a text voice. Components select a role and may adjust its size through a
+role custom property; they do not define their own font stacks or weights. The
+single stylesheet groups color, type, spacing, surface, layout, and motion
+tokens at the root, with dark-theme and narrow-layout overrides. Source CSS
+contains no pixel literals. The two layout breakpoints use `rem`, since CSS
+custom properties cannot be used in media queries.
+
+## 2026-09-26 — M2 RWG theme family
+
+Use the four [Random Word Generator themes](https://github.com/peterchinman/random-word-generator-site/blob/master/src/styles/style.css):
+pink/blue palettes crossed with light/dark modes. The default pink palette
+follows the device mode until the visitor explicitly toggles dark mode. Match
+RWG's canvas, raised surface, accent, border, and shadow colors; map them through
+the site's semantic tokens and use Georgia serif for all five voices instead of
+RWG's Roboto Mono.
+Blue-light raised text uses white rather than RWG's pale lilac so small text
+meets contrast requirements. Keep palette and mode in IndexedDB, mirror them in
+localStorage for the pre-paint theme, and honor the old light/dark preference.
+
+## 2026-09-26 — M2 dictionary attribution placement
+
+Remove the visible credit line from Feed and Liked cards. Link each word heading
+to its original Wiktionary entry, and place the contributor, extraction,
+adaptation, and CC BY-SA 4.0 notice in Settings. The [license](https://creativecommons.org/licenses/by-sa/4.0/legalcode)
+allows attribution in a manner reasonable for the medium and context, while
+asking for a link to the source material where practical. This keeps direct
+entry links available and the credit accessible without repeating it on every
+card. This user-requested placement replaces the per-card line in SPEC §3 and
+§7.4; it does not change the dictionary's license.
+
+## 2026-09-26 — M2 swipe motion model (§7.4)
+
+Derive card motion from the gesture instead of fixed CSS transitions. The top
+card tracks the pointer 1:1 with no transition in between. On release,
+velocity is measured over the trailing 100 ms and projected 180 ms ahead to
+decide between commit and snap-back. A committed card leaves along
+x = x₀ + v₀t + ½at² with the duration set by its release speed (clamped to
+100–240 ms), so a coast and a slow release both start at the speed the card
+already had; that quadratic is expressed exactly as a `cubic-bezier`. A key or
+button swipe has no hand speed, so it launches over 200 ms starting at half its
+average speed rather than easing in from rest, which read as sluggish on
+desktop. A snap-back is a damped spring (stiffness 400, damping 30)
+carrying the release velocity, sampled into a `linear()` easing. The next card
+waits fully drawn, slightly smaller and lower, and is uncovered rather than
+faded in; it grows to full size with drag progress. All of this runs through
+the Web Animations API with implicit end keyframes so a card can be caught
+mid-flight. The stack shifts the moment a swipe commits; queued swipes are
+written in one IndexedDB transaction so quick bursts never fall behind.
+
+## 2026-09-26 — M2 theme concepts
+
+Replace the RWG palette family (above) with complete design concepts, chosen
+by a segmented control in Settings and still crossed with light/dark. The RWG
+hard offset shadows and shared shapes did not suit this site, so each theme
+now owns the whole contract: type, color, spacing, stroke, radius, and shadow
+tokens live in `styles/themes/<id>.css`, and a theme may add a few structural
+flourishes of its own. Three remain after review. **Gallery** (default) is
+white on white: no borders, layered soft shadows, rounded rectangles, EB
+Garamond for reading with Bricolage Grotesque for the word and all
+informational text. **Nocturne** treats words as light: a midnight canvas
+with a halo, glass cards with a sky-blue-to-violet gradient edge, the word in
+Instrument Serif italic with a glow. **Indigo** treats the word as a diagram:
+a cyanotype sheet over a dot grid, two small registration crosshairs on the
+word card, the word in B612 Mono capitals measured by a dimension line, a
+dashed callout for the definition. Five other concepts were built and cut in
+review: Swiss (Helvetica, hairlines, one red), Bauhaus (Futura on colored
+stock), Contour (a survey sheet with generated topographic contours), Preserve
+(Fraunces, stitched edges, plum and marmalade), and Riso (two-ink overprint on
+grainy paper). Fonts come from `@fontsource` latin subsets (10–80 KB per
+file), so they ship in the precached shell and work offline. The theme name
+is stored under the `theme` key in IndexedDB and `etymology-theme` in
+localStorage; a light/dark value found there is the pre-picker preference and
+is migrated to `colorMode`. `theme-color` comes from one map in
+`lib/themes.ts`, passed to the pre-paint script with `define:vars`.

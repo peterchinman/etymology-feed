@@ -1,0 +1,233 @@
+/* Indigo. The word as a diagram. A cyanotype sheet: deep Prussian blue with
+   white line-work in the dark, white drafting vellum with blue lines in the
+   light, and a dot grid under everything. Each sheet carries two small
+   registration marks; the word is lettered in bold mono
+   capitals and measured with a dimension line; the definition sits in a
+   dashed callout; the toggle lives in the title block. Set in B612, a
+   typeface designed for aircraft cockpit displays, and its mono. One color,
+   fully committed. */
+@import "@fontsource/b612/latin-400.css";
+@import "@fontsource/b612-mono/latin-400.css";
+@import "@fontsource/b612-mono/latin-700.css";
+
+:root.indigo {
+  --font-display: "B612 Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-reading: "B612", system-ui, "Segoe UI", sans-serif;
+  --font-body: var(--font-reading);
+  --font-brand: var(--font-display);
+  --font-label: var(--font-display);
+  --font-caption: var(--font-reading);
+  --weight-display: 700;
+  --weight-reading: 400;
+  --weight-body: 400;
+  --weight-label: 400;
+  --weight-caption: 400;
+  --type-display: clamp(1.75rem, 4vw, 3rem);
+  --type-display-compact: clamp(1.125rem, 2.5vw, 1.5rem);
+  --type-reading: clamp(1rem, 1.6vw, 1.125rem);
+  --type-body: 0.9375rem;
+  --type-label: 0.75rem;
+  --type-caption: 0.75rem;
+  --leading-display: 1.15;
+  --leading-reading: 1.55;
+  --leading-body: 1.5;
+  --tracking-display: 0.04em;
+  --tracking-label: 0.08em;
+  --tracking-caps: 0.14em;
+  --case-display: uppercase;
+  --case-label: uppercase;
+  --case-caps: uppercase;
+
+  --card-inset: clamp(var(--space-5), 3.5vw, 2.5rem);
+
+  --stroke-card: var(--hairline);
+  --stroke-panel: var(--hairline);
+  --stroke-control: var(--hairline);
+  --stroke-rule: var(--hairline);
+  --stroke-bar: var(--hairline);
+  --stroke-emphasis: 0.125rem;
+  --focus-ring: 0.125rem;
+
+  --radius-card: 0;
+  --radius-panel: 0;
+  --radius-control: 0;
+  --radius-field: 0;
+  --radius-inset: 0;
+  --radius-like: 50%;
+  --radius-skip: 50%;
+  --radius-switch: 0;
+  --radius-thumb: 0;
+  --radius-segment: 0;
+  --radius-segment-item: 0;
+
+  --switch-width: 3.25rem;
+  --switch-height: 1.75rem;
+  --switch-pad: 0.1875rem;
+  --switch-thumb: 1.25rem;
+  --segment-pad: 0;
+  --segment-gap: var(--hairline);
+
+  --shadow-card: none;
+  --shadow-panel: none;
+  --shadow-control: none;
+  --shadow-control-hover: none;
+  --shadow-item: none;
+  --shadow-segment: none;
+  --shadow-thumb: none;
+
+  --mark-size: 0.625rem;
+  --mark-inset: 0.5rem;
+  --grid-step: 1.5rem;
+}
+
+:root.indigo.light {
+  color-scheme: light;
+  --color-canvas: #f2f5f9;
+  --color-surface: #ffffff;
+  --color-inset: #eaf0f7;
+  --color-field: #ffffff;
+  --color-definition: transparent;
+  --color-definition-ink: #10305c;
+  --color-definition-label: #2f5ea8;
+  --color-panel: #10305c;
+  --color-panel-ink: #f2f6fb;
+  --color-bar: #ffffff;
+  --color-bar-ink: #10305c;
+  --color-bar-muted: #5e7597;
+  --color-bar-line: #2f5ea8;
+  --color-ink: #10305c;
+  --color-muted: #5e7597;
+  --color-line: #2f5ea8;
+  --color-divider: rgba(47, 94, 168, 0.5);
+  --color-accent: #2f5ea8;
+  --color-nav-mark: #2f5ea8;
+  --color-like: #2f5ea8;
+  --color-like-ink: #ffffff;
+  --color-like-line: #2f5ea8;
+  --color-skip: #ffffff;
+  --color-skip-ink: #10305c;
+  --color-skip-line: #2f5ea8;
+  --color-on: #2f5ea8;
+  --color-switch-off: transparent;
+  --color-switch-line: #2f5ea8;
+  --color-thumb-off: #2f5ea8;
+  --color-thumb-on: #ffffff;
+  --color-segment-track: #2f5ea8;
+  --color-segment: #ffffff;
+  --color-segment-on: #10305c;
+  --color-segment-on-ink: #ffffff;
+  --color-focus: #10305c;
+  --grid-dot: rgba(47, 94, 168, 0.3);
+}
+
+:root.indigo.dark {
+  color-scheme: dark;
+  --color-canvas: #0b2447;
+  --color-surface: #10305c;
+  --color-inset: #173b6e;
+  --color-field: #10305c;
+  --color-definition: transparent;
+  --color-definition-ink: #f2f6fb;
+  --color-definition-label: #9cc3f5;
+  --color-panel: #f2f6fb;
+  --color-panel-ink: #10305c;
+  --color-bar: #0b2447;
+  --color-bar-ink: #f2f6fb;
+  --color-bar-muted: #a9bedc;
+  --color-bar-line: rgba(242, 246, 251, 0.6);
+  --color-ink: #f2f6fb;
+  --color-muted: #a9bedc;
+  --color-line: rgba(242, 246, 251, 0.75);
+  --color-divider: rgba(242, 246, 251, 0.4);
+  --color-accent: #9cc3f5;
+  --color-nav-mark: #9cc3f5;
+  --color-like: #f2f6fb;
+  --color-like-ink: #10305c;
+  --color-like-line: #f2f6fb;
+  --color-skip: transparent;
+  --color-skip-ink: #f2f6fb;
+  --color-skip-line: rgba(242, 246, 251, 0.75);
+  --color-on: #f2f6fb;
+  --color-switch-off: transparent;
+  --color-switch-line: rgba(242, 246, 251, 0.75);
+  --color-thumb-off: #f2f6fb;
+  --color-thumb-on: #10305c;
+  --color-segment-track: rgba(242, 246, 251, 0.75);
+  --color-segment: #10305c;
+  --color-segment-on: #f2f6fb;
+  --color-segment-on-ink: #10305c;
+  --color-focus: #9cc3f5;
+  --grid-dot: rgba(242, 246, 251, 0.18);
+}
+
+/* Drafting film: a dot grid under everything. */
+:root.indigo body {
+  background-image: radial-gradient(
+    circle,
+    var(--grid-dot) var(--hairline),
+    transparent calc(var(--hairline) * 1.6)
+  );
+  background-size: var(--grid-step) var(--grid-step);
+  background-position: center top;
+}
+/* Every sheet is registered: two small crosshairs, top left and bottom
+   right, are enough to register a sheet. Only the word card carries them. */
+:root.indigo .word-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.6;
+  --mark-mid: calc(var(--mark-inset) + var(--mark-size) / 2);
+  --bar: linear-gradient(var(--color-line), var(--color-line));
+  background:
+    var(--bar) left var(--mark-inset) top var(--mark-mid) / var(--mark-size)
+    var(--hairline) no-repeat,
+    var(--bar) left var(--mark-mid) top var(--mark-inset) / var(--hairline)
+    var(--mark-size) no-repeat,
+    var(--bar) right var(--mark-inset) bottom var(--mark-mid) / var(--mark-size)
+    var(--hairline) no-repeat,
+    var(--bar) right var(--mark-mid) bottom var(--mark-inset) / var(--hairline)
+    var(--mark-size) no-repeat;
+}
+/* The word is measured: a dimension line with end ticks spans it. */
+:root.indigo .word-head h2 {
+  display: inline-block;
+  max-width: 100%;
+}
+:root.indigo .word-head h2::after {
+  content: "";
+  display: block;
+  height: var(--space-2);
+  margin-top: var(--space-2);
+  border-bottom: var(--hairline) solid var(--color-line);
+  background:
+    linear-gradient(var(--color-line), var(--color-line)) left / var(--hairline)
+    100% no-repeat,
+    linear-gradient(var(--color-line), var(--color-line)) right /
+    var(--hairline) 100% no-repeat;
+}
+:root.indigo .word-source:hover {
+  text-decoration-thickness: 0.125rem;
+}
+/* The definition is a dashed callout. */
+:root.indigo .definition {
+  padding: var(--space-3) var(--space-4);
+  border: var(--hairline) dashed var(--color-line);
+}
+:root.indigo .definition p {
+  --voice-reading-size: var(--type-body);
+}
+:root.indigo .brand {
+  font-weight: 700;
+}
+:root.indigo .swipe-button:hover:not(:disabled) {
+  transform: none;
+}
+:root.indigo .skip-button:hover:not(:disabled) {
+  background: var(--color-inset);
+}
+:root.indigo .like-button:hover:not(:disabled) {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
