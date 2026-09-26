@@ -362,6 +362,15 @@ a {
   opacity: 0;
   cursor: pointer;
 }
+.source-credit {
+  border-top: var(--stroke) solid var(--color-divider);
+  padding-top: var(--space-4);
+  margin: var(--space-3) 0 var(--space-4);
+  color: var(--color-muted);
+}
+.source-credit a {
+  color: var(--color-action);
+}
 .switch-track {
   display: block;
   flex: none;
@@ -443,6 +452,14 @@ a {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.word-source {
+  text-decoration: none;
+}
+.word-source:hover {
+  text-decoration: underline;
+  text-decoration-thickness: var(--stroke);
+  text-underline-offset: var(--space-1);
+}
 .card-body {
   flex: 1;
   min-height: 0;
@@ -473,8 +490,6 @@ a {
 .card-bottom {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
   border-top: var(--stroke) solid var(--color-divider);
   padding-top: var(--space-4);
   margin-top: var(--space-3);
@@ -488,14 +503,6 @@ a {
 }
 .definition-toggle span {
   padding-left: var(--space-1);
-}
-.source-line {
-  color: var(--color-muted);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.source-line:hover {
-  text-decoration: underline;
 }
 .swipe-cue {
   position: absolute;
@@ -705,10 +712,6 @@ a {
 }
 .liked-item .definition {
   margin-top: var(--space-2);
-}
-.liked-item .source-line {
-  display: block;
-  margin-top: var(--space-4);
 }
 .liked-empty {
   text-align: center;

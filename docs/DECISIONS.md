@@ -54,3 +54,14 @@ RWG's Roboto Mono.
 Blue-light raised text uses white rather than RWG's pale lilac so small text
 meets contrast requirements. Keep palette and mode in IndexedDB, mirror them in
 localStorage for the pre-paint theme, and honor the old light/dark preference.
+
+## 2026-09-26 — M2 dictionary attribution placement
+
+Remove the visible credit line from Feed and Liked cards. Link each word heading
+to its original Wiktionary entry, and place the contributor, extraction,
+adaptation, and CC BY-SA 4.0 notice in Settings. The [license](https://creativecommons.org/licenses/by-sa/4.0/legalcode)
+allows attribution in a manner reasonable for the medium and context, while
+asking for a link to the source material where practical. This keeps direct
+entry links available and the credit accessible without repeating it on every
+card. This user-requested placement replaces the per-card line in SPEC §3 and
+§7.4; it does not change the dictionary's license.

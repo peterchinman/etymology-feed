@@ -331,6 +331,33 @@ export default function Feed() {
             />
             <span class="switch-track" aria-hidden="true" />
           </label>
+          <p class="source-credit caption-voice">
+            Etymologies and definitions are adapted from{' '}
+            <a
+              href="https://en.wiktionary.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Wiktionary contributors
+            </a>
+            , via{' '}
+            <a
+              href="https://kaikki.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              kaikki.org
+            </a>
+            , under{' '}
+            <a
+              href="https://creativecommons.org/licenses/by-sa/4.0/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              CC BY-SA 4.0
+            </a>
+            . Select a word to open its original entry.
+          </p>
         </section>
       </Show>
       <div class="deck-area">
@@ -398,7 +425,17 @@ export default function Feed() {
                   Not for me
                 </div>
                 <div class="word-head">
-                  <h2 class="display-voice">{card().word}</h2>
+                  <h2 class="display-voice">
+                    <a
+                      class="word-source"
+                      href={`https://en.wiktionary.org/wiki/${encodeURIComponent(card().word)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`View ${card().word} on Wiktionary`}
+                    >
+                      {card().word}
+                    </a>
+                  </h2>
                 </div>
                 <div class="card-body">
                   <p class="etymology reading-voice">{card().etymology}</p>
@@ -424,14 +461,6 @@ export default function Feed() {
                       {definitionOpen() ? '−' : '+'}
                     </span>
                   </button>
-                  <a
-                    class="source-line caption-voice"
-                    href={`https://en.wiktionary.org/wiki/${encodeURIComponent(card().word)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Wiktionary · CC BY-SA ↗
-                  </a>
                 </div>
               </article>
             </>

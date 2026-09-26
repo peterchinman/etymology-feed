@@ -170,7 +170,17 @@ export default function Liked() {
               >
                 <div class="liked-item-main">
                   <div>
-                    <h2 class="display-voice">{swipe.word}</h2>
+                    <h2 class="display-voice">
+                      <a
+                        class="word-source"
+                        href={`https://en.wiktionary.org/wiki/${encodeURIComponent(swipe.word)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`View ${swipe.word} on Wiktionary`}
+                      >
+                        {swipe.word}
+                      </a>
+                    </h2>
                   </div>
                   <button
                     type="button"
@@ -202,14 +212,6 @@ export default function Liked() {
                     <p class="reading-voice">{swipe.card.definition}</p>
                   </div>
                 </Show>
-                <a
-                  class="source-line caption-voice"
-                  href={`https://en.wiktionary.org/wiki/${encodeURIComponent(swipe.word)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Wiktionary · CC BY-SA ↗
-                </a>
               </article>
             )}
           </For>
