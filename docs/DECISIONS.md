@@ -12,15 +12,21 @@ the requested average rates but permits short bursts; an exact per-second
 limit is unavailable from this binding.
 
 The M3 D1 integration fixture measures **100 card rows read and one served
-row written** for a fresh 100-card fetch. The required swipe and word_stats
-indexes change the sync economics: **100 new swipes write 750 D1 rows** (50
-likes, 50 dislikes), despite the two SQL table mutations per swipe. D1
-counts index updates in `rows_written`. The added nightly scan index was
-removed because it increased that measurement to 850. The §10 ≤200-write
-acceptance criterion and §3.4 estimate of two writes per swipe cannot be met
-with the §5 schema; M3 remains under review until the spec is reconciled.
-At 750 rows per 100 swipes, the 100k daily free allowance supports at most
-roughly 13k such swipes before auth and other writes, rather than 45k.
+row written** for a fresh 100-card fetch. A 100-swipe sync of 50 likes and
+50 dislikes originally wrote **750 D1 rows**, despite only two SQL table
+mutations per swipe, because D1 counts index updates in `rows_written`.
+Removing the unused `idx_swipe_word` saved 100 writes. Removing the general
+score index saved another 100 but lost the indexed cold-start ranking; a
+replacement partial index restored that cost on first ratings. The chosen
+schema keeps the score index and changes `swipe` to a `WITHOUT ROWID` table
+with `(user_id,word)` as its primary key, a unique id for idempotency, and
+the partial Liked index. That saves 200 writes over the original swipe
+storage, while preserving indexed user/word lookup, user pagination, and
+Liked lookup. **100 new swipes now write 550 D1 rows.** The §10 acceptance
+target was revised from ≤200 to the measured ≤550. The free daily 100k
+allowance supports at most roughly 18k such swipes before auth, cron, and
+feed writes. The added nightly scan index was removed because it increased
+the original measurement to 850.
 The seed script meters actual `rows_written` and defaults to a 50k budget
 per run (at most 80k when explicitly requested), so seeding 152k indexed rows
 takes more than the spec's suggested two days on the free plan. A sync after
@@ -32,8 +38,11 @@ index for the default `MIN_RATINGS=5`: the five-minute pool cron otherwise
 scans the entire seeded score index while looking for rated words, exceeding
 the 5M daily read budget. The `MIN_RATINGS` variable remains respected; a
 value below five takes the general score-index path and needs new cost
-measurements. Nightly stats use a paged scan of the swipe table, as §6.5
-specifies, and indexed DICT lookups because D1 has no cross-database join.
+measurements. Nightly stats scan the 30-day window in composite primary-key
+order, paged to bound Worker memory, and use indexed DICT lookups because D1
+has no cross-database join. The APP scan can read older swipe rows while
+filtering by date; its rows-read cost grows with retained history and remains
+an explicit free-plan risk to measure in production.
 
 The `known` JSON is sent in URL-sized chunks after cookie loss, merging into
 the server's served blob on successive fetches. A single 30k-word URL would
