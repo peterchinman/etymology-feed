@@ -529,8 +529,11 @@ a {
   align-items: center;
 }
 .swipe-button {
+  display: grid;
+  place-items: center;
   width: var(--control-size);
   height: var(--control-size);
+  padding: 0;
   border-radius: var(--radius-round);
   background: var(--color-surface);
   border: var(--stroke) solid var(--color-line);
@@ -545,10 +548,13 @@ a {
 .swipe-button:active:not(:disabled) {
   transform: scale(0.94);
 }
-.swipe-button span {
+.swipe-button svg {
   display: block;
-  font-size: var(--action-icon-size);
-  line-height: 1;
+  width: var(--action-icon-size);
+  height: var(--action-icon-size);
+}
+.heart-icon {
+  transform: translateY(calc(-1 * var(--stroke)));
 }
 .skip-button {
   color: var(--color-action);
@@ -720,8 +726,9 @@ a {
   padding: var(--space-8) var(--space-5);
   color: var(--color-muted);
 }
-.liked-empty > span {
-  font-size: var(--action-icon-size);
+.liked-empty > svg {
+  width: var(--action-icon-size);
+  height: var(--action-icon-size);
   color: var(--color-action);
 }
 .liked-empty h2 {
@@ -791,6 +798,11 @@ a {
   .bottom-nav a span {
     font-size: var(--icon-size);
     line-height: 1;
+  }
+  .bottom-nav a svg {
+    display: block;
+    width: var(--icon-size);
+    height: var(--icon-size);
   }
   .bottom-nav a[aria-current="page"] {
     color: var(--color-action);
