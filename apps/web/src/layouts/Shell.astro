@@ -22,38 +22,22 @@ const { title, page } = Astro.props;
     <div class="site-shell">
       <header class="topbar">
         <a class="brand" href="/" aria-label="Etymology Feed home">
-          <span class="brand-mark" aria-hidden="true">E<span>·</span></span>
           <span>Etymology Feed</span>
         </a>
         <nav class="top-nav" aria-label="Main navigation">
           <a href="/" aria-current={page === 'feed' ? 'page' : undefined}>Feed</a>
           <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}>Liked</a>
+          <a href="/?settings=1">Settings</a>
         </nav>
-        <div class="top-status"><span class="online-dot" data-online-dot role="img" aria-label="Online"></span><span data-online-label>Online</span></div>
       </header>
       <main id="main"><slot /></main>
-      <footer class="site-footer">
-        <span>Words have histories.</span>
-        <a href="/about/">About &amp; sources</a>
-      </footer>
     </div>
     <nav class="bottom-nav" aria-label="Main navigation">
       <a href="/" aria-current={page === 'feed' ? 'page' : undefined}><span aria-hidden="true">▤</span>Feed</a>
       <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}><span aria-hidden="true">♡</span>Liked</a>
-      <span class="online-dot" data-online-dot role="img" aria-label="Online"></span>
+      <a href="/?settings=1"><span aria-hidden="true">⚙</span>Settings</a>
     </nav>
     <script>
-      const updateOnline = () => {
-        for (const dot of document.querySelectorAll<HTMLElement>('[data-online-dot]')) {
-          dot.classList.toggle('offline', !navigator.onLine);
-          dot.setAttribute('aria-label', navigator.onLine ? 'Online' : 'Offline');
-        }
-        const label = document.querySelector<HTMLElement>('[data-online-label]');
-        if (label) label.textContent = navigator.onLine ? 'Online' : 'Offline';
-      };
-      updateOnline();
-      window.addEventListener('online', updateOnline);
-      window.addEventListener('offline', updateOnline);
       if ('serviceWorker' in navigator && import.meta.env.PROD) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').catch(console.error);

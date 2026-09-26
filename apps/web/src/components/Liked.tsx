@@ -70,16 +70,7 @@ export default function Liked() {
 
   return (
     <section class="liked-page page-wrap">
-      <div class="page-heading liked-heading">
-        <div>
-          <p class="eyebrow">Your collection</p>
-          <h1>Words you love.</h1>
-          <p class="page-subtitle">
-            A personal little lexicon, kept on this device.
-          </p>
-        </div>
-        <span class="liked-total">{liked().length} saved</span>
-      </div>
+      <h1 class="sr-only">Liked</h1>
       <Show when={banner()}>
         <aside class="anon-banner">
           <div>
@@ -174,11 +165,7 @@ export default function Liked() {
               >
                 <div class="liked-item-main">
                   <div>
-                    <p class="card-kicker">SAVED WORD</p>
                     <h2>{swipe.word}</h2>
-                    <Show when={swipe.card.ipa}>
-                      <span class="ipa">{swipe.card.ipa}</span>
-                    </Show>
                   </div>
                   <button
                     type="button"

@@ -204,6 +204,9 @@ export default function Feed() {
 
   onMount(() => {
     setOnline(navigator.onLine);
+    setSettingsOpen(
+      new URLSearchParams(window.location.search).has('settings'),
+    );
     void (async () => {
       try {
         const [cards, settings] = await Promise.all([
@@ -247,23 +250,26 @@ export default function Feed() {
 
   return (
     <section class="feed-page page-wrap">
-      <div class="page-heading feed-heading">
-        <div>
-          <p class="eyebrow">A little language, every day</p>
-          <h1>Words worth knowing.</h1>
-        </div>
-        <button
-          class="text-button settings-button"
-          type="button"
-          onClick={() => setSettingsOpen((value) => !value)}
-          aria-expanded={settingsOpen()}
-          aria-controls="feed-settings"
-        >
-          Settings <span aria-hidden="true">⚙</span>
-        </button>
-      </div>
+      <h1 class="sr-only">Feed</h1>
       <Show when={settingsOpen()}>
-        <div class="settings-panel" id="feed-settings">
+        <section
+          class="settings-panel"
+          id="feed-settings"
+          aria-label="Settings"
+        >
+          <div class="settings-panel-heading">
+            <strong>Settings</strong>
+            <button
+              type="button"
+              aria-label="Close settings"
+              onClick={() => {
+                setSettingsOpen(false);
+                window.history.replaceState(null, '', '/');
+              }}
+            >
+              ×
+            </button>
+          </div>
           <label class="setting-row">
             <span>Always show definitions</span>
             <input
@@ -287,7 +293,10 @@ export default function Feed() {
               <option value="dark">Dark</option>
             </select>
           </label>
-        </div>
+          <a class="settings-about" href="/about/">
+            About
+          </a>
+        </section>
       </Show>
       <div class="deck-area">
         <Show
@@ -353,16 +362,8 @@ export default function Feed() {
                 >
                   Not for me
                 </div>
-                <div class="card-topline">
-                  <span class="card-kicker">ETYMOLOGY</span>
-                  <span class="card-rule" aria-hidden="true"></span>
-                  <span class="card-category">{card().tier}</span>
-                </div>
                 <div class="word-head">
                   <h2>{card().word}</h2>
-                  <Show when={card().ipa}>
-                    <span class="ipa">{card().ipa}</span>
-                  </Show>
                 </div>
                 <div class="card-body">
                   <p class="etymology">{card().etymology}</p>
@@ -402,7 +403,11 @@ export default function Feed() {
           )}
         </Show>
       </div>
-      <div class="deck-controls">
+      <div
+        class="deck-controls"
+        data-testid="deck-controls"
+        data-stack-count={stack().length}
+      >
         <button
           class="swipe-button skip-button"
           type="button"
@@ -412,10 +417,6 @@ export default function Feed() {
         >
           <span aria-hidden="true">×</span>
         </button>
-        <div class="deck-progress">
-          <strong data-testid="stack-count">{stack().length}</strong>
-          <span>cards ready</span>
-        </div>
         <button
           class="swipe-button like-button"
           type="button"
@@ -426,23 +427,10 @@ export default function Feed() {
           <span aria-hidden="true">♡</span>
         </button>
       </div>
-      <p class="gesture-hint">Swipe or use ← → · Press D for definition</p>
       <Show when={error()}>
         <p class="inline-error" role="alert">
           {error()}
         </p>
-      </Show>
-      <Show when={pendingUndo()}>
-        {(swipe) => (
-          <div class="undo-toast" role="status">
-            <span>
-              {swipe().verdict === 1 ? 'Added to Liked' : 'Passed on this word'}
-            </span>
-            <button type="button" onClick={() => void undo()}>
-              Undo
-            </button>
-          </div>
-        )}
       </Show>
     </section>
   );

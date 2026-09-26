@@ -106,31 +106,11 @@ a {
   background: var(--surface);
 }
 .brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
   text-decoration: none;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 20px;
   font-weight: 700;
   white-space: nowrap;
-}
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 39px;
-  height: 39px;
-  background: var(--accent);
-  border-radius: 9px;
-  color: var(--surface);
-  font-size: 27px;
-  letter-spacing: -6px;
-  padding-right: 7px;
-}
-.brand-mark span {
-  font-size: 22px;
-  align-self: end;
-  padding-bottom: 5px;
 }
 .top-nav {
   display: flex;
@@ -154,27 +134,6 @@ a {
   color: var(--accent-dark);
   border-bottom-color: var(--accent);
 }
-.top-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--muted);
-  min-width: 70px;
-  margin-left: 30px;
-}
-.online-dot {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 50%;
-  background: #5a9a61;
-  box-shadow: 0 0 0 3px rgba(90, 154, 97, 0.13);
-}
-.online-dot.offline {
-  background: #c7784f;
-  box-shadow: 0 0 0 3px rgba(199, 120, 79, 0.14);
-}
 #main {
   flex: 1;
 }
@@ -182,28 +141,10 @@ a {
   width: min(100% - 40px, 1120px);
   margin: 0 auto;
 }
-.site-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  width: min(100% - 40px, 1120px);
-  margin: 55px auto 24px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.site-footer a {
-  text-underline-offset: 3px;
-}
 .bottom-nav {
   display: none;
 }
 
-.page-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 20px;
-}
 .eyebrow,
 .card-kicker {
   margin: 0;
@@ -213,7 +154,6 @@ a {
   letter-spacing: 0.18em;
   font-size: 11px;
 }
-.page-heading h1,
 .about-page h1 {
   font:
     400 clamp(34px, 4vw, 54px) / 1.05 Georgia,
@@ -227,37 +167,40 @@ a {
 .about-page {
   padding-top: clamp(26px, 4vw, 52px);
 }
-.page-subtitle {
-  color: var(--muted);
-  margin: 12px 0 0;
-}
-.text-button {
-  border: 0;
-  background: none;
-  color: var(--accent-dark);
-  font-size: 14px;
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-.settings-button {
-  padding: 10px 0;
-  white-space: nowrap;
-}
-.settings-button span {
-  margin-left: 5px;
-  font-size: 18px;
-}
 .settings-panel {
-  position: relative;
-  z-index: 4;
-  width: min(100%, 420px);
-  margin: 18px 0 0 auto;
+  position: fixed;
+  z-index: 20;
+  top: 88px;
+  right: clamp(20px, 5vw, 72px);
+  width: min(420px, calc(100vw - 40px));
   padding: 5px 20px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
   box-shadow: var(--shadow);
+}
+.settings-panel-heading {
+  min-height: 52px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+}
+.settings-panel-heading button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 27px;
+  line-height: 1;
+}
+.settings-about {
+  display: block;
+  border-top: 1px solid var(--line);
+  padding: 17px 0;
+  color: var(--accent-dark);
+  font-size: 14px;
+  font-weight: 700;
 }
 .setting-row {
   display: flex;
@@ -326,24 +269,8 @@ a {
   transform: rotate(1deg);
   background: var(--accent-soft);
 }
-.card-topline {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  min-height: 20px;
-}
-.card-rule {
-  height: 1px;
-  background: var(--line);
-  flex: 1;
-}
-.card-category {
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: capitalize;
-}
 .word-head {
-  margin: 30px 0 18px;
+  margin: 5px 0 18px;
 }
 .word-head h2 {
   font:
@@ -353,12 +280,6 @@ a {
   letter-spacing: -0.04em;
   margin: 0;
   overflow-wrap: anywhere;
-}
-.ipa {
-  display: inline-block;
-  color: var(--muted);
-  font-size: 15px;
-  margin-top: 10px;
 }
 .card-body {
   flex: 1;
@@ -489,24 +410,6 @@ a {
   font-size: 40px;
   padding-bottom: 4px;
 }
-.deck-progress {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.deck-progress strong {
-  color: var(--ink);
-  font-size: 19px;
-}
-.gesture-hint {
-  margin: 16px 0 0;
-  text-align: center;
-  color: var(--muted);
-  font-size: 12px;
-}
 .empty-card {
   position: relative;
   align-items: center;
@@ -540,46 +443,6 @@ a {
   color: var(--accent-dark);
   font-size: 13px;
   text-align: center;
-}
-.undo-toast {
-  position: fixed;
-  z-index: 20;
-  bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  background: var(--ink);
-  color: var(--surface);
-  padding: 12px 16px;
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  font-size: 14px;
-  white-space: nowrap;
-}
-.undo-toast button {
-  color: var(--surface);
-  font-weight: 800;
-  background: none;
-  border: 0;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.liked-heading {
-  align-items: center;
-  margin-bottom: 32px;
-}
-.liked-total {
-  color: var(--accent-dark);
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: 999px;
-  padding: 9px 14px;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
 }
 .anon-banner {
   display: flex;
@@ -682,12 +545,8 @@ a {
     400 31px / 1.1 Georgia,
     "Times New Roman",
     serif;
-  margin: 10px 0 0;
+  margin: 0;
   overflow-wrap: anywhere;
-}
-.liked-item .ipa {
-  font-size: 13px;
-  margin-top: 5px;
 }
 .remove-button {
   align-self: flex-start;
@@ -775,20 +634,10 @@ a {
 }
 @media (max-width: 767px) {
   .topbar {
-    height: 60px;
-    padding: 0 20px;
-  }
-  .brand {
-    font-size: 18px;
-  }
-  .brand-mark {
-    width: 34px;
-    height: 34px;
-    font-size: 24px;
-  }
-  .top-nav,
-  .top-status {
     display: none;
+  }
+  #main {
+    padding-bottom: calc(82px + env(safe-area-inset-bottom));
   }
   .bottom-nav {
     position: fixed;
@@ -799,7 +648,7 @@ a {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 54px;
+    gap: clamp(38px, 11vw, 64px);
     height: calc(62px + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--surface);
@@ -822,30 +671,30 @@ a {
   .bottom-nav a[aria-current="page"] {
     color: var(--accent-dark);
   }
-  .bottom-nav .online-dot {
-    position: absolute;
-    right: 25px;
-  }
-  .site-footer {
-    margin-top: 90px;
-    margin-bottom: calc(84px + env(safe-area-inset-bottom));
-  }
   .feed-page {
-    padding-top: 24px;
+    padding-top: calc(16px + env(safe-area-inset-top));
   }
-  .page-heading h1 {
-    font-size: 36px;
+  .liked-page,
+  .about-page {
+    padding-top: calc(24px + env(safe-area-inset-top));
+  }
+  .settings-panel {
+    top: auto;
+    right: 20px;
+    bottom: calc(74px + env(safe-area-inset-bottom));
+    left: 20px;
+    width: auto;
   }
   .deck-area {
-    margin-top: 20px;
-    height: min(460px, 48vh);
+    margin-top: 0;
+    height: min(600px, 70vh);
     min-height: 360px;
   }
   .active-card {
     padding: 23px;
   }
   .word-head {
-    margin: 23px 0 16px;
+    margin: 5px 0 16px;
   }
   .word-head h2 {
     font-size: clamp(36px, 10vw, 53px);
@@ -861,17 +710,8 @@ a {
     width: 60px;
     height: 60px;
   }
-  .gesture-hint {
-    font-size: 11px;
-  }
   .liked-list {
     grid-template-columns: 1fr;
-  }
-  .liked-heading {
-    margin-bottom: 22px;
-  }
-  .liked-total {
-    font-size: 11px;
   }
   .anon-banner {
     align-items: flex-start;
@@ -884,19 +724,10 @@ a {
     font-size: 11px;
     padding: 6px;
   }
-  .undo-toast {
-    bottom: calc(75px + env(safe-area-inset-bottom));
-  }
 }
 @media (max-width: 380px) {
   .page-wrap {
     width: min(100% - 28px, 1120px);
-  }
-  .page-heading h1 {
-    font-size: 31px;
-  }
-  .settings-button {
-    font-size: 12px;
   }
   .card-bottom {
     align-items: flex-start;

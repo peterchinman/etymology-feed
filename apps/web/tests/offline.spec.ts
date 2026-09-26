@@ -5,16 +5,27 @@ test('a right swipe adds a word to Liked and survives reload', async ({
 }) => {
   await page.goto('/');
   await expect(page.getByTestId('top-card')).toBeVisible();
+  await expect(page.locator('.topbar')).toBeHidden();
+  await expect(
+    page.locator('.bottom-nav').getByRole('link', { name: 'Settings' }),
+  ).toBeVisible();
   await expect
-    .poll(async () => Number(await page.getByTestId('stack-count').innerText()))
+    .poll(async () =>
+      Number(
+        await page
+          .getByTestId('deck-controls')
+          .getAttribute('data-stack-count'),
+      ),
+    )
     .toBeGreaterThanOrEqual(150);
   const word = await page.getByTestId('top-card').locator('h2').innerText();
+  await expect(page.locator('.card-topline, .ipa')).toHaveCount(0);
   await page.getByRole('button', { name: 'Interesting' }).click();
-  await expect(
-    page.getByRole('status').filter({ hasText: 'Added to Liked' }),
-  ).toBeVisible();
+  await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(word);
+  await expect(page.locator('.undo-toast')).toHaveCount(0);
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: word })).toBeVisible();
+  await expect(page.getByText('Words you love.')).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('heading', { name: word })).toBeVisible();
 });
@@ -37,49 +48,65 @@ test('one fetched batch supports 100 offline swipes and survives reconnection', 
     .poll(() => page.evaluate(() => !!navigator.serviceWorker.controller))
     .toBe(true);
   await expect
-    .poll(async () => Number(await page.getByTestId('stack-count').innerText()))
+    .poll(async () =>
+      Number(
+        await page
+          .getByTestId('deck-controls')
+          .getAttribute('data-stack-count'),
+      ),
+    )
     .toBeGreaterThanOrEqual(100);
   expect(feedFetches).toBeGreaterThanOrEqual(1);
   await context.setOffline(true);
   for (let i = 0; i < 100; i++) {
-    const before = Number(await page.getByTestId('stack-count').innerText());
+    const before = Number(
+      await page.getByTestId('deck-controls').getAttribute('data-stack-count'),
+    );
     await page.keyboard.press('ArrowRight');
-    await expect(page.getByTestId('stack-count')).toHaveText(
+    await expect(page.getByTestId('deck-controls')).toHaveAttribute(
+      'data-stack-count',
       String(before - 1),
     );
   }
   await page.goto('/liked/');
-  await expect(page.getByText('100 saved')).toBeVisible();
   await expect(page.locator('.liked-item')).toHaveCount(100);
   await expect(page.getByText('100 swipes waiting to sync')).toBeVisible();
   await context.setOffline(false);
   await page.reload();
-  await expect(page.getByText('100 saved')).toBeVisible();
+  await expect(page.locator('.liked-item')).toHaveCount(100);
 });
 
-test('keyboard controls, undo, and definition setting work', async ({
-  page,
-}) => {
+test('keyboard controls and undo work without a toast', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('top-card')).toBeVisible();
   const first = await page.getByTestId('top-card').locator('h2').innerText();
   await page.keyboard.press('d');
   await expect(page.getByText('Hide definition')).toBeVisible();
   await page.keyboard.press('ArrowRight');
-  await expect(
-    page.getByRole('status').filter({ hasText: 'Added to Liked' }),
-  ).toBeVisible();
+  await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
+    first,
+  );
   await page.keyboard.press('z');
   await expect(page.getByTestId('top-card').locator('h2')).toHaveText(first);
-  await page.getByRole('button', { name: /Settings/ }).click();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
+    first,
+  );
+});
+
+test('Settings opens from navigation and the definition choice survives reload', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByTestId('top-card')).toBeVisible();
+  await page
+    .locator('.bottom-nav')
+    .getByRole('link', { name: 'Settings' })
+    .click();
   await page.getByLabel('Always show definitions').check();
   await expect(page.getByText('Hide definition')).toBeVisible();
   await page.reload();
   await expect(page.getByText('Hide definition')).toBeVisible();
-  await page.keyboard.press('ArrowLeft');
-  await expect(
-    page.getByRole('status').filter({ hasText: 'Passed on this word' }),
-  ).toBeVisible();
 });
 
 test('horizontal drag commits a swipe while vertical movement leaves the card in place', async ({
@@ -102,9 +129,9 @@ test('horizontal drag commits a swipe while vertical movement leaves the card in
   await page.mouse.down();
   await page.mouse.move(x + box.width * 0.48, y, { steps: 8 });
   await page.mouse.up();
-  await expect(
-    page.getByRole('status').filter({ hasText: 'Added to Liked' }),
-  ).toBeVisible();
+  await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
+    first,
+  );
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: first })).toBeVisible();
 });
