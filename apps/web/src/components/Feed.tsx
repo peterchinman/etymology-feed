@@ -16,12 +16,11 @@ import {
   getSettings,
   getStack,
   type LocalSwipe,
-  type Palette,
   type PendingSwipe,
   saveSwipes,
   setColorMode,
-  setPalette,
   setShowDefinitions,
+  setTheme,
   undoSwipe,
 } from '../lib/local';
 import {
@@ -36,6 +35,7 @@ import {
   SWIPE,
   springEasing,
 } from '../lib/swipe';
+import { DEFAULT_THEME, THEMES, type Theme } from '../lib/themes';
 
 /** A card that has been swiped and is still flying off-screen. */
 type Departing = {
@@ -122,7 +122,7 @@ export default function Feed() {
   const [error, setError] = createSignal('');
   const [showDefinitions, setShowDefinitionsState] = createSignal(false);
   const [definitionOpen, setDefinitionOpen] = createSignal(false);
-  const [palette, setPaletteState] = createSignal<Palette>('pink');
+  const [theme, setThemeState] = createSignal<Theme>(DEFAULT_THEME);
   const [colorMode, setColorModeState] = createSignal<ColorMode>('system');
   const [dark, setDark] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
@@ -413,12 +413,12 @@ export default function Feed() {
     }
   }
 
-  async function changePalette(value: Palette) {
+  async function changeTheme(value: Theme) {
     try {
-      await setPalette(value);
-      setPaletteState(value);
+      await setTheme(value);
+      setThemeState(value);
     } catch {
-      setError('Could not save the palette setting.');
+      setError('Could not save the theme setting.');
     }
   }
 
@@ -550,9 +550,9 @@ export default function Feed() {
         setStack(cards);
         setShowDefinitionsState(settings.showDefinitions);
         setDefinitionOpen(settings.showDefinitions);
-        setPaletteState(settings.palette);
+        setThemeState(settings.theme);
         setColorModeState(settings.colorMode);
-        setDark(applyTheme(settings.palette, settings.colorMode));
+        setDark(applyTheme(settings.theme, settings.colorMode));
         setReady(true);
         void fillStack(true);
       } catch {
@@ -622,20 +622,34 @@ export default function Feed() {
               }}
             />
           </label>
-          <label class="setting-row label-voice">
-            <span>Cool palette</span>
-            <input
-              class="theme-switch"
-              type="checkbox"
-              checked={palette() === 'blue'}
-              onChange={(event) => {
-                void changePalette(
-                  event.currentTarget.checked ? 'blue' : 'pink',
-                );
-              }}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
+          <div
+            class="setting-group"
+            role="radiogroup"
+            aria-labelledby="theme-label"
+          >
+            <span id="theme-label" class="label-voice">
+              Theme
+            </span>
+            <div class="segmented">
+              <For each={THEMES}>
+                {(option) => (
+                  <label class="segment label-voice">
+                    <input
+                      type="radio"
+                      name="theme"
+                      value={option.id}
+                      checked={theme() === option.id}
+                      onChange={() => void changeTheme(option.id)}
+                    />
+                    <span>{option.name}</span>
+                  </label>
+                )}
+              </For>
+            </div>
+            <p class="theme-blurb caption-voice">
+              {THEMES.find((option) => option.id === theme())?.blurb}
+            </p>
+          </div>
           <label class="setting-row label-voice">
             <span>Dark mode</span>
             <input

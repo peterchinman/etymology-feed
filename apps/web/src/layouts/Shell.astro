@@ -1,26 +1,31 @@
 ---
 import '../styles/global.css';
+import { DEFAULT_THEME, THEME_COLORS, THEMES } from '../lib/themes';
 
 type Props = { title: string; page: 'feed' | 'liked' };
 const { title, page } = Astro.props;
+const themeIds = THEMES.map((option) => option.id);
 ---
 <!doctype html>
-<html lang="en" class="pink light">
+<html lang="en" class={`${DEFAULT_THEME} light`}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#F7EBE4" />
+    <meta name="theme-color" content={THEME_COLORS[DEFAULT_THEME].light} />
     <meta name="description" content="Discover the stories inside words, one card at a time." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <title>{title} · Etymology Feed</title>
-    <script is:inline>
+    <script define:vars={{ themeIds, colors: THEME_COLORS, fallback: DEFAULT_THEME }}>
       (() => {
-        let palette = 'pink';
+        let theme = fallback;
         let mode = 'system';
         try {
-          if (localStorage.getItem('etymology-palette') === 'blue') palette = 'blue';
-          mode = localStorage.getItem('etymology-color-mode') || localStorage.getItem('etymology-theme') || 'system';
+          const storedTheme = localStorage.getItem('etymology-theme');
+          if (themeIds.includes(storedTheme)) theme = storedTheme;
+          // Before the theme picker, etymology-theme held the light/dark choice.
+          mode = localStorage.getItem('etymology-color-mode')
+            || (storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'system');
         } catch {
           // Use the device preference when localStorage is unavailable.
         }
@@ -30,17 +35,15 @@ const { title, page } = Astro.props;
         root.dataset.colorMode = mode;
         const apply = () => {
           const dark = mode === 'dark' || (mode !== 'light' && systemDark.matches);
-          root.classList.remove('pink', 'blue', 'light', 'dark');
-          root.classList.add(palette, dark ? 'dark' : 'light');
-          themeColor?.setAttribute('content', palette === 'blue'
-            ? (dark ? '#0F1436' : '#E0E1F7')
-            : (dark ? '#25141B' : '#F7EBE4'));
+          root.classList.remove(...themeIds, 'light', 'dark');
+          root.classList.add(theme, dark ? 'dark' : 'light');
+          themeColor?.setAttribute('content', colors[theme][dark ? 'dark' : 'light']);
         };
         apply();
         systemDark.addEventListener('change', () => {
           if (root.dataset.colorMode !== 'system') return;
           mode = 'system';
-          palette = root.classList.contains('blue') ? 'blue' : 'pink';
+          theme = themeIds.find((id) => root.classList.contains(id)) || fallback;
           apply();
         });
       })();
