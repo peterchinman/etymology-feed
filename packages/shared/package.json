@@ -1,0 +1,8 @@
+{
+  "name": "@etymology-feed/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./scoring": "./scoring.ts"
+  }
+}

@@ -158,12 +158,14 @@ CREATE INDEX idx_word_prior ON word(prior DESC);
 
 ### 4.3 Cold-start prior
 
-A heuristic in `[0.15, 0.85]` so the feed is decent on day one and unrated words are explored best-first. From `text`:
+A heuristic in `[0.2, 0.8]` so the feed is decent on day one and unrated words are explored best-first. The prior is a *weak* opinion: it enters §6.2 as `K = 5` imaginary ratings, and the window is set so that five real ratings can overrule it in either direction, and so that both Beta shape parameters (`K·p`, `K·(1−p)`) stay ≥ 1, which keeps Thompson sampling well-behaved. From `text`:
 - length: < 40 → −0.1; 40–80 → 0; 80–120 → +0.1; 120–250 → +0.2; 250+ → +0.25
 - each distinct language/period name: +0.05, cap +0.2
 - each of "doublet", "cognate", "folk etymology", "originally", "literally", "borrow", "named after", "coined": +0.04, cap +0.15
 - tier common/uncommon: +0.05; marginal/unattested: −0.05
-- clamp to `[0.15, 0.85]`
+- clamp to `[0.2, 0.8]`
+
+The window is centered on a guess (~0.5) at the global like-rate. Once §6.5 reports the real one, re-center the prior on it (shift all values so the median prior equals the observed rate; keep the width) at the next dictionary release.
 
 The report prints 20 random words from the top decile and 20 from the bottom decile, plus 25 random `morph`-classified and 25 random `story`-under-40 entries, so the classifier and the prior can be eyeballed. Tune once, then leave it; real ratings take over.
 
@@ -267,7 +269,7 @@ All tunable via `wrangler.toml` vars: `REC_SLOTS`, `UNKNOWN_SLOTS`, `WILD_SLOTS`
 
 Every swipe carries `bucket`, and joins to `DICT` give `etym_band`, `shape`, `tier`, `has_signal`. `GET /api/admin/stats` (header `Authorization: Bearer $ADMIN_TOKEN`) returns, over the last 7 and 30 days: like-rate by bucket, **by `etym_band`**, **by `shape`**, by tier, and by `has_signal`; counts of words with `n >= 5`; pool sizes and `builtAt`; swipes/day. (Computed by a nightly cron into KV key `stats:v1`, not on request — the join is a full scan of `swipe`.)
 
-Decision rules to apply once there are ≥ 2,000 swipes per band: if `lt40` like-rate is below half of `80_120`, raise the length floor for un-signalled stories; if a shape's like-rate is below half the plain rate, add it as a default-off filter rather than removing it. Record the outcome in `docs/DECISIONS.md`.
+Decision rules to apply once there are ≥ 2,000 swipes per band: if `lt40` like-rate is below half of `80_120`, raise the length floor for un-signalled stories; if a shape's like-rate is below half the plain rate, add it as a default-off filter rather than removing it. Also report the global like-rate so the prior can be re-centered on it (§4.3). Record the outcome in `docs/DECISIONS.md`.
 
 ---
 
