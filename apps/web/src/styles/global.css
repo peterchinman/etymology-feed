@@ -431,6 +431,9 @@ a {
 .active-card:active {
   transition: none;
 }
+.active-card.settling {
+  transition: none;
+}
 .active-card.leaving-right {
   transform: translateX(120%) rotate(17deg);
 }
@@ -438,12 +441,13 @@ a {
   transform: translateX(-120%) rotate(-17deg);
 }
 .card-peek {
-  top: var(--space-2);
-  left: var(--space-3);
-  right: var(--space-3);
-  bottom: calc(-1 * var(--space-2));
-  transform: rotate(1deg);
-  background: var(--color-accent);
+  padding: var(--card-inset);
+  pointer-events: none;
+  transform: translate(var(--space-3), var(--space-2)) rotate(1deg);
+  transition: transform var(--motion-gentle) var(--ease-standard);
+}
+.deck-area.is-leaving .card-peek {
+  transform: none;
 }
 .word-head {
   margin: var(--space-1) 0 var(--space-5);
@@ -860,6 +864,7 @@ a {
 
 @media (prefers-reduced-motion: reduce) {
   .active-card,
+  .card-peek,
   .swipe-button {
     transition: none;
   }

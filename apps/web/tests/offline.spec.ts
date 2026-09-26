@@ -163,3 +163,38 @@ test('horizontal drag commits a swipe while vertical movement leaves the card in
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: first })).toBeVisible();
 });
+
+test('a swipe reveals the next card without bringing the outgoing card back', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const top = page.getByTestId('top-card');
+  await expect(top).toBeVisible();
+  await expect(page.locator('.card-peek h2')).toBeVisible();
+  const nextWord = await page.locator('.card-peek h2').innerText();
+  const handoff = page.evaluate(() => {
+    const topCard = document.querySelector('[data-testid="top-card"]');
+    const firstWord = topCard?.querySelector('h2')?.textContent;
+    return new Promise<{ className: string; transform: string }>((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (topCard?.querySelector('h2')?.textContent === firstWord) return;
+        observer.disconnect();
+        resolve({
+          className: topCard?.className ?? '',
+          transform: topCard ? getComputedStyle(topCard).transform : '',
+        });
+      });
+      if (topCard)
+        observer.observe(topCard, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+        });
+    });
+  });
+  await page.getByRole('button', { name: 'Interesting' }).click();
+  const state = await handoff;
+  expect(state.className).toContain('settling');
+  expect(state.transform).toBe('matrix(1, 0, 0, 1, 0, 0)');
+  await expect(top.locator('h2')).toHaveText(nextWord);
+});

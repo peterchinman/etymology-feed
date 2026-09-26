@@ -1,5 +1,5 @@
 import type { Card } from '@etymology-feed/shared/card';
-import { createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { batch, createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { fetchCards } from '../lib/api';
 import {
   appendCards,
@@ -30,12 +30,14 @@ export default function Feed() {
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [dragX, setDragX] = createSignal(0);
   const [leaving, setLeaving] = createSignal<'left' | 'right' | null>(null);
+  const [settling, setSettling] = createSignal(false);
   const [pendingUndo, setPendingUndo] = createSignal<LocalSwipe | null>(null);
   let shownAt = Date.now();
   let filling = false;
   let committing = false;
   let exhaustedUntil = 0;
   let undoTimer: ReturnType<typeof setTimeout> | undefined;
+  let activeCardElement: HTMLElement | undefined;
   let gesture: {
     x: number;
     y: number;
@@ -85,21 +87,44 @@ export default function Feed() {
     const reduced = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches;
-    if (!reduced) await new Promise((resolve) => setTimeout(resolve, 170));
+    const element = activeCardElement;
+    if (!reduced && element) {
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          element.removeEventListener('transitionend', onTransitionEnd);
+          clearTimeout(fallback);
+          resolve();
+        };
+        const onTransitionEnd = (event: TransitionEvent) => {
+          if (event.target === element && event.propertyName === 'transform')
+            finish();
+        };
+        const fallback = window.setTimeout(finish, 400);
+        element.addEventListener('transitionend', onTransitionEnd);
+      });
+    }
     try {
       const swipe = await saveSwipe(card, verdict, shownAt);
       if (undoTimer) clearTimeout(undoTimer);
       setPendingUndo(swipe);
       undoTimer = setTimeout(() => setPendingUndo(null), 5000);
-      setStack((current) => current.slice(1));
+      batch(() => {
+        setSettling(true);
+        setStack((current) => current.slice(1));
+        setDragX(0);
+        setLeaving(null);
+      });
+      requestAnimationFrame(() => setSettling(false));
       shownAt = Date.now();
       setDefinitionOpen(showDefinitions());
       if (stack().length < 60) void fillStack();
     } catch {
       setError('The swipe could not be saved. Please try again.');
     } finally {
-      setDragX(0);
-      setLeaving(null);
+      if (leaving()) {
+        setDragX(0);
+        setLeaving(null);
+      }
       committing = false;
     }
   }
@@ -360,7 +385,7 @@ export default function Feed() {
           </p>
         </section>
       </Show>
-      <div class="deck-area">
+      <div class={`deck-area ${leaving() ? 'is-leaving' : ''}`}>
         <Show
           when={stack()[0]}
           fallback={
@@ -395,10 +420,37 @@ export default function Feed() {
           {(card) => (
             <>
               <Show when={stack()[1]}>
-                <div class="word-card card-peek" aria-hidden="true"></div>
+                {(next) => (
+                  <article class="word-card card-peek" aria-hidden="true">
+                    <div class="word-head">
+                      <h2 class="display-voice">{next().word}</h2>
+                    </div>
+                    <div class="card-body">
+                      <p class="etymology reading-voice">{next().etymology}</p>
+                      <Show when={showDefinitions()}>
+                        <div class="definition">
+                          <span class="definition-label label-voice">
+                            {next().pos.join(' · ') || next().defPos}
+                          </span>
+                          <p class="reading-voice">{next().definition}</p>
+                        </div>
+                      </Show>
+                    </div>
+                    <div class="card-bottom">
+                      <span class="definition-toggle label-voice">
+                        {showDefinitions()
+                          ? 'Hide definition −'
+                          : 'Show definition +'}
+                      </span>
+                    </div>
+                  </article>
+                )}
               </Show>
               <article
-                class={`word-card active-card ${leaving() ? `leaving-${leaving()}` : ''}`}
+                ref={(element) => {
+                  activeCardElement = element;
+                }}
+                class={`word-card active-card ${leaving() ? `leaving-${leaving()}` : ''} ${settling() ? 'settling' : ''}`}
                 data-testid="top-card"
                 style={{
                   '--drag-x': `${dragX()}px`,
