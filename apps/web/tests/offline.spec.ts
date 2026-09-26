@@ -91,6 +91,26 @@ test('one fetched batch supports 100 offline swipes and survives reconnection', 
   await context.setOffline(false);
   await page.reload();
   await expect(page.locator('.liked-item')).toHaveCount(100);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          const open = indexedDB.open('etymology-feed');
+          const db = await new Promise<IDBDatabase>((resolve) => {
+            open.onsuccess = () => resolve(open.result);
+          });
+          const request = db
+            .transaction('swipes')
+            .objectStore('swipes')
+            .getAll();
+          return new Promise<number>((resolve) => {
+            request.onsuccess = () =>
+              resolve(request.result.filter((swipe) => swipe.synced).length);
+          });
+        }),
+      { timeout: 30_000 },
+    )
+    .toBe(100);
 });
 
 test('keyboard controls and undo work without a toast', async ({ page }) => {

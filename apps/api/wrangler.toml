@@ -12,6 +12,39 @@ binding = "DICT"
 database_name = "etymology-m1-scratch"
 database_id = "94672218-424b-4f37-bf73-d05f51f4de32"
 
+[[d1_databases]]
+binding = "APP"
+database_name = "etymology-m3-app-scratch"
+database_id = "224b580e-6abf-4aba-b2d3-9da29682bb0a"
+migrations_dir = "drizzle"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "c6c5a39fbefe42ba9414bc860f0bd05e"
+
+[[ratelimits]]
+name = "FEED_RATE"
+namespace_id = "101"
+simple = { limit = 10, period = 10 }
+
+[[ratelimits]]
+name = "SYNC_RATE"
+namespace_id = "102"
+simple = { limit = 20, period = 10 }
+
+[triggers]
+crons = ["*/5 * * * *", "17 3 * * *"]
+
+[vars]
+REC_SLOTS = 12
+UNKNOWN_SLOTS = 6
+WILD_SLOTS = 2
+MIN_RATINGS = 5
+PRIOR_STRENGTH = 5
+SERVED_CAP = 30000
+REC_POOL_SIZE = 3000
+UNKNOWN_POOL_SIZE = 3000
+
 [observability]
 enabled = true
 head_sampling_rate = 1

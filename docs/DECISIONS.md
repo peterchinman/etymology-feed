@@ -1,5 +1,47 @@
 # Decisions
 
+## 2026-09-26 — M3 auth, quotas, and measurable D1 costs (§3.4, §5–8)
+
+Use the current `auth` CLI with the anonymous plugin to generate the Better
+Auth Drizzle tables into a separate file, re-exported from the APP schema.
+The CLI's current package is `auth`; runtime auth uses the same plugin and is
+instantiated from the request's APP binding and origin. Keep social providers
+for M4. Use the free Rate Limiting binding's smallest supported 10-second
+window: 10 feed requests or 20 sync requests per user per window. This caps
+the requested average rates but permits short bursts; an exact per-second
+limit is unavailable from this binding.
+
+The M3 D1 integration fixture measures **100 card rows read and one served
+row written** for a fresh 100-card fetch. The required swipe and word_stats
+indexes change the sync economics: **100 new swipes write 750 D1 rows** (50
+likes, 50 dislikes), despite the two SQL table mutations per swipe. D1
+counts index updates in `rows_written`. The added nightly scan index was
+removed because it increased that measurement to 850. The §10 ≤200-write
+acceptance criterion and §3.4 estimate of two writes per swipe cannot be met
+with the §5 schema; M3 remains under review until the spec is reconciled.
+At 750 rows per 100 swipes, the 100k daily free allowance supports at most
+roughly 13k such swipes before auth and other writes, rather than 45k.
+The seed script meters actual `rows_written` and defaults to a 50k budget
+per run (at most 80k when explicitly requested), so seeding 152k indexed rows
+takes more than the spec's suggested two days on the free plan. A sync after
+cookie loss may also write one extra served row to recover words that were
+never fetched by that session.
+
+Keep the required score and unrated indexes and add a partial recommended
+index for the default `MIN_RATINGS=5`: the five-minute pool cron otherwise
+scans the entire seeded score index while looking for rated words, exceeding
+the 5M daily read budget. The `MIN_RATINGS` variable remains respected; a
+value below five takes the general score-index path and needs new cost
+measurements. Nightly stats use a paged scan of the swipe table, as §6.5
+specifies, and indexed DICT lookups because D1 has no cross-database join.
+
+The `known` JSON is sent in URL-sized chunks after cookie loss, merging into
+the server's served blob on successive fetches. A single 30k-word URL would
+exceed practical request-target limits; the local served set suppresses any
+repeats during recovery. The 5,000-fetch no-repeat simulation uses single
+cards because the dictionary has only about 152k words and 5,000 distinct
+100-card fetches would require 500k.
+
 ## 2026-09-25 — Product name and domain (§12)
 
 Use **Etymology Feed** as the product name. Target **etymologyfeed.com** for the

@@ -13,10 +13,10 @@ const astro = resolve(bin, 'astro');
 await mkdir(resolve(web, 'dist'), { recursive: true });
 await mkdir(persist, { recursive: true });
 
-function d1(args) {
+function d1(binding, args) {
   const result = spawnSync(
     wrangler,
-    ['d1', 'execute', 'DICT', '--local', '--persist-to', persist, ...args],
+    ['d1', 'execute', binding, '--local', '--persist-to', persist, ...args],
     { cwd: api, encoding: 'utf8' },
   );
   if (result.status !== 0) {
@@ -27,7 +27,7 @@ function d1(args) {
 }
 
 const tables = JSON.parse(
-  d1([
+  d1('DICT', [
     '--json',
     '--command',
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'word'",
@@ -35,7 +35,44 @@ const tables = JSON.parse(
 );
 if (tables[0].results.length === 0) {
   console.log('Seeding local D1 from fixtures/etymology-500.sql…');
-  d1(['--file', 'fixtures/etymology-500.sql']);
+  d1('DICT', ['--file', 'fixtures/etymology-500.sql']);
+}
+
+const migrated = spawnSync(
+  wrangler,
+  ['d1', 'migrations', 'apply', 'APP', '--local', '--persist-to', persist],
+  { cwd: api, encoding: 'utf8' },
+);
+if (migrated.status !== 0) {
+  process.stderr.write(migrated.stdout + migrated.stderr);
+  process.exit(migrated.status ?? 1);
+}
+const statsCount = JSON.parse(
+  d1('APP', [
+    '--json',
+    '--command',
+    'SELECT COUNT(*) AS count FROM word_stats',
+  ]),
+)[0].results[0].count;
+if (statsCount === 0) {
+  console.log('Seeding local APP statistics from the 500-word fixture…');
+  const words = JSON.parse(
+    d1('DICT', ['--json', '--command', 'SELECT word,prior FROM word']),
+  )[0].results;
+  const quote = (value) => `'${value.replaceAll("'", "''")}'`;
+  for (let i = 0; i < words.length; i += 100) {
+    const rows = words
+      .slice(i, i + 100)
+      .map(
+        ({ word, prior }) =>
+          `(${quote(word)},0,0,${Number(prior)},${Number(prior)},0)`,
+      )
+      .join(',');
+    d1('APP', [
+      '--command',
+      `INSERT INTO word_stats (word,likes,dislikes,prior,score,updated_at) VALUES ${rows}`,
+    ]);
+  }
 }
 
 const children = [
