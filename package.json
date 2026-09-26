@@ -1,0 +1,15 @@
+{
+  "name": "etymology-feed",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test:shared": "vitest run packages/shared",
+    "typecheck:shared": "tsc --project packages/shared/tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "5.0.2"
+  }
+}
