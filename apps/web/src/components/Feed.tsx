@@ -332,9 +332,6 @@ export default function Feed() {
             />
             <span class="switch-track" aria-hidden="true" />
           </label>
-          <a class="settings-about instructive-voice" href="/about/">
-            About
-          </a>
         </section>
       </Show>
       <div class="deck-area">

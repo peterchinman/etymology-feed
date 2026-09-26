@@ -58,7 +58,6 @@
 
   --page-max: 70rem;
   --card-max: 40rem;
-  --reading-max: 47.5rem;
   --controls-max: 27rem;
   --panel-width: 26.25rem;
   --deck-height: min(35rem, 60dvh);
@@ -259,8 +258,7 @@ a {
   margin-inline: auto;
 }
 .feed-page,
-.liked-page,
-.about-page {
+.liked-page {
   padding-top: var(--page-top);
 }
 .topbar {
@@ -393,13 +391,6 @@ a {
   outline: var(--focus-ring) solid var(--color-focus);
   outline-offset: var(--focus-ring);
 }
-.settings-about {
-  display: block;
-  border-top: var(--stroke) solid var(--color-divider);
-  padding-block: var(--space-4);
-  color: var(--color-action);
-}
-
 /* Feed card. */
 .deck-area {
   position: relative;
@@ -564,8 +555,7 @@ a {
   text-align: center;
   padding: var(--space-6);
 }
-.card-kicker,
-.eyebrow {
+.card-kicker {
   margin: 0;
   color: var(--color-action);
   text-transform: uppercase;
@@ -737,26 +727,6 @@ a {
   color: var(--color-action);
 }
 
-/* About. */
-.about-page {
-  max-width: var(--reading-max);
-  padding-bottom: var(--space-8);
-}
-.about-page h1 {
-  margin: var(--space-3) 0 0;
-}
-.about-page h2 {
-  --voice-loud-size: var(--type-heading);
-  margin: var(--space-7) 0 0;
-}
-.about-page > p:not(.eyebrow) {
-  color: var(--color-muted);
-}
-.about-page a {
-  color: var(--color-action);
-  text-underline-offset: var(--space-1);
-}
-
 @keyframes reveal {
   from {
     opacity: 0;
@@ -825,8 +795,7 @@ a {
   .feed-page {
     padding-top: calc(var(--space-4) + env(safe-area-inset-top));
   }
-  .liked-page,
-  .about-page {
+  .liked-page {
     padding-top: calc(var(--space-5) + env(safe-area-inset-top));
   }
   .settings-panel {
