@@ -10,7 +10,7 @@ run_worker_first = ["/api/*", "/auth/*", "/healthz"]
 [[d1_databases]]
 binding = "DICT"
 database_name = "etymology-m1-scratch"
-database_id = "00000000-0000-4000-8000-000000000000" # local until scratch D1 is created
+database_id = "94672218-424b-4f37-bf73-d05f51f4de32"
 
 [observability]
 enabled = true
