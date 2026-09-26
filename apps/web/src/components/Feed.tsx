@@ -3,13 +3,16 @@ import { createSignal, onCleanup, onMount, Show } from 'solid-js';
 import { fetchCards } from '../lib/api';
 import {
   appendCards,
+  applyTheme,
+  type ColorMode,
   getSettings,
   getStack,
   type LocalSwipe,
+  type Palette,
   saveSwipe,
+  setColorMode,
+  setPalette,
   setShowDefinitions,
-  setTheme,
-  type Theme,
   undoSwipe,
 } from '../lib/local';
 
@@ -21,7 +24,9 @@ export default function Feed() {
   const [error, setError] = createSignal('');
   const [showDefinitions, setShowDefinitionsState] = createSignal(false);
   const [definitionOpen, setDefinitionOpen] = createSignal(false);
-  const [theme, setThemeState] = createSignal<Theme>('system');
+  const [palette, setPaletteState] = createSignal<Palette>('pink');
+  const [colorMode, setColorModeState] = createSignal<ColorMode>('system');
+  const [dark, setDark] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [dragX, setDragX] = createSignal(0);
   const [leaving, setLeaving] = createSignal<'left' | 'right' | null>(null);
@@ -123,12 +128,22 @@ export default function Feed() {
     }
   }
 
-  async function changeTheme(value: Theme) {
+  async function changePalette(value: Palette) {
     try {
-      await setTheme(value);
-      setThemeState(value);
+      await setPalette(value);
+      setPaletteState(value);
     } catch {
-      setError('Could not save the theme setting.');
+      setError('Could not save the palette setting.');
+    }
+  }
+
+  async function changeColorMode(value: Exclude<ColorMode, 'system'>) {
+    try {
+      await setColorMode(value);
+      setColorModeState(value);
+      setDark(value === 'dark');
+    } catch {
+      setError('Could not save the dark mode setting.');
     }
   }
 
@@ -216,7 +231,9 @@ export default function Feed() {
         setStack(cards);
         setShowDefinitionsState(settings.showDefinitions);
         setDefinitionOpen(settings.showDefinitions);
-        setThemeState(settings.theme);
+        setPaletteState(settings.palette);
+        setColorModeState(settings.colorMode);
+        setDark(applyTheme(settings.palette, settings.colorMode));
         setReady(true);
         void fillStack(true);
       } catch {
@@ -231,18 +248,24 @@ export default function Feed() {
       void fillStack(true);
     };
     const onOffline = () => setOnline(false);
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSystemThemeChange = () => {
+      if (colorMode() === 'system') setDark(systemDark.matches);
+    };
     const onVisible = () => {
       if (document.visibilityState === 'visible' && stack().length < 60)
         void fillStack();
     };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
+    systemDark.addEventListener('change', onSystemThemeChange);
     window.addEventListener('keydown', keyDown);
     document.addEventListener('visibilitychange', onVisible);
     onCleanup(() => {
       if (undoTimer) clearTimeout(undoTimer);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
+      systemDark.removeEventListener('change', onSystemThemeChange);
       window.removeEventListener('keydown', keyDown);
       document.removeEventListener('visibilitychange', onVisible);
     });
@@ -282,17 +305,32 @@ export default function Feed() {
             />
           </label>
           <label class="setting-row instructive-voice">
-            <span>Theme</span>
-            <select
-              value={theme()}
+            <span>Cool palette</span>
+            <input
+              class="theme-switch"
+              type="checkbox"
+              checked={palette() === 'blue'}
               onChange={(event) => {
-                void changeTheme(event.currentTarget.value as Theme);
+                void changePalette(
+                  event.currentTarget.checked ? 'blue' : 'pink',
+                );
               }}
-            >
-              <option value="system">System</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
+            />
+            <span class="switch-track" aria-hidden="true" />
+          </label>
+          <label class="setting-row instructive-voice">
+            <span>Dark mode</span>
+            <input
+              class="theme-switch"
+              type="checkbox"
+              checked={dark()}
+              onChange={(event) => {
+                void changeColorMode(
+                  event.currentTarget.checked ? 'dark' : 'light',
+                );
+              }}
+            />
+            <span class="switch-track" aria-hidden="true" />
           </label>
           <a class="settings-about instructive-voice" href="/about/">
             About

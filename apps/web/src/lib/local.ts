@@ -2,7 +2,8 @@ import type { Card } from '@etymology-feed/shared/card';
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
 
 export type Verdict = 1 | -1;
-export type Theme = 'system' | 'light' | 'dark';
+export type Palette = 'pink' | 'blue';
+export type ColorMode = 'system' | 'light' | 'dark';
 export type LocalSwipe = {
   id: string;
   word: string;
@@ -22,7 +23,7 @@ interface FeedDB extends DBSchema {
     value: LocalSwipe;
     indexes: { 'by-word': string; 'by-swiped-at': number };
   };
-  settings: { key: string; value: Theme | boolean };
+  settings: { key: string; value: Palette | ColorMode | boolean };
 }
 
 let database: Promise<IDBPDatabase<FeedDB>> | undefined;
@@ -120,16 +121,47 @@ export async function removeSwipe(id: string): Promise<void> {
 
 export async function getSettings(): Promise<{
   showDefinitions: boolean;
-  theme: Theme;
+  palette: Palette;
+  colorMode: ColorMode;
 }> {
   const db = await getDatabase();
-  const [showDefinitions, theme] = await Promise.all([
+  const [showDefinitions, palette, colorMode, legacyTheme] = await Promise.all([
     db.get('settings', 'showDefinitions'),
+    db.get('settings', 'palette'),
+    db.get('settings', 'colorMode'),
     db.get('settings', 'theme'),
   ]);
+  let mirroredPalette: string | null = null;
+  let mirroredMode: string | null = null;
+  try {
+    mirroredPalette = localStorage.getItem('etymology-palette');
+    mirroredMode =
+      localStorage.getItem('etymology-color-mode') ||
+      localStorage.getItem('etymology-theme');
+  } catch {
+    // IndexedDB is enough when the pre-paint mirror is unavailable.
+  }
+  const selectedPalette: Palette =
+    mirroredPalette === 'pink' || mirroredPalette === 'blue'
+      ? mirroredPalette
+      : palette === 'blue'
+        ? 'blue'
+        : 'pink';
+  const storedMode = colorMode ?? legacyTheme;
+  const selectedMode: ColorMode =
+    mirroredMode === 'light' || mirroredMode === 'dark'
+      ? mirroredMode
+      : storedMode === 'light' || storedMode === 'dark'
+        ? storedMode
+        : 'system';
+  if (mirroredPalette && palette !== selectedPalette)
+    await db.put('settings', selectedPalette, 'palette');
+  if (mirroredMode && colorMode !== selectedMode)
+    await db.put('settings', selectedMode, 'colorMode');
   return {
     showDefinitions: showDefinitions === true,
-    theme: theme === 'light' || theme === 'dark' ? theme : 'system',
+    palette: selectedPalette,
+    colorMode: selectedMode,
   };
 }
 
@@ -137,8 +169,45 @@ export async function setShowDefinitions(value: boolean): Promise<void> {
   await (await getDatabase()).put('settings', value, 'showDefinitions');
 }
 
-export async function setTheme(value: Theme): Promise<void> {
-  await (await getDatabase()).put('settings', value, 'theme');
-  localStorage.setItem('etymology-theme', value);
-  document.documentElement.dataset.theme = value;
+export function applyTheme(palette: Palette, mode: ColorMode): boolean {
+  const root = document.documentElement;
+  const dark =
+    mode === 'dark' ||
+    (mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+  root.classList.remove('pink', 'blue', 'light', 'dark');
+  root.classList.add(palette, dark ? 'dark' : 'light');
+  root.dataset.colorMode = mode;
+  const canvas = getComputedStyle(root)
+    .getPropertyValue('--color-canvas')
+    .trim();
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', canvas);
+  return dark;
+}
+
+export async function setPalette(value: Palette): Promise<void> {
+  const mode = document.documentElement.dataset.colorMode;
+  applyTheme(value, mode === 'light' || mode === 'dark' ? mode : 'system');
+  try {
+    localStorage.setItem('etymology-palette', value);
+  } catch {
+    // IndexedDB remains the persistent setting when localStorage is unavailable.
+  }
+  await (await getDatabase()).put('settings', value, 'palette');
+}
+
+export async function setColorMode(
+  value: Exclude<ColorMode, 'system'>,
+): Promise<void> {
+  applyTheme(
+    document.documentElement.classList.contains('blue') ? 'blue' : 'pink',
+    value,
+  );
+  try {
+    localStorage.setItem('etymology-color-mode', value);
+  } catch {
+    // The current page can still switch themes when localStorage is unavailable.
+  }
+  await (await getDatabase()).put('settings', value, 'colorMode');
 }

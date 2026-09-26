@@ -109,6 +109,34 @@ test('Settings opens from navigation and the definition choice survives reload',
   await expect(page.getByText('Hide definition')).toBeVisible();
 });
 
+test('the four RWG palettes persist and system mode follows the device', async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.goto('/?settings=1');
+  await expect(page.locator('html')).toHaveClass(/pink dark/);
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).toHaveClass(/pink light/);
+
+  await page.getByLabel('Cool palette').check();
+  await expect(page.locator('html')).toHaveClass(/blue light/);
+  await page.getByLabel('Dark mode').check();
+  await expect(page.locator('html')).toHaveClass(/blue dark/);
+  await page.reload();
+  await expect(page.getByLabel('Cool palette')).toBeChecked();
+  await expect(page.getByLabel('Dark mode')).toBeChecked();
+  await expect(page.locator('html')).toHaveClass(/blue dark/);
+
+  await page.getByLabel('Cool palette').uncheck();
+  await expect(page.locator('html')).toHaveClass(/pink dark/);
+  await page.goto('/liked/');
+  await expect(page.locator('html')).toHaveClass(/pink dark/);
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+    'content',
+    '#25141B',
+  );
+});
+
 test('horizontal drag commits a swipe while vertical movement leaves the card in place', async ({
   page,
 }) => {

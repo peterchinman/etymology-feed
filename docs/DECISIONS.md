@@ -38,3 +38,15 @@ stacks or weights. The single stylesheet groups color, type, spacing, surface,
 layout, and motion tokens at the root, with dark-theme and narrow-layout token
 overrides. Source CSS contains no pixel literals. The two layout breakpoints
 use `rem`, since CSS custom properties cannot be used in media queries.
+
+## 2026-09-26 — M2 RWG theme family
+
+Use the four [Random Word Generator themes](https://github.com/peterchinman/random-word-generator-site/blob/master/src/styles/style.css):
+pink/blue palettes crossed with light/dark modes. The default pink palette
+follows the device mode until the visitor explicitly toggles dark mode. Match
+RWG's canvas, raised surface, accent, border, and shadow colors; map them through
+the site's semantic tokens and use Georgia serif for all five voices instead of
+RWG's Roboto Mono.
+Blue-light raised text uses white rather than RWG's pale lilac so small text
+meets contrast requirements. Keep palette and mode in IndexedDB, mirror them in
+localStorage for the pre-paint theme, and honor the old light/dark preference.

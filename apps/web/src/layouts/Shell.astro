@@ -5,17 +5,45 @@ type Props = { title: string; page: 'feed' | 'liked' | 'about' };
 const { title, page } = Astro.props;
 ---
 <!doctype html>
-<html lang="en" data-theme="system">
+<html lang="en" class="pink light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f6f0e7" />
+    <meta name="theme-color" content="#F7EBE4" />
     <meta name="description" content="Discover the stories inside words, one card at a time." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <title>{title} · Etymology Feed</title>
     <script is:inline>
-      document.documentElement.dataset.theme = localStorage.getItem('etymology-theme') || 'system';
+      (() => {
+        let palette = 'pink';
+        let mode = 'system';
+        try {
+          if (localStorage.getItem('etymology-palette') === 'blue') palette = 'blue';
+          mode = localStorage.getItem('etymology-color-mode') || localStorage.getItem('etymology-theme') || 'system';
+        } catch {
+          // Use the device preference when localStorage is unavailable.
+        }
+        const root = document.documentElement;
+        const systemDark = matchMedia('(prefers-color-scheme: dark)');
+        const themeColor = document.querySelector('meta[name="theme-color"]');
+        root.dataset.colorMode = mode;
+        const apply = () => {
+          const dark = mode === 'dark' || (mode !== 'light' && systemDark.matches);
+          root.classList.remove('pink', 'blue', 'light', 'dark');
+          root.classList.add(palette, dark ? 'dark' : 'light');
+          themeColor?.setAttribute('content', palette === 'blue'
+            ? (dark ? '#0F1436' : '#E0E1F7')
+            : (dark ? '#25141B' : '#F7EBE4'));
+        };
+        apply();
+        systemDark.addEventListener('change', () => {
+          if (root.dataset.colorMode !== 'system') return;
+          mode = 'system';
+          palette = root.classList.contains('blue') ? 'blue' : 'pink';
+          apply();
+        });
+      })();
     </script>
   </head>
   <body class="body-voice">
