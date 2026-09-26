@@ -73,14 +73,13 @@
 
   --motion-quick: 150ms;
   --motion-gentle: 180ms;
-  --motion-card-exit: 260ms;
-  --motion-card-rise: var(--motion-card-exit);
-  --motion-card-content: 160ms;
   --ease-standard: ease;
   --ease-out: ease-out;
-  --ease-card-exit: cubic-bezier(0.35, 0, 0.8, 1);
-  --ease-card-rise: cubic-bezier(0.18, 0.72, 0.24, 1);
-  --peek-scale: 0.985;
+  /* The next card waits slightly smaller and lower; swipe motion itself is
+     computed from the gesture in lib/swipe.ts and run through the Web
+     Animations API, so it has no fixed duration or easing here. */
+  --peek-drop: 0.035;
+  --peek-shrink: 0.04;
 }
 
 :root.pink.light {
@@ -408,13 +407,18 @@ a {
   outline: var(--focus-ring) solid var(--color-focus);
   outline-offset: var(--focus-ring);
 }
-/* Feed card. */
+/* Feed deck. The script writes the live drag into these custom properties;
+   every card's resting geometry is derived from them here. */
 .deck-area {
   position: relative;
   max-width: var(--card-max);
   height: var(--deck-height);
   min-height: var(--deck-min-height);
   margin: var(--space-6) auto 0;
+  --drag-x: 0rem;
+  --drag-y: 0rem;
+  --drag-rotate: 0deg;
+  --progress: 0;
 }
 .word-card {
   position: absolute;
@@ -427,44 +431,35 @@ a {
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
 }
-.active-card {
+.is-top,
+.is-next,
+.is-departing {
   padding: var(--card-inset);
+  will-change: transform;
+}
+/* The top card follows the hand exactly; no transition may sit between them. */
+.is-top {
+  z-index: 2;
   touch-action: pan-y;
-  transform: translateX(var(--drag-x, 0rem)) rotate(var(--drag-rotate, 0deg));
-  transition: transform var(--motion-gentle) var(--ease-standard);
   user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+  transform: translate(var(--drag-x), var(--drag-y)) rotate(var(--drag-rotate));
 }
-.active-card:active {
-  transition: none;
+.deck-area.is-dragging .is-top {
+  cursor: grabbing;
 }
-.active-card.settling {
-  transition: none;
-}
-.active-card.leaving-left,
-.active-card.leaving-right {
-  transition: transform var(--motion-card-exit) var(--ease-card-exit);
-}
-.active-card.leaving-right {
-  transform: translateX(calc(50vw + 50% + var(--space-4))) rotate(12deg);
-}
-.active-card.leaving-left {
-  transform: translateX(calc(-50vw - 50% - var(--space-4))) rotate(-12deg);
-}
-.card-peek {
-  padding: var(--card-inset);
+/* The next card is fully drawn underneath and is uncovered, never faded in.
+   It grows to full size as the drag approaches the commit distance. */
+.is-next {
+  z-index: 1;
   pointer-events: none;
-  transform: translateY(var(--space-2)) scale(var(--peek-scale));
-  transition: transform var(--motion-card-rise) var(--ease-card-rise);
+  transform: translateY(calc(var(--peek-drop) * 100% * (1 - var(--progress))))
+    scale(calc(1 - var(--peek-shrink) * (1 - var(--progress))));
 }
-.card-peek > * {
-  opacity: var(--peek-opacity, 0);
-  transition: opacity var(--motion-card-content) var(--ease-standard);
-}
-.deck-area.is-leaving .card-peek {
-  transform: none;
-}
-.deck-area.is-leaving .card-peek > * {
-  opacity: 1;
+.is-departing {
+  z-index: 3;
+  pointer-events: none;
 }
 .word-head {
   margin: var(--space-1) 0 var(--space-5);
@@ -524,23 +519,6 @@ a {
 }
 .definition-toggle span {
   padding-left: var(--space-1);
-}
-.swipe-cue {
-  position: absolute;
-  z-index: 2;
-  top: 40%;
-  text-transform: uppercase;
-  pointer-events: none;
-  transform: rotate(-12deg);
-}
-.cue-like {
-  left: var(--space-6);
-  color: var(--color-action);
-}
-.cue-skip {
-  right: var(--space-6);
-  color: var(--color-action);
-  transform: rotate(12deg);
 }
 .deck-controls {
   max-width: var(--controls-max);
@@ -880,11 +858,6 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .active-card,
-  .active-card.leaving-left,
-  .active-card.leaving-right,
-  .card-peek,
-  .card-peek > *,
   .swipe-button {
     transition: none;
   }
