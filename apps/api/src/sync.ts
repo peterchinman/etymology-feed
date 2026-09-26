@@ -91,7 +91,7 @@ export async function syncSwipes(
       (item.verdict === 1 ? 1 : 0) - (old?.verdict === 1 ? 1 : 0);
     const dislikeDelta =
       (item.verdict === -1 ? 1 : 0) - (old?.verdict === -1 ? 1 : 0);
-    // UNIQUE(user_id,word) and id PK: one swipe row written, then one stats row.
+    // Composite PK(user_id,word) and unique id: one swipe row, then one stats row.
     writes.push(
       env.APP.prepare(
         'INSERT INTO swipe (id,user_id,word,verdict,bucket,shown_at,swiped_at,received_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id,word) DO UPDATE SET id=excluded.id,verdict=excluded.verdict,bucket=excluded.bucket,shown_at=excluded.shown_at,swiped_at=excluded.swiped_at,received_at=excluded.received_at',

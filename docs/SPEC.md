@@ -102,11 +102,11 @@ Versions to pin at project start (check `npm view` on day one): astro 7.x, @astr
 | Worker requests | 100k / day | 1 per feed fetch (100 cards), 1 per sync (≤ 500 swipes) | very large |
 | Worker CPU | 10 ms / request | Thompson sampling over ≤ 3k candidates ≈ 1–2 ms; 100-card fetch ≈ 3 ms | fine |
 | D1 rows read | 5M / day | feed ≈ 1 (served blob) + 100 (cards); sync ≈ 2 per swipe | ~40k feed fetches/day |
-| D1 rows written | **100k / day** ← binding limit | feed = 1 (served blob); swipe = 2 (swipe upsert + stats upsert) | **~45k swipes/day** |
+| D1 rows written | **100k / day** ← binding limit | feed = 1 (served blob); 100 new swipes = 550 rows written including index updates | **at most ~18k swipes/day** before auth, cron, and feed writes |
 | KV reads | 100k / day | 1 per feed fetch | fine |
 | KV writes | 1k / day | cron every 5 min = 288 | fine |
 
-At roughly 2,000 daily active users the D1 write cap bites; the fix is Workers Paid at **$5/month** (50M writes/month). Until then **$0/month**. Design rules: every D1 query hits an index; no `ORDER BY random()`, no table scans; D1 allows only **100 bound parameters** per statement, so `IN (…)` lists are passed as one JSON-array parameter and expanded with `json_each(?)` (the same trick `get_words.php` uses).
+At roughly 2,000 daily active users making nine swipes each, the D1 write cap bites; the fix is Workers Paid at **$5/month** (50M writes/month). Until then **$0/month**. The 550-row cost is measured on a 100-swipe batch with 50 likes and 50 dislikes, and includes index maintenance; actual daily headroom is lower after auth, cron, and feed writes. Design rules: every D1 query hits an index; no `ORDER BY random()`, no table scans in hot paths; D1 allows only **100 bound parameters** per statement, so `IN (…)` lists are passed as one JSON-array parameter and expanded with `json_each(?)` (the same trick `get_words.php` uses).
 
 ---
 
@@ -185,7 +185,7 @@ Drizzle schema in `apps/api/src/db/schema.ts`; migrations in `apps/api/drizzle/`
 
 ```sql
 CREATE TABLE swipe (
-  id          TEXT PRIMARY KEY,        -- client uuid = idempotency key
+  id          TEXT NOT NULL UNIQUE,    -- client uuid = idempotency key
   user_id     TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
   word        TEXT NOT NULL,
   verdict     INTEGER NOT NULL CHECK (verdict IN (1, -1)),
@@ -193,10 +193,9 @@ CREATE TABLE swipe (
   shown_at    INTEGER NOT NULL,         -- client clock: when the card was actually displayed
   swiped_at   INTEGER NOT NULL,         -- client clock
   received_at INTEGER NOT NULL,         -- server clock
-  UNIQUE (user_id, word)
-);
+  PRIMARY KEY (user_id, word)
+) WITHOUT ROWID;
 CREATE INDEX idx_swipe_user_liked ON swipe(user_id, swiped_at DESC) WHERE verdict = 1;
-CREATE INDEX idx_swipe_word ON swipe(word);
 
 CREATE TABLE served (                   -- every word ever sent to this user: the no-repeats record
   user_id     TEXT PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
@@ -220,7 +219,7 @@ CREATE INDEX idx_word_stats_unrated ON word_stats((likes + dislikes), prior DESC
 Notes:
 - **`served` is one row per user, not one per card.** With offline prefetching of 100 cards at a time, a per-card impressions table would cost 100 D1 writes per fetch; a JSON blob costs 1 read + 1 write. 30k entries ≈ 400 KB, under D1's 2 MB row limit. Past the cap the oldest entries roll off and a very small chance of a repeat is accepted (documented in `/about/`).
 - Anonymous visitors are real `user` rows (`isAnonymous = 1`), so `user_id` is always present.
-- A re-swipe of the same word by the same user **updates** the verdict (UPSERT on `(user_id, word)`) and adjusts `word_stats` by the delta.
+- A re-swipe of the same word by the same user **updates** the verdict (UPSERT on `(user_id, word)`) and adjusts `word_stats` by the delta. The composite primary key serves this lookup and user-ordered pagination; the partial index serves Liked. The unused word-only swipe index was removed after measuring its write cost.
 - `word_stats` is seeded from `DICT` by the release script (152k rows; run on the paid plan or spread over two days on free), inserting only missing rows.
 - There is no per-word "times served" counter (it would cost a write per card). Pool ordering uses ratings and prior instead (§6.1).
 
@@ -393,7 +392,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 
 **M3 — Persistence + algorithm**
 - `APP` migrations; Better Auth with the anonymous plugin (no social yet); `served` record; `POST /api/sync` (idempotent upsert + stats delta + served update); `DELETE /api/swipes/{word}`; `word_stats` seeding script; pools cron → KV; Thompson sampling; slot composition + interleave; `known=` reseed; nightly stats cron; `admin/stats`; rate limiting.
-- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 101 rows read and 1 write, and a 100-swipe sync ≤ 200 writes; a simulated user of 5,000 fetches never receives a repeat; `admin/stats` reports like-rate by bucket, band and shape.
+- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 101 rows read and 1 write, and a 100-swipe sync of 50 likes and 50 dislikes costs ≤ 550 rows written including index updates; a simulated user of 5,000 fetches never receives a repeat; `admin/stats` reports global like-rate and like-rate by bucket, band and shape.
 
 **M4 — Accounts**
 - Google + GitHub providers; `onLinkAccount` merge (swipes + served); post-login sync + likes reconcile; `GET /api/me/likes`; `DELETE /api/me`; sign-in/out UI and avatar.

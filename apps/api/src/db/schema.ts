@@ -3,10 +3,10 @@ import {
   check,
   index,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
-  uniqueIndex,
 } from 'drizzle-orm/sqlite-core';
 import { user } from './auth-schema';
 
@@ -15,7 +15,7 @@ export * from './auth-schema';
 export const swipe = sqliteTable(
   'swipe',
   {
-    id: text('id').primaryKey(),
+    id: text('id').notNull().unique(),
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
@@ -27,11 +27,10 @@ export const swipe = sqliteTable(
     receivedAt: integer('received_at').notNull(),
   },
   (table) => [
-    uniqueIndex('idx_swipe_user_word').on(table.userId, table.word),
+    primaryKey({ columns: [table.userId, table.word] }),
     index('idx_swipe_user_liked')
       .on(table.userId, table.swipedAt)
       .where(sql`${table.verdict} = 1`),
-    index('idx_swipe_word').on(table.word),
     check('swipe_verdict_check', sql`${table.verdict} IN (1, -1)`),
   ],
 );

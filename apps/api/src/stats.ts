@@ -12,6 +12,7 @@ type Daily = {
   hasSignal: Groups;
 };
 type SwipeRow = {
+  user_id: string;
   word: string;
   verdict: number;
   bucket: string | null;
@@ -87,16 +88,19 @@ export async function buildNightlyStats(
     empty(new Date(end - (i + 1) * 86_400_000).toISOString().slice(0, 10)),
   );
   const byDate = new Map(days.map((day) => [day.date, day]));
-  let cursor = 0;
+  let cursorUser = '';
+  let cursorWord = '';
   for (;;) {
-    // Nightly exception: scan the 30-day window, paged by rowid to bound memory.
+    // Nightly exception: scan the 30-day window in composite-PK order to bound memory.
     const page = await env.APP.prepare(
-      'SELECT rowid,word,verdict,bucket,received_at FROM swipe WHERE received_at>=? AND received_at<? AND rowid>? ORDER BY rowid LIMIT 100',
+      'SELECT user_id,word,verdict,bucket,received_at FROM swipe WHERE (user_id,word)>(?,?) AND received_at>=? AND received_at<? ORDER BY user_id,word LIMIT 100',
     )
-      .bind(start, end, cursor)
-      .all<SwipeRow & { rowid: number }>();
+      .bind(cursorUser, cursorWord, start, end)
+      .all<SwipeRow>();
     if (!page.results.length) break;
-    cursor = page.results[page.results.length - 1].rowid;
+    const last = page.results[page.results.length - 1];
+    cursorUser = last.user_id;
+    cursorWord = last.word;
     // word.word PK: at most one DICT row per swipe. No cross-D1 join is available.
     const meta = await env.DICT.batch(
       page.results.map((row) =>

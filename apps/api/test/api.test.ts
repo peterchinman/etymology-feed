@@ -141,12 +141,15 @@ describe('dictionary and persistent feed API', () => {
       'invalid',
       'duplicate',
     ]);
-    expect(first.rowsWritten).toBeLessThanOrEqual(200);
+    expect(first.rowsWritten).toBeLessThanOrEqual(550);
   });
 
   it('reports bucket, band, shape and global like-rates from the nightly snapshot', async () => {
     const yesterday = Date.now() - 86_400_000;
-    const cards = (await getWildFeed({ dict: env.DICT }, 2)).cards;
+    const cards = [
+      ...(await getWildFeed({ dict: env.DICT }, 100)).cards,
+      ...(await getWildFeed({ dict: env.DICT }, 5, 100)).cards,
+    ];
     const user = crypto.randomUUID();
     await env.APP.prepare(
       'INSERT INTO user (id,name,email,updated_at,is_anonymous) VALUES (?,?,?,?,1)',
@@ -169,6 +172,7 @@ describe('dictionary and persistent feed API', () => {
       .bind(yesterday, user)
       .run();
     const report = await buildNightlyStats(env);
+    expect(report.periods[30].total.total).toBe(105);
     expect(report.globalLikeRate).toBeGreaterThan(0);
     expect(Object.keys(report.periods[30].bucket)).toContain('wild');
     expect(Object.keys(report.periods[30].etymBand).length).toBeGreaterThan(0);

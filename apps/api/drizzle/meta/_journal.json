@@ -15,6 +15,13 @@
       "when": 1790457315572,
       "tag": "0001_curved_tarot",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790459863767,
+      "tag": "0002_thin_frog_thor",
+      "breakpoints": true
     }
   ]
 }
