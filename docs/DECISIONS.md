@@ -65,3 +65,22 @@ asking for a link to the source material where practical. This keeps direct
 entry links available and the credit accessible without repeating it on every
 card. This user-requested placement replaces the per-card line in SPEC §3 and
 §7.4; it does not change the dictionary's license.
+
+## 2026-09-26 — M2 swipe motion model (§7.4)
+
+Derive card motion from the gesture instead of fixed CSS transitions. The top
+card tracks the pointer 1:1 with no transition in between. On release,
+velocity is measured over the trailing 100 ms and projected 180 ms ahead to
+decide between commit and snap-back. A committed card leaves along
+x = x₀ + v₀t + ½at² with the duration set by its release speed (clamped to
+100–240 ms), so a coast and a slow release both start at the speed the card
+already had; that quadratic is expressed exactly as a `cubic-bezier`. A key or
+button swipe has no hand speed, so it launches over 200 ms starting at half its
+average speed rather than easing in from rest, which read as sluggish on
+desktop. A snap-back is a damped spring (stiffness 400, damping 30)
+carrying the release velocity, sampled into a `linear()` easing. The next card
+waits fully drawn, slightly smaller and lower, and is uncovered rather than
+faded in; it grows to full size with drag progress. All of this runs through
+the Web Animations API with implicit end keyframes so a card can be caught
+mid-flight. The stack shifts the moment a swipe commits; queued swipes are
+written in one IndexedDB transaction so quick bursts never fall behind.

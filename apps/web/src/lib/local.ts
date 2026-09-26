@@ -71,31 +71,38 @@ export async function appendCards(cards: Card[]): Promise<Card[]> {
   return nextStack;
 }
 
-export async function saveSwipe(
-  card: Card,
-  verdict: Verdict,
-  shownAt: number,
-): Promise<LocalSwipe> {
+export type PendingSwipe = { card: Card; verdict: Verdict; shownAt: number };
+
+/**
+ * Record swipes, oldest first, in one transaction. They must match the front
+ * of the stored stack in order; a burst of quick swipes costs one write.
+ */
+export async function saveSwipes(
+  pending: readonly PendingSwipe[],
+): Promise<LocalSwipe[]> {
   const db = await getDatabase();
-  const swipe: LocalSwipe = {
+  const swipedAt = Date.now();
+  const swipes = pending.map<LocalSwipe>(({ card, verdict, shownAt }) => ({
     id: crypto.randomUUID(),
     word: card.word,
     verdict,
     bucket: card.bucket,
     shownAt,
-    swipedAt: Date.now(),
+    swipedAt,
     synced: false,
     card,
-  };
+  }));
   const tx = db.transaction(['stack', 'swipes'], 'readwrite');
   const stack = (await tx.objectStore('stack').get('cards')) ?? [];
-  if (stack[0]?.word !== card.word) {
-    throw new Error('The card stack changed before the swipe was saved.');
-  }
-  tx.objectStore('stack').put(stack.slice(1), 'cards');
-  tx.objectStore('swipes').put(swipe);
+  pending.forEach(({ card }, index) => {
+    if (stack[index]?.word !== card.word) {
+      throw new Error('The card stack changed before the swipe was saved.');
+    }
+  });
+  tx.objectStore('stack').put(stack.slice(pending.length), 'cards');
+  for (const swipe of swipes) tx.objectStore('swipes').put(swipe);
   await tx.done;
-  return swipe;
+  return swipes;
 }
 
 export async function undoSwipe(swipe: LocalSwipe): Promise<Card[]> {
