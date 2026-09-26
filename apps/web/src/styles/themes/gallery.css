@@ -1,0 +1,203 @@
+/* Gallery. A white room with the lights on. Every word is a print on a white
+   wall, held off the surface by soft light rather than a line: there are no
+   borders anywhere, only shadow and space. Garamond carries the reading;
+   Bricolage Grotesque, a grotesque with hooked terminals and an optical
+   size axis, carries the word itself and every piece of information around
+   it, the contrast of a wall label beside a print. Rounded rectangles, one
+   link blue, and the green of a switch. */
+@import "@fontsource/eb-garamond/latin-400.css";
+@font-face {
+  font-family: "Bricolage Grotesque Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url("@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-opsz-normal.woff2")
+    format("woff2-variations");
+}
+
+:root.gallery {
+  --font-reading: "EB Garamond", Garamond, Georgia, serif;
+  --font-body: var(--font-reading);
+  --font-display:
+    "Bricolage Grotesque Variable", system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-label: var(--font-display);
+  --font-caption: var(--font-display);
+  --font-brand: var(--font-display);
+  --weight-display: 400;
+  --weight-reading: 400;
+  --weight-body: 400;
+  --weight-label: 500;
+  --weight-caption: 400;
+  --type-display: clamp(2.5rem, 6vw, 4.5rem);
+  --type-display-compact: clamp(1.625rem, 3.25vw, 2.25rem);
+  --type-reading: clamp(1.1875rem, 2vw, 1.4375rem);
+  --type-body: 1.0625rem;
+  --type-label: 0.875rem;
+  --type-caption: 0.8125rem;
+  --leading-display: 1.02;
+  --leading-reading: 1.5;
+  --leading-body: 1.5;
+  --tracking-display: -0.025em;
+  --tracking-label: 0;
+  --tracking-caps: 0.08em;
+  --case-display: none;
+  --case-label: none;
+  --case-caps: uppercase;
+
+  --card-inset: clamp(var(--space-5), 4vw, 3.25rem);
+
+  --stroke-card: 0;
+  --stroke-panel: 0;
+  --stroke-control: 0;
+  --stroke-rule: var(--hairline);
+  --stroke-bar: var(--hairline);
+  --stroke-emphasis: 0.125rem;
+  --focus-ring: 0.1875rem;
+
+  --radius-card: 1.75rem;
+  --radius-panel: 1.5rem;
+  --radius-control: 0.75rem;
+  --radius-field: 0.75rem;
+  --radius-inset: 0.875rem;
+  --radius-like: 50%;
+  --radius-skip: 50%;
+  --radius-switch: 2rem;
+  --radius-thumb: 50%;
+  --radius-segment: 0.625rem;
+  --radius-segment-item: 0.5rem;
+
+  --switch-width: 3.25rem;
+  --switch-height: 2rem;
+  --switch-pad: 0.125rem;
+  --switch-thumb: 1.75rem;
+  --segment-pad: 0.125rem;
+  --segment-gap: 0.125rem;
+}
+
+:root.gallery.light {
+  color-scheme: light;
+  --color-canvas: #ffffff;
+  --color-surface: #ffffff;
+  --color-inset: #f5f5f7;
+  --color-field: #f5f5f7;
+  --color-definition: #f5f5f7;
+  --color-definition-ink: #1d1d1f;
+  --color-definition-label: #6e6e73;
+  --color-panel: #f5f5f7;
+  --color-panel-ink: #1d1d1f;
+  --color-bar: rgba(255, 255, 255, 0.82);
+  --color-bar-ink: #1d1d1f;
+  --color-bar-muted: #6e6e73;
+  --color-bar-line: rgba(0, 0, 0, 0.08);
+  --color-ink: #1d1d1f;
+  --color-muted: #6e6e73;
+  --color-line: transparent;
+  --color-divider: #e8e8ed;
+  --color-accent: #0066cc;
+  --color-nav-mark: transparent;
+  --color-like: #1d1d1f;
+  --color-like-ink: #ffffff;
+  --color-like-line: transparent;
+  --color-skip: #ffffff;
+  --color-skip-ink: #1d1d1f;
+  --color-skip-line: transparent;
+  --color-on: #34c759;
+  --color-switch-off: #e9e9eb;
+  --color-switch-line: transparent;
+  --color-thumb-off: #ffffff;
+  --color-thumb-on: #ffffff;
+  --color-segment-track: #f5f5f7;
+  --color-segment: transparent;
+  --color-segment-on: #ffffff;
+  --color-segment-on-ink: #1d1d1f;
+  --color-focus: #0066cc;
+
+  --shadow-card:
+    0 0 0 var(--hairline) rgba(0, 0, 0, 0.03),
+    0 0.125rem 0.25rem rgba(0, 0, 0, 0.03), 0 0.5rem 1rem rgba(0, 0, 0, 0.05),
+    0 1.5rem 3rem rgba(0, 0, 0, 0.08);
+  --shadow-panel:
+    0 0 0 var(--hairline) rgba(0, 0, 0, 0.04),
+    0 0.75rem 2rem rgba(0, 0, 0, 0.1), 0 2rem 5rem rgba(0, 0, 0, 0.14);
+  --shadow-control:
+    0 0 0 var(--hairline) rgba(0, 0, 0, 0.03),
+    0 0.0625rem 0.125rem rgba(0, 0, 0, 0.05),
+    0 0.375rem 1rem rgba(0, 0, 0, 0.08);
+  --shadow-control-hover:
+    0 0 0 var(--hairline) rgba(0, 0, 0, 0.03),
+    0 0.125rem 0.25rem rgba(0, 0, 0, 0.05),
+    0 0.75rem 1.75rem rgba(0, 0, 0, 0.14);
+  --shadow-item:
+    0 0 0 var(--hairline) rgba(0, 0, 0, 0.03),
+    0 0.25rem 0.75rem rgba(0, 0, 0, 0.05);
+  --shadow-segment:
+    0 0.0625rem 0.1875rem rgba(0, 0, 0, 0.12),
+    0 0.1875rem 0.5rem rgba(0, 0, 0, 0.06);
+  --shadow-thumb:
+    0 0.1875rem 0.5rem rgba(0, 0, 0, 0.15),
+    0 0.1875rem 0.0625rem rgba(0, 0, 0, 0.06);
+}
+
+:root.gallery.dark {
+  color-scheme: dark;
+  --color-canvas: #000000;
+  --color-surface: #1c1c1e;
+  --color-inset: #2c2c2e;
+  --color-field: #1c1c1e;
+  --color-definition: #2c2c2e;
+  --color-definition-ink: #f5f5f7;
+  --color-definition-label: #98989d;
+  --color-panel: #1c1c1e;
+  --color-panel-ink: #f5f5f7;
+  --color-bar: rgba(28, 28, 30, 0.82);
+  --color-bar-ink: #f5f5f7;
+  --color-bar-muted: #98989d;
+  --color-bar-line: rgba(255, 255, 255, 0.1);
+  --color-ink: #f5f5f7;
+  --color-muted: #98989d;
+  --color-line: transparent;
+  --color-divider: #3a3a3c;
+  --color-accent: #2997ff;
+  --color-nav-mark: transparent;
+  --color-like: #f5f5f7;
+  --color-like-ink: #1d1d1f;
+  --color-like-line: transparent;
+  --color-skip: #2c2c2e;
+  --color-skip-ink: #f5f5f7;
+  --color-skip-line: transparent;
+  --color-on: #30d158;
+  --color-switch-off: #39393d;
+  --color-switch-line: transparent;
+  --color-thumb-off: #ffffff;
+  --color-thumb-on: #ffffff;
+  --color-segment-track: #2c2c2e;
+  --color-segment: transparent;
+  --color-segment-on: #636366;
+  --color-segment-on-ink: #ffffff;
+  --color-focus: #2997ff;
+
+  --shadow-card:
+    0 0 0 var(--hairline) rgba(255, 255, 255, 0.06),
+    0 0.5rem 1rem rgba(0, 0, 0, 0.4), 0 1.5rem 3rem rgba(0, 0, 0, 0.6);
+  --shadow-panel:
+    0 0 0 var(--hairline) rgba(255, 255, 255, 0.08),
+    0 1rem 3rem rgba(0, 0, 0, 0.7);
+  --shadow-control:
+    0 0 0 var(--hairline) rgba(255, 255, 255, 0.06),
+    0 0.375rem 1rem rgba(0, 0, 0, 0.5);
+  --shadow-control-hover:
+    0 0 0 var(--hairline) rgba(255, 255, 255, 0.08),
+    0 0.75rem 1.75rem rgba(0, 0, 0, 0.7);
+  --shadow-item:
+    0 0 0 var(--hairline) rgba(255, 255, 255, 0.05),
+    0 0.25rem 0.75rem rgba(0, 0, 0, 0.4);
+  --shadow-segment: 0 0.0625rem 0.25rem rgba(0, 0, 0, 0.4);
+  --shadow-thumb: 0 0.1875rem 0.5rem rgba(0, 0, 0, 0.4);
+}
+
+/* The bars are frosted glass, so the page shows through as it scrolls. */
+:root.gallery .topbar,
+:root.gallery .bottom-nav {
+  -webkit-backdrop-filter: saturate(180%) blur(1.25rem);
+  backdrop-filter: saturate(180%) blur(1.25rem);
+}
