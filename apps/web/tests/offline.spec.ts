@@ -156,7 +156,19 @@ test('horizontal drag commits a swipe while vertical movement leaves the card in
   await page.mouse.move(x, y);
   await page.mouse.down();
   await page.mouse.move(x + box.width * 0.48, y, { steps: 8 });
+  const exitTransition = page.evaluate(() => {
+    const top = document.querySelector('[data-testid="top-card"]');
+    return new Promise<boolean>((resolve) => {
+      const timeout = window.setTimeout(() => resolve(false), 390);
+      top?.addEventListener('transitionend', (event) => {
+        if ((event as TransitionEvent).propertyName !== 'transform') return;
+        clearTimeout(timeout);
+        resolve(true);
+      });
+    });
+  });
   await page.mouse.up();
+  expect(await exitTransition).toBe(true);
   await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
     first,
   );
@@ -171,6 +183,7 @@ test('a swipe reveals the next card without bringing the outgoing card back', as
   const top = page.getByTestId('top-card');
   await expect(top).toBeVisible();
   await expect(page.locator('.card-peek h2')).toBeVisible();
+  await expect(page.locator('.card-peek .word-head')).toHaveCSS('opacity', '0');
   const nextWord = await page.locator('.card-peek h2').innerText();
   const handoff = page.evaluate(() => {
     const topCard = document.querySelector('[data-testid="top-card"]');
@@ -196,5 +209,22 @@ test('a swipe reveals the next card without bringing the outgoing card back', as
   const state = await handoff;
   expect(state.className).toContain('settling');
   expect(state.transform).toBe('matrix(1, 0, 0, 1, 0, 0)');
+  const returnOffset = await page.evaluate(async () => {
+    const topCard = document.querySelector('[data-testid="top-card"]');
+    if (!topCard) throw new Error('Top card is missing after the swipe.');
+    let maximum = 0;
+    for (let frame = 0; frame < 12; frame++) {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+      const transform = getComputedStyle(topCard).transform;
+      maximum = Math.max(
+        maximum,
+        Math.abs(new DOMMatrixReadOnly(transform).m41),
+      );
+    }
+    return maximum;
+  });
+  expect(returnOffset).toBeLessThan(1);
   await expect(top.locator('h2')).toHaveText(nextWord);
 });

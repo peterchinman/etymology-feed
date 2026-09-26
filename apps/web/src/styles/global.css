@@ -73,8 +73,14 @@
 
   --motion-quick: 150ms;
   --motion-gentle: 180ms;
+  --motion-card-exit: 260ms;
+  --motion-card-rise: var(--motion-card-exit);
+  --motion-card-content: 160ms;
   --ease-standard: ease;
   --ease-out: ease-out;
+  --ease-card-exit: cubic-bezier(0.35, 0, 0.8, 1);
+  --ease-card-rise: cubic-bezier(0.18, 0.72, 0.24, 1);
+  --peek-scale: 0.985;
 }
 
 :root.pink.light {
@@ -434,20 +440,31 @@ a {
 .active-card.settling {
   transition: none;
 }
+.active-card.leaving-left,
 .active-card.leaving-right {
-  transform: translateX(120%) rotate(17deg);
+  transition: transform var(--motion-card-exit) var(--ease-card-exit);
+}
+.active-card.leaving-right {
+  transform: translateX(calc(50vw + 50% + var(--space-4))) rotate(12deg);
 }
 .active-card.leaving-left {
-  transform: translateX(-120%) rotate(-17deg);
+  transform: translateX(calc(-50vw - 50% - var(--space-4))) rotate(-12deg);
 }
 .card-peek {
   padding: var(--card-inset);
   pointer-events: none;
-  transform: translate(var(--space-3), var(--space-2)) rotate(1deg);
-  transition: transform var(--motion-gentle) var(--ease-standard);
+  transform: translateY(var(--space-2)) scale(var(--peek-scale));
+  transition: transform var(--motion-card-rise) var(--ease-card-rise);
+}
+.card-peek > * {
+  opacity: var(--peek-opacity, 0);
+  transition: opacity var(--motion-card-content) var(--ease-standard);
 }
 .deck-area.is-leaving .card-peek {
   transform: none;
+}
+.deck-area.is-leaving .card-peek > * {
+  opacity: 1;
 }
 .word-head {
   margin: var(--space-1) 0 var(--space-5);
@@ -864,7 +881,10 @@ a {
 
 @media (prefers-reduced-motion: reduce) {
   .active-card,
+  .active-card.leaving-left,
+  .active-card.leaving-right,
   .card-peek,
+  .card-peek > *,
   .swipe-button {
     transition: none;
   }

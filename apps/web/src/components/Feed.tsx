@@ -31,10 +31,11 @@ export default function Feed() {
   const [dragX, setDragX] = createSignal(0);
   const [leaving, setLeaving] = createSignal<'left' | 'right' | null>(null);
   const [settling, setSettling] = createSignal(false);
+  const [committing, setCommitting] = createSignal(false);
   const [pendingUndo, setPendingUndo] = createSignal<LocalSwipe | null>(null);
   let shownAt = Date.now();
   let filling = false;
-  let committing = false;
+  let departingWord: string | null = null;
   let exhaustedUntil = 0;
   let undoTimer: ReturnType<typeof setTimeout> | undefined;
   let activeCardElement: HTMLElement | undefined;
@@ -62,7 +63,20 @@ export default function Feed() {
         const cards = await fetchCards();
         const before = stack().length;
         const next = await appendCards(cards);
-        setStack([...next]);
+        if (committing()) {
+          // Preserve the departing card while a refill writes the queue.
+          setStack((current) => {
+            const seen = new Set(current.map((card) => card.word));
+            return [
+              ...current,
+              ...next.filter(
+                (card) => card.word !== departingWord && !seen.has(card.word),
+              ),
+            ];
+          });
+        } else {
+          setStack([...next]);
+        }
         if (next.length === before) misses++;
         else misses = 0;
         if (misses >= 2) {
@@ -81,9 +95,16 @@ export default function Feed() {
 
   async function commit(verdict: 1 | -1) {
     const card = stack()[0];
-    if (!card || committing) return;
-    committing = true;
+    if (!card || committing()) return;
+    setCommitting(true);
+    departingWord = card.word;
+    const previousShownAt = shownAt;
+    const previousDefinitionOpen = definitionOpen();
     setLeaving(verdict === 1 ? 'right' : 'left');
+    const saved = saveSwipe(card, verdict, shownAt).then(
+      (swipe) => swipe,
+      () => null,
+    );
     const reduced = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches;
@@ -103,35 +124,43 @@ export default function Feed() {
         element.addEventListener('transitionend', onTransitionEnd);
       });
     }
+    batch(() => {
+      setSettling(true);
+      setStack((current) => current.slice(1));
+      setDragX(0);
+      setLeaving(null);
+    });
+    requestAnimationFrame(() => setSettling(false));
+    shownAt = Date.now();
+    setDefinitionOpen(showDefinitions());
     try {
-      const swipe = await saveSwipe(card, verdict, shownAt);
+      const swipe = await saved;
+      if (!swipe) throw new Error('The swipe could not be saved.');
       if (undoTimer) clearTimeout(undoTimer);
       setPendingUndo(swipe);
       undoTimer = setTimeout(() => setPendingUndo(null), 5000);
-      batch(() => {
-        setSettling(true);
-        setStack((current) => current.slice(1));
-        setDragX(0);
-        setLeaving(null);
-      });
-      requestAnimationFrame(() => setSettling(false));
-      shownAt = Date.now();
-      setDefinitionOpen(showDefinitions());
       if (stack().length < 60) void fillStack();
     } catch {
+      setStack((current) => [
+        card,
+        ...current.filter((item) => item.word !== card.word),
+      ]);
+      shownAt = previousShownAt;
+      setDefinitionOpen(previousDefinitionOpen);
       setError('The swipe could not be saved. Please try again.');
     } finally {
       if (leaving()) {
         setDragX(0);
         setLeaving(null);
       }
-      committing = false;
+      setCommitting(false);
+      departingWord = null;
     }
   }
 
   async function undo() {
     const swipe = pendingUndo();
-    if (!swipe || committing) return;
+    if (!swipe || committing()) return;
     if (undoTimer) clearTimeout(undoTimer);
     setPendingUndo(null);
     try {
@@ -385,7 +414,12 @@ export default function Feed() {
           </p>
         </section>
       </Show>
-      <div class={`deck-area ${leaving() ? 'is-leaving' : ''}`}>
+      <div
+        class={`deck-area ${leaving() ? 'is-leaving' : ''}`}
+        style={{
+          '--peek-opacity': `${Math.min(1, Math.abs(dragX()) / (activeCardElement?.clientWidth || 1))}`,
+        }}
+      >
         <Show
           when={stack()[0]}
           fallback={
@@ -527,7 +561,7 @@ export default function Feed() {
         <button
           class="swipe-button skip-button"
           type="button"
-          disabled={!stack().length || !!leaving()}
+          disabled={!stack().length || committing()}
           aria-label="Not for me"
           onClick={() => void commit(-1)}
         >
@@ -543,7 +577,7 @@ export default function Feed() {
         <button
           class="swipe-button like-button"
           type="button"
-          disabled={!stack().length || !!leaving()}
+          disabled={!stack().length || committing()}
           aria-label="Interesting"
           onClick={() => void commit(1)}
         >
