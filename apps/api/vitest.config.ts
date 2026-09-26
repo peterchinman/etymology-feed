@@ -9,7 +9,12 @@ export default defineConfig({
     cloudflareTest(async () => ({
       wrangler: { configPath: './wrangler.toml' },
       miniflare: {
-        bindings: { TEST_MIGRATIONS: await readD1Migrations('./fixtures') },
+        bindings: {
+          TEST_MIGRATIONS: await readD1Migrations('./fixtures'),
+          APP_MIGRATIONS: await readD1Migrations('./drizzle'),
+          BETTER_AUTH_SECRET: 'test-secret-at-least-thirty-two-characters-long',
+          ADMIN_TOKEN: 'test-admin-token',
+        },
       },
     })),
   ],

@@ -35,6 +35,7 @@ import {
   SWIPE,
   springEasing,
 } from '../lib/swipe';
+import { drainSync } from '../lib/sync';
 import { DEFAULT_THEME, THEMES, type Theme } from '../lib/themes';
 
 /** A card that has been swiped and is still flying off-screen. */
@@ -141,6 +142,7 @@ export default function Feed() {
   let queue: (PendingSwipe & { entry: Departing })[] = [];
   /** Resolves when everything queued so far has been written or rolled back. */
   let saveChain: Promise<void> = Promise.resolve();
+  let swipesSinceSync = 0;
 
   /** Departing cards first so their nodes keep the same list position. */
   const rendered = createMemo(() => [
@@ -167,7 +169,7 @@ export default function Feed() {
     setFetching(true);
     let misses = 0;
     try {
-      // The read-only M1 API can send previously seen words; the local served set filters them.
+      // The server records served words; IndexedDB also filters after cookie loss.
       for (
         let attempt = 0;
         attempt < 6 && navigator.onLine && stack().length < 150;
@@ -312,6 +314,11 @@ export default function Feed() {
     queue = [];
     try {
       const swipes = await saveSwipes(pending);
+      swipesSinceSync += swipes.length;
+      if (swipesSinceSync >= 10) {
+        swipesSinceSync = 0;
+        void drainSync();
+      }
       for (const { card } of pending) inFlight.delete(card.word);
       if (undoTimer) clearTimeout(undoTimer);
       setPendingUndo(swipes[swipes.length - 1]);
@@ -554,6 +561,7 @@ export default function Feed() {
         setColorModeState(settings.colorMode);
         setDark(applyTheme(settings.theme, settings.colorMode));
         setReady(true);
+        void drainSync();
         void fillStack(true);
       } catch {
         setError(
@@ -564,6 +572,7 @@ export default function Feed() {
     })();
     const onOnline = () => {
       setOnline(true);
+      void drainSync();
       void fillStack(true);
     };
     const onOffline = () => setOnline(false);
@@ -572,6 +581,7 @@ export default function Feed() {
       if (colorMode() === 'system') setDark(systemDark.matches);
     };
     const onVisible = () => {
+      if (document.visibilityState === 'visible') void drainSync();
       if (document.visibilityState === 'visible' && stack().length < 60)
         void fillStack();
     };

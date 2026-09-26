@@ -17,7 +17,8 @@ export type LocalSwipe = {
   bucket: Card['bucket'];
   shownAt: number;
   swipedAt: number;
-  synced: false;
+  synced: boolean;
+  removed?: boolean;
   card: Card;
 };
 
@@ -128,7 +129,34 @@ export async function getSwipes(): Promise<LocalSwipe[]> {
   );
 }
 
+export async function getUnsyncedSwipes(): Promise<LocalSwipe[]> {
+  return (await getSwipes())
+    .filter((swipe) => !swipe.synced && !swipe.removed)
+    .slice(0, 500);
+}
+
+export async function markSwipesSynced(ids: readonly string[]): Promise<void> {
+  const db = await getDatabase();
+  const tx = db.transaction('swipes', 'readwrite');
+  for (const id of ids) {
+    const swipe = await tx.store.get(id);
+    if (swipe) await tx.store.put({ ...swipe, synced: true });
+  }
+  await tx.done;
+}
+
 export async function removeSwipe(id: string): Promise<void> {
+  const db = await getDatabase();
+  const swipe = await db.get('swipes', id);
+  if (!swipe) return;
+  await db.put('swipes', { ...swipe, removed: true });
+}
+
+export async function getPendingRemovals(): Promise<LocalSwipe[]> {
+  return (await getSwipes()).filter((swipe) => swipe.removed === true);
+}
+
+export async function confirmRemoval(id: string): Promise<void> {
   await (await getDatabase()).delete('swipes', id);
 }
 

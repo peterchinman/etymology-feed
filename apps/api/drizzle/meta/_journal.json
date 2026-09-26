@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790456375603,
+      "tag": "0000_salty_inertia",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790457315572,
+      "tag": "0001_curved_tarot",
+      "breakpoints": true
+    }
+  ]
+}
