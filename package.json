@@ -10,6 +10,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "node apps/web/scripts/dev.mjs",
     "build:web": "npm run build -w @etymology-feed/web",
     "lint": "biome check apps/api/src apps/api/test apps/api/vitest.config.ts apps/web/astro.config.mjs apps/web/playwright.config.ts apps/web/tests apps/web/src/components apps/web/src/lib apps/web/src/styles apps/web/scripts packages/shared",
     "test:e2e": "npm run build:web && playwright test --config apps/web/playwright.config.ts",
