@@ -59,7 +59,9 @@ is usually just "next"; a liked card is parked only after `PARK_LOOKS` (15)
 looks below average. After deploying migrations `0004` through `0006`
 to a database that already has ratings, rescore the rated rows once with
 `UPDATE word_stats SET score = (likes + 1.0) / (likes + 0.25 * dislikes + 2) WHERE likes + dislikes > 0`,
-using the deployed weight. Repeat the same statement whenever the weight changes. The server records served card IDs and syncs queued
+using the deployed weight. Repeat the same statement whenever the weight changes.
+Spec §6.5 says how to set the weight, the confirmed margin, and the parking
+threshold from real swipe data once there is some. The server records served card IDs and syncs queued
 swipes when a connection returns. The Liked screen and first 100 swipes remain
 usable offline after the shell and one batch are fetched. `npm run test:e2e`
 starts an isolated local Wrangler D1 fixture and runs the Playwright offline
