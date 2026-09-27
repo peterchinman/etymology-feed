@@ -175,6 +175,48 @@ export async function confirmRemoval(id: string): Promise<void> {
   await (await getDatabase()).delete('swipes', id);
 }
 
+export async function replaceLikedFromServer(
+  likes: readonly {
+    id: string;
+    cardId: string;
+    shownAt: number;
+    swipedAt: number;
+    card: Card;
+  }[],
+): Promise<LocalSwipe[]> {
+  const db = await getDatabase();
+  const tx = db.transaction('swipes', 'readwrite');
+  const store = tx.objectStore('swipes');
+  const existing = (await store.getAll()).map(normalizeSwipe);
+  const serverCards = new Set(likes.map(({ cardId }) => cardId));
+  for (const swipe of existing)
+    if (swipe.verdict === 1 || serverCards.has(swipe.cardId))
+      await store.delete(swipe.id);
+  for (const like of likes)
+    await store.put({
+      id: like.id,
+      cardId: like.cardId,
+      word: like.card.word,
+      verdict: 1,
+      bucket: like.card.bucket,
+      shownAt: like.shownAt,
+      swipedAt: like.swipedAt,
+      synced: true,
+      card: normalizeCard(like.card),
+    });
+  await tx.done;
+  return getSwipes();
+}
+
+export async function clearAccountData(): Promise<void> {
+  const db = await getDatabase();
+  const tx = db.transaction(['stack', 'served', 'swipes'], 'readwrite');
+  tx.objectStore('stack').clear();
+  tx.objectStore('served').clear();
+  tx.objectStore('swipes').clear();
+  await tx.done;
+}
+
 function isMode(value: unknown): value is Exclude<ColorMode, 'system'> {
   return value === 'light' || value === 'dark';
 }

@@ -6,6 +6,9 @@ export const authClient = createAuthClient({
   plugins: [anonymousClient()],
 });
 let ready: Promise<boolean> | undefined;
+export function resetAuthSession(): void {
+  ready = undefined;
+}
 export function ensureAnonymousSession(): Promise<boolean> {
   ready ??= (async () => {
     const session = await authClient.getSession();

@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import AccountControls from '../components/AccountControls';
 import { DEFAULT_THEME, THEME_COLORS, THEMES } from '../lib/themes';
 
 type Props = { title: string; page: 'feed' | 'liked' | 'settings' };
@@ -60,6 +61,7 @@ const themeIds = THEMES.map((option) => option.id);
           <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}>Liked</a>
           <a href="/?settings=1" aria-current={page === 'settings' ? 'page' : undefined}>Settings</a>
         </nav>
+        <AccountControls client:load variant="compact" />
       </header>
       <main id="main"><slot /></main>
     </div>

@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-09-27 — Merge anonymous activity into accounts (M4)
+
+Use Better Auth's anonymous `onLinkAccount` hook with Google and GitHub sign-in.
+For each card rated by both the guest and the account, keep the later swipe and
+subtract the losing rating from `word_stats`; even two identical likes must
+become one like after the merge. Move unique guest swipes, union served card IDs
+in first-seen order, and let Better Auth delete the guest user. One D1 batch
+contains the writes. After redirect, drain any remaining local swipes and
+replace the local Liked cache with paginated server likes. Sign-out clears the
+device's card and swipe caches so the next anonymous user cannot see them.
+Account deletion removes the user's aggregate contributions and cascades their
+APP rows. A local mock OIDC provider exercises the browser flow without real
+Google or GitHub credentials; those credentials are configured at deployment.
+
 ## 2026-09-27 — Park slowly, confirm sooner; second looks after the frontier (§6.1)
 
 The two lane transitions are not symmetric. A wrongly confirmed card keeps

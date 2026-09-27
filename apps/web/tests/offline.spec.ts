@@ -25,6 +25,29 @@ test('a right swipe adds a word to Liked and survives reload', async ({
   await page.getByRole('button', { name: 'Interesting' }).click();
   await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(word);
   await expect(page.locator('.undo-toast')).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<number>((resolve, reject) => {
+            const request = indexedDB.open('etymology-feed');
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const database = request.result;
+              const count = database
+                .transaction('swipes')
+                .objectStore('swipes')
+                .count();
+              count.onsuccess = () => {
+                database.close();
+                resolve(count.result);
+              };
+              count.onerror = () => reject(count.error);
+            };
+          }),
+      ),
+    )
+    .toBeGreaterThan(0);
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: word })).toBeVisible();
   await expect(page.getByText('Words you love.')).toHaveCount(0);

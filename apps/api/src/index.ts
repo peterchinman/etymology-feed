@@ -1,7 +1,8 @@
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { createAuth } from './auth';
+import { deleteAccount, getAccountLikes } from './accounts';
+import { configuredProviders, createAuth } from './auth';
 import {
   FeedUnavailable,
   getUserFeed,
@@ -11,12 +12,41 @@ import {
 import { buildPools, POOLS_KEY } from './pools';
 import { deleteLiked, syncInput, syncSwipes } from './sync';
 
-type Variables = { userId: string; isAnonymous: boolean };
+type Variables = {
+  userId: string;
+  isAnonymous: boolean;
+  userName: string;
+  userImage: string | null;
+};
 const app = new Hono<{ Bindings: CloudflareBindings; Variables: Variables }>();
 const feedQuery = z.object({
   n: z.coerce.number().int().min(1).max(100).default(100),
   known: z.string().optional(),
 });
+const likesQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(200),
+  cursor: z.string().max(300).optional(),
+});
+
+function parseLikesCursor(
+  value: string,
+): { swipedAt: number; id: string } | null {
+  try {
+    const pair: unknown = JSON.parse(atob(value));
+    if (
+      Array.isArray(pair) &&
+      pair.length === 2 &&
+      Number.isSafeInteger(pair[0]) &&
+      pair[0] >= 0 &&
+      typeof pair[1] === 'string' &&
+      pair[1].length > 0
+    )
+      return { swipedAt: pair[0], id: pair[1] };
+  } catch {
+    // Invalid cursors receive the same 400 response as invalid query fields.
+  }
+  return null;
+}
 
 app.all('/auth/*', (c) =>
   createAuth(c.env, new URL(c.req.url).origin).handler(c.req.raw),
@@ -62,6 +92,8 @@ app.use('/api/*', async (c, next) => {
   }
   c.set('userId', currentUser.id);
   c.set('isAnonymous', !!currentUser.isAnonymous);
+  c.set('userName', currentUser.name);
+  c.set('userImage', currentUser.image ?? null);
   await next();
 });
 
@@ -157,12 +189,38 @@ const routes = app
       user: {
         id: c.get('userId'),
         isAnonymous: c.get('isAnonymous'),
-        name: null,
-        image: null,
+        name: c.get('userName'),
+        image: c.get('userImage'),
       },
-      providers: [] as string[],
+      providers: configuredProviders(c.env),
     }),
   )
+  .get('/api/me/likes', zValidator('query', likesQuery), async (c) => {
+    const { limit, cursor } = c.req.valid('query');
+    const decoded = cursor ? parseLikesCursor(cursor) : undefined;
+    if (cursor && !decoded)
+      return c.json(
+        { error: { code: 'invalid_cursor', message: 'Invalid likes cursor.' } },
+        400,
+      );
+    return c.json(
+      await getAccountLikes(
+        c.env,
+        c.get('userId'),
+        limit,
+        decoded ?? undefined,
+      ),
+    );
+  })
+  .delete('/api/me', async (c) => {
+    if (c.get('isAnonymous'))
+      return c.json(
+        { error: { code: 'account_required', message: 'Sign in first.' } },
+        403,
+      );
+    await deleteAccount(c.env, c.get('userId'));
+    return c.json({ deleted: true });
+  })
   .get('/api/cards/:id', async (c) => {
     const card = await getWord({ dict: c.env.DICT }, c.req.param('id'));
     if (!card)
