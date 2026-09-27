@@ -64,13 +64,14 @@ it('merges newer anonymous verdicts, deduplicates served cards, and removes acco
     ]),
   );
   const stats = await env.APP.prepare(
-    'SELECT card_id,likes,dislikes FROM word_stats WHERE card_id IN (?,?,?)',
+    'SELECT card_id,likes,dislikes,score FROM word_stats WHERE card_id IN (?,?,?)',
   )
     .bind(bluffing.id, bank.id, thirdId)
-    .all<{ card_id: string; likes: number; dislikes: number }>();
+    .all<{ card_id: string; likes: number; dislikes: number; score: number }>();
   expect(
     stats.results.every((row) => row.likes === 1 && row.dislikes === 0),
   ).toBe(true);
+  for (const row of stats.results) expect(row.score).toBeCloseTo(2 / 3);
   const served = await env.APP.prepare(
     'SELECT card_ids FROM served WHERE user_id=?',
   )
@@ -112,12 +113,14 @@ it('merges newer anonymous verdicts, deduplicates served cards, and removes acco
   await env.APP.prepare('DELETE FROM user WHERE id=?').bind(guest).run();
   await deleteAccount(env, member);
   const after = await env.APP.prepare(
-    'SELECT likes,dislikes FROM word_stats WHERE card_id IN (?,?,?)',
+    'SELECT likes,dislikes,score FROM word_stats WHERE card_id IN (?,?,?)',
   )
     .bind(bluffing.id, bank.id, thirdId)
-    .all<{ likes: number; dislikes: number }>();
+    .all<{ likes: number; dislikes: number; score: number }>();
   expect(
-    after.results.every((row) => row.likes === 0 && row.dislikes === 0),
+    after.results.every(
+      (row) => row.likes === 0 && row.dislikes === 0 && row.score === 0.5,
+    ),
   ).toBe(true);
   expect(
     await env.APP.prepare('SELECT id FROM user WHERE id=?')
@@ -126,45 +129,56 @@ it('merges newer anonymous verdicts, deduplicates served cards, and removes acco
   ).toBeNull();
 });
 
-it('counts two identical likes as one after account linking', async () => {
-  const card = await env.DICT.prepare(
-    'SELECT id FROM word ORDER BY shuffle LIMIT 1 OFFSET 4',
-  ).first<{ id: string }>();
-  if (!card) throw new Error('Fixture card is missing.');
-  const guest = crypto.randomUUID();
-  const member = crypto.randomUUID();
-  for (const [id, anonymous] of [
-    [guest, 1],
-    [member, 0],
-  ] as const)
-    await env.APP.prepare(
-      'INSERT INTO user(id,name,email,updated_at,is_anonymous) VALUES(?,?,?,?,?)',
+it('counts matching ratings once under weighted scoring after account linking', async () => {
+  const cards = await env.DICT.prepare(
+    'SELECT id FROM word ORDER BY shuffle LIMIT 2 OFFSET 4',
+  ).all<{ id: string }>();
+  if (cards.results.length !== 2) throw new Error('Fixture cards are missing.');
+  for (const [index, verdict] of ([1, -1] as const).entries()) {
+    const card = cards.results[index];
+    const guest = crypto.randomUUID();
+    const member = crypto.randomUUID();
+    for (const [id, anonymous] of [
+      [guest, 1],
+      [member, 0],
+    ] as const)
+      await env.APP.prepare(
+        'INSERT INTO user(id,name,email,updated_at,is_anonymous) VALUES(?,?,?,?,?)',
+      )
+        .bind(id, 'Test', `${id}@test.local`, Date.now(), anonymous)
+        .run();
+    for (const [id, swipedAt] of [
+      [guest, 2000],
+      [member, 1000],
+    ] as const)
+      await syncSwipes(env, id, [
+        {
+          id: crypto.randomUUID(),
+          cardId: card.id,
+          verdict,
+          shownAt: swipedAt - 1,
+          swipedAt,
+        },
+      ]);
+    await mergeAnonymousAccount(env, guest, member);
+    const stats = await env.APP.prepare(
+      'SELECT likes,dislikes,score FROM word_stats WHERE card_id=?',
     )
-      .bind(id, 'Test', `${id}@test.local`, Date.now(), anonymous)
-      .run();
-  for (const [id, swipedAt] of [
-    [guest, 2000],
-    [member, 1000],
-  ] as const)
-    await syncSwipes(env, id, [
-      {
-        id: crypto.randomUUID(),
-        cardId: card.id,
-        verdict: 1,
-        shownAt: swipedAt - 1,
-        swipedAt,
-      },
-    ]);
-  await mergeAnonymousAccount(env, guest, member);
-  const stats = await env.APP.prepare(
-    'SELECT likes,dislikes FROM word_stats WHERE card_id=?',
-  )
-    .bind(card.id)
-    .first<{ likes: number; dislikes: number }>();
-  expect(stats).toEqual({ likes: 1, dislikes: 0 });
-  expect(
-    await env.APP.prepare('SELECT count(*) AS n FROM swipe WHERE card_id=?')
       .bind(card.id)
-      .first<{ n: number }>(),
-  ).toEqual({ n: 1 });
+      .first<{ likes: number; dislikes: number; score: number }>();
+    expect(stats?.likes).toBe(verdict === 1 ? 1 : 0);
+    expect(stats?.dislikes).toBe(verdict === -1 ? 1 : 0);
+    expect(stats?.score).toBeCloseTo(verdict === 1 ? 2 / 3 : 1 / 2.25);
+    expect(
+      await env.APP.prepare('SELECT count(*) AS n FROM swipe WHERE card_id=?')
+        .bind(card.id)
+        .first<{ n: number }>(),
+    ).toEqual({ n: 1 });
+    await deleteAccount(env, member);
+    expect(
+      await env.APP.prepare('SELECT score FROM word_stats WHERE card_id=?')
+        .bind(card.id)
+        .first<{ score: number }>(),
+    ).toEqual({ score: 0.5 });
+  }
 });

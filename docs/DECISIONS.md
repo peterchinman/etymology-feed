@@ -1,5 +1,12 @@
 # Decisions
 
+## 2026-09-27 — Start production from one APP migration
+
+No production APP data needs an upgrade before the first deployment.
+The earlier schema migrations are folded into `0000_initial`, which creates
+the final card-ID columns and indexes directly. Fresh local D1 databases are
+used to verify it. Once production has data, new migrations remain incremental.
+
 ## 2026-09-27 — Merge anonymous activity into accounts (M4)
 
 Use Better Auth's anonymous `onLinkAccount` hook with Google and GitHub sign-in.
@@ -38,8 +45,8 @@ exhausted, so nothing changes for over a year at current volumes and no
 exploration budget is spent on second looks while new cards remain. After
 that, cards passed over once return automatically rather than never; a card
 never liked in five looks is parked. The same unrated index serves the query.
-Migration `0006` rebuilds the promising partial index with the two-threshold
-predicate; the pool builder uses it when the vars match the defaults and
+The initial promising partial index has the two-threshold predicate; the pool
+builder uses it when the vars match the defaults and
 otherwise scans with a logged warning. The report gains `--park-looks` and a
 never-seen count beside the fresh lane total.
 
@@ -65,11 +72,11 @@ average rather than exactly average; one like in five looks scores 0.5 and is
 parked, two likes in five looks scores 0.64 and is confirmed. Parked now covers
 lefts with no likes and five looks below the margin; the fresh lane still
 admits only never-seen cards, since one look per card already takes over a year
-at current volumes. Migration `0005_weighted_lefts` rebuilds the promising
-partial index without the dislike clause; the confirmed index keeps its
+at current volumes. The final promising partial index has no dislike clause;
+the confirmed index keeps its
 `score >= 0.5` predicate and the query narrows to the bound margin, which the
-plan test confirms still uses the index. Rated rows are rescored once with the
-README statement after deploying, and again whenever the weight changes.
+plan test confirms still uses the index. Once ratings exist, a weight change
+also requires rescoring the rated rows with the README statement.
 
 ## 2026-09-27 — Feed lanes by information state; flat prior for rated cards (§6)
 
@@ -100,13 +107,10 @@ about 1.87M of the 5M daily reads. The new refresh reads at most
 `FRESH_POOL_SIZE` plus the confirmed and promising populations, because those
 two lanes are served by partial indexes: about 0.86M/day at launch and at most
 2.6M/day with every lane full. On the 501-card fixture the refresh measured
-503 rows read: 501 for the fresh lane and one per empty partial-index query. Migration `0004_lanes` drops the general score index
-(unused now; it cost 100 writes per 100 swipes) and adds the partial promising
-index, which costs writes only for qualifying rows. No reseed: unrated rows
-keep their old score harmlessly since no lane reads it, and rated rows are
-rescored once after deploying with
-`UPDATE word_stats SET score = (likes + 1.0) / (likes + dislikes + 2) WHERE likes + dislikes > 0`,
-a range on `idx_word_stats_unrated` that reads only rated rows. The KV key
+503 rows read: 501 for the fresh lane and one per empty partial-index query.
+The initial schema omits the unused general score index (which cost 100
+writes per 100 swipes) and includes the partial promising index, which costs
+writes only for qualifying rows. The KV key
 moved to `pools:v3`; the first cron or feed request after deploy rebuilds it.
 Web typecheck, lint, API, shared, and report tests pass.
 

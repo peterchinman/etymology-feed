@@ -32,16 +32,20 @@ describe('dictionary and persistent feed API', () => {
     expect(wrapped.rowsRead).toBeLessThanOrEqual(101);
   });
 
-  it('looks up a headword and caches the card', async () => {
+  it('looks up cards by ID and legacy primary headwords', async () => {
     const { cards } = await getWildFeed({ dict: env.DICT }, 1);
     const response = await SELF.fetch(
-      `http://localhost/api/words/${encodeURIComponent(cards[0].word)}`,
+      `http://localhost/api/cards/${encodeURIComponent(cards[0].id)}`,
     );
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('public, max-age=86400');
     const card = (await response.json()) as Card;
-    expect(card.word).toBe(cards[0].word);
+    expect(card.id).toBe(cards[0].id);
     expect(card.definition.length).toBeGreaterThan(0);
+
+    const primary = await SELF.fetch('http://localhost/api/words/bluff');
+    expect(primary.status).toBe(200);
+    expect(((await primary.json()) as Card).id).toBe('bluff');
 
     const multiword = await SELF.fetch(
       `http://localhost/api/words/${encodeURIComponent('béarnaise sauce')}`,

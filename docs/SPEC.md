@@ -198,7 +198,7 @@ CREATE TABLE swipe (
   received_at INTEGER NOT NULL,         -- server clock
   UNIQUE (user_id, card_id)
 );
-CREATE INDEX idx_swipe_user_liked ON swipe(user_id, swiped_at DESC) WHERE verdict = 1;
+CREATE INDEX idx_swipe_user_liked ON swipe(user_id, swiped_at DESC, id DESC) WHERE verdict = 1;
 
 CREATE TABLE served (                   -- every card ever sent to this user: the no-repeats record
   user_id     TEXT PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
@@ -212,7 +212,7 @@ CREATE TABLE word_stats (               -- denormalized aggregate, upserted on e
   likes       INTEGER NOT NULL DEFAULT 0,
   dislikes    INTEGER NOT NULL DEFAULT 0,
   prior       REAL NOT NULL,            -- heuristic prior copied from DICT at seed time; orders the fresh lane only
-  score       REAL NOT NULL,            -- flat-prior posterior mean, §6.2; BASE_RATE while unrated
+  score       REAL NOT NULL,            -- weighted flat-prior posterior mean, §6.2; 0.5 while unrated
   updated_at  INTEGER NOT NULL
 ) WITHOUT ROWID;
 CREATE INDEX idx_word_stats_unrated ON word_stats((likes + dislikes), prior DESC);           -- fresh lane

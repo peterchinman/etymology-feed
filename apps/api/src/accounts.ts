@@ -30,8 +30,7 @@ export async function mergeAnonymousAccount(
     (served[1].results[0] as ServedRow | undefined)?.card_ids ?? '[]',
   ) as string[];
   const merged = unionServed(accountIds, anonymousIds, Number(env.SERVED_CAP));
-  const strength = Number(env.PRIOR_STRENGTH);
-  const pseudoLikes = strength * Number(env.BASE_RATE);
+  const dislikeWeight = Number(env.DISLIKE_WEIGHT);
   const now = Date.now();
   // One loser per conflicting card disappears from the aggregate. The target
   // row remains when it is newer; otherwise the guest row replaces it below.
@@ -42,7 +41,9 @@ export async function mergeAnonymousAccount(
       UPDATE word_stats AS stats SET
         likes=stats.likes-(loser.verdict=1),
         dislikes=stats.dislikes-(loser.verdict=-1),
-        score=(stats.likes-(loser.verdict=1)+?)/(stats.likes+stats.dislikes-1+?),
+        score=(stats.likes-(loser.verdict=1)+1.0)/
+          (stats.likes-(loser.verdict=1)+
+           (stats.dislikes-(loser.verdict=-1))*?+2.0),
         updated_at=?
       FROM (
         SELECT guest.card_id,
@@ -52,7 +53,7 @@ export async function mergeAnonymousAccount(
         WHERE guest.user_id=?
       ) AS loser
       WHERE stats.card_id=loser.card_id
-    `).bind(pseudoLikes, strength, now, accountId, anonymousId),
+    `).bind(dislikeWeight, now, accountId, anonymousId),
     // A conflicting guest row still owns its global swipe.id until it is
     // deleted, so update the member row in place and retain that row's ID.
     env.APP.prepare(`
@@ -148,18 +149,19 @@ export async function deleteAccount(
   env: CloudflareBindings,
   userId: string,
 ): Promise<void> {
-  const strength = Number(env.PRIOR_STRENGTH);
-  const pseudoLikes = strength * Number(env.BASE_RATE);
+  const dislikeWeight = Number(env.DISLIKE_WEIGHT);
   const now = Date.now();
   await env.APP.batch([
     env.APP.prepare(`
       UPDATE word_stats AS stats SET
         likes=stats.likes-(swipe.verdict=1),
         dislikes=stats.dislikes-(swipe.verdict=-1),
-        score=(stats.likes-(swipe.verdict=1)+?)/(stats.likes+stats.dislikes-1+?),
+        score=(stats.likes-(swipe.verdict=1)+1.0)/
+          (stats.likes-(swipe.verdict=1)+
+           (stats.dislikes-(swipe.verdict=-1))*?+2.0),
         updated_at=?
       FROM swipe WHERE swipe.user_id=? AND swipe.card_id=stats.card_id
-    `).bind(pseudoLikes, strength, now, userId),
+    `).bind(dislikeWeight, now, userId),
     env.APP.prepare('DELETE FROM user WHERE id=? AND is_anonymous=0').bind(
       userId,
     ),
