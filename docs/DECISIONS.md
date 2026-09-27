@@ -17,16 +17,21 @@ row written** for a fresh 100-card fetch. A 100-swipe sync of 50 likes and
 mutations per swipe, because D1 counts index updates in `rows_written`.
 Removing the unused `idx_swipe_word` saved 100 writes. Removing the general
 score index saved another 100 but lost the indexed cold-start ranking; a
-replacement partial index restored that cost on first ratings. The chosen
-schema keeps the score index and changes `swipe` to a `WITHOUT ROWID` table
-with `(user_id,word)` as its primary key, a unique id for idempotency, and
-the partial Liked index. That saves 200 writes over the original swipe
-storage, while preserving indexed user/word lookup, user pagination, and
-Liked lookup. **100 new swipes now write 550 D1 rows.** The §10 acceptance
-target was revised from ≤200 to the measured ≤550. The free daily 100k
-allowance supports at most roughly 18k such swipes before auth, cron, and
-feed writes. The added nightly scan index was removed because it increased
-the original measurement to 850.
+replacement partial index restored that cost on first ratings. A measured
+`WITHOUT ROWID` variant with `(user_id,word)` as its primary key saved 100
+more writes, reaching 550 per 100 swipes. With no production users, retain
+the simpler UUID primary key, the unique `(user_id,word)` lookup, and the
+partial Liked index; drop only the unused word-only index. This preserves
+indexed user/word lookup, user pagination, and Liked lookup without a table
+rebuild or a composite-key stats cursor. **100 new swipes now write 650 D1
+rows.** The §10 acceptance target was revised from ≤200 to the measured
+≤650. The free daily 100k allowance supports at most roughly 15k such
+swipes before auth, cron, and feed writes. The added nightly scan index was
+removed because it increased the original measurement to 850. Revisit the
+compact table only if measured usage approaches the free-plan write limit.
+This key choice preserves the current one-card-per-headword model. If future
+sources supply separately rated etymologies for the same headword, those cards
+will need distinct entry IDs regardless of the swipe table's primary key.
 The seed script meters actual `rows_written` and defaults to a 50k budget
 per run (at most 80k when explicitly requested), so seeding 152k indexed rows
 takes more than the spec's suggested two days on the free plan. A sync after
@@ -38,9 +43,9 @@ index for the default `MIN_RATINGS=5`: the five-minute pool cron otherwise
 scans the entire seeded score index while looking for rated words, exceeding
 the 5M daily read budget. The `MIN_RATINGS` variable remains respected; a
 value below five takes the general score-index path and needs new cost
-measurements. Nightly stats scan the 30-day window in composite primary-key
-order, paged to bound Worker memory, and use indexed DICT lookups because D1
-has no cross-database join. The APP scan can read older swipe rows while
+measurements. Nightly stats scan the 30-day window in rowid order, paged to
+bound Worker memory, and use indexed DICT lookups because D1 has no
+cross-database join. The APP scan can read older swipe rows while
 filtering by date; its rows-read cost grows with retained history and remains
 an explicit free-plan risk to measure in production.
 
