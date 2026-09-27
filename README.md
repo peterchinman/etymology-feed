@@ -70,10 +70,12 @@ liked, fewest looks then best heuristic prior), and wild. Empty lanes hand
 their slots down, so on day one the feed is fresh and wild. A left swipe
 counts as `DISLIKE_WEIGHT` (0.25) of a dislike, because in a swipe feed a left
 is usually just "next"; a liked card is parked only after `PARK_LOOKS` (15)
-looks below average. After deploying migrations `0004` through `0006`
-to a database that already has ratings, rescore the rated rows once with
+looks below average. The pre-launch APP schema is in one `0000_initial`
+migration; apply it to a fresh APP database and seed `word_stats` before the
+first deployment. When `DISLIKE_WEIGHT` changes after ratings exist, rescore
+the rated rows with
 `UPDATE word_stats SET score = (likes + 1.0) / (likes + 0.25 * dislikes + 2) WHERE likes + dislikes > 0`,
-using the deployed weight. Repeat the same statement whenever the weight changes.
+substituting the new weight.
 Spec §6.5 says how to set the weight, the confirmed margin, and the parking
 threshold from real swipe data once there is some. The server records served card IDs and syncs queued
 swipes when a connection returns. The Liked screen and first 100 swipes remain

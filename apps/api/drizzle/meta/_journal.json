@@ -5,50 +5,8 @@
     {
       "idx": 0,
       "version": "6",
-      "when": 1790456375603,
-      "tag": "0000_salty_inertia",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1790457315572,
-      "tag": "0001_curved_tarot",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1790526789240,
-      "tag": "0002_eminent_sue_storm",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1790530626691,
-      "tag": "0003_card_identity",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "6",
-      "when": 1790531450019,
-      "tag": "0004_lanes",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1790540043632,
-      "tag": "0005_weighted_lefts",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "6",
-      "when": 1790542246737,
-      "tag": "0006_asymmetric_thresholds",
+      "when": 1790542801743,
+      "tag": "0000_initial",
       "breakpoints": true
     }
   ]

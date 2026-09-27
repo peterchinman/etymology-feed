@@ -1,15 +1,15 @@
 CREATE TABLE `served` (
 	`user_id` text PRIMARY KEY NOT NULL,
-	`words` text NOT NULL,
+	`card_ids` text NOT NULL,
 	`count` integer NOT NULL,
 	`updated_at` integer NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
- ) WITHOUT ROWID;
+) WITHOUT ROWID;
 --> statement-breakpoint
 CREATE TABLE `swipe` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
-	`word` text NOT NULL,
+	`card_id` text NOT NULL,
 	`verdict` integer NOT NULL,
 	`bucket` text,
 	`shown_at` integer NOT NULL,
@@ -19,20 +19,20 @@ CREATE TABLE `swipe` (
 	CONSTRAINT "swipe_verdict_check" CHECK("swipe"."verdict" IN (1, -1))
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `idx_swipe_user_word` ON `swipe` (`user_id`,`word`);--> statement-breakpoint
-CREATE INDEX `idx_swipe_user_liked` ON `swipe` (`user_id`,`swiped_at`) WHERE "swipe"."verdict" = 1;--> statement-breakpoint
-CREATE INDEX `idx_swipe_word` ON `swipe` (`word`);--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_swipe_user_card` ON `swipe` (`user_id`,`card_id`);--> statement-breakpoint
+CREATE INDEX `idx_swipe_user_liked` ON `swipe` (`user_id`,"swiped_at" DESC,"id" DESC) WHERE "swipe"."verdict" = 1;--> statement-breakpoint
 CREATE TABLE `word_stats` (
-	`word` text PRIMARY KEY NOT NULL,
+	`card_id` text PRIMARY KEY NOT NULL,
 	`likes` integer DEFAULT 0 NOT NULL,
 	`dislikes` integer DEFAULT 0 NOT NULL,
 	`prior` real NOT NULL,
 	`score` real NOT NULL,
 	`updated_at` integer NOT NULL
- ) WITHOUT ROWID;
+) WITHOUT ROWID;
 --> statement-breakpoint
-CREATE INDEX `idx_word_stats_score` ON `word_stats` (`score`);--> statement-breakpoint
-CREATE INDEX `idx_word_stats_unrated` ON `word_stats` (("likes" + "dislikes"),`prior`);--> statement-breakpoint
+CREATE INDEX `idx_word_stats_unrated` ON `word_stats` (("likes" + "dislikes"),"prior" DESC);--> statement-breakpoint
+CREATE INDEX `idx_word_stats_rec` ON `word_stats` ("score" DESC) WHERE "word_stats"."likes" + "word_stats"."dislikes" >= 5 AND "word_stats"."score" >= 0.5;--> statement-breakpoint
+CREATE INDEX `idx_word_stats_promising` ON `word_stats` ("score" DESC) WHERE "word_stats"."likes" > 0 AND ("word_stats"."likes" + "word_stats"."dislikes" < 5 OR "word_stats"."score" < 0.55) AND ("word_stats"."likes" + "word_stats"."dislikes" < 15 OR "word_stats"."score" >= 0.5);--> statement-breakpoint
 CREATE TABLE `account` (
 	`id` text PRIMARY KEY NOT NULL,
 	`account_id` text NOT NULL,

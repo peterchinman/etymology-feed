@@ -67,10 +67,7 @@ const quote = (value) => `'${value.replaceAll("'", "''")}'`;
 for (let i = 0; i < words.length; i += 100) {
   const rows = words
     .slice(i, i + 100)
-    .map(
-      ({ id, prior }) =>
-        `(${quote(id)},0,0,${Number(prior)},${Number(prior)},0)`,
-    )
+    .map(({ id, prior }) => `(${quote(id)},0,0,${Number(prior)},0.5,0)`)
     .join(',');
   const seeded = spawnSync(
     wrangler,

@@ -53,7 +53,9 @@ export async function getCardsByIds(
 ): Promise<Map<string, Card>> {
   if (!ids.length) return new Map();
   const rows = await dict
-    .prepare(`SELECT ${CARD_COLUMNS} FROM word WHERE id IN (SELECT value FROM json_each(?))`)
+    .prepare(
+      `SELECT ${CARD_COLUMNS} FROM word WHERE id IN (SELECT value FROM json_each(?))`,
+    )
     .bind(JSON.stringify(ids))
     .all<WordRow>();
   return new Map(rows.results.map((row) => [row.id, toCard(row)]));

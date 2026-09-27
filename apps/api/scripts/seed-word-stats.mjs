@@ -62,7 +62,7 @@ for (;;) {
   const now = Date.now();
   const rows = words
     .map(
-      // score = BASE_RATE for unrated rows (§6.2); prior orders the fresh lane.
+      // Weighted flat prior scores an unrated row at 0.5; prior orders fresh.
       ({ id, prior }) => `(${quote(id)},0,0,${Number(prior)},0.5,${now})`,
     )
     .join(',');
