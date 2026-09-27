@@ -33,7 +33,7 @@ namespace_id = "102"
 simple = { limit = 20, period = 10 }
 
 [triggers]
-crons = ["*/5 * * * *", "17 3 * * *"]
+crons = ["*/5 * * * *"]
 
 [vars]
 REC_SLOTS = 12

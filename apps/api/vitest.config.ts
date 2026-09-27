@@ -13,7 +13,6 @@ export default defineConfig({
           TEST_MIGRATIONS: await readD1Migrations('./fixtures'),
           APP_MIGRATIONS: await readD1Migrations('./drizzle'),
           BETTER_AUTH_SECRET: 'test-secret-at-least-thirty-two-characters-long',
-          ADMIN_TOKEN: 'test-admin-token',
         },
       },
     })),

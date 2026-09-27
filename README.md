@@ -1,6 +1,6 @@
 # Etymology Feed
 
-M2 adds an offline-first Astro/Solid Feed and Liked screen to the read-only M1 API. The
+M3 adds anonymous persistence and a scored feed to the offline-first Astro/Solid app. The
 dictionary comes from the `dictionary-2026-09-20b` release of
 [`random-word-generator-site`](https://github.com/peterchinman/random-word-generator-site/releases/tag/dictionary-2026-09-20b).
 The full release assets are never committed here. `apps/api/fixtures/etymology-500.sql`
@@ -16,6 +16,7 @@ npm run typecheck:api
 npm run typecheck:web
 npm run test:api
 npm run test:shared
+npm run test:report -w @etymology-feed/api
 npm run test:e2e
 npm run lint
 ```
@@ -34,10 +35,27 @@ reload on `localhost:4321`, proxying `/api` and `/auth` to Wrangler. Open
 `http://127.0.0.1:8787`, which serves `apps/web/dist`. Delete
 `apps/api/.wrangler/dev` to reseed.
 
-`GET /api/feed?n=100` returns 100 distinct wild cards. `GET /api/words/{word}`
-returns one card; `GET /healthz` checks the dictionary. The feed has no
-per-user served record yet; that arrives in M3. M2 keeps the card stack, served
-words, swipes, and settings in IndexedDB. It never sends swipes to the server.
-The Liked screen and first 100 swipes remain usable offline after the shell and
-one batch are fetched. `npm run test:e2e` starts an isolated local Wrangler D1
-fixture and runs the Playwright offline checks in installed Chrome.
+`GET /api/feed?n=100` returns 100 distinct cards chosen from scored,
+little-rated, and wild pools. The server records served words and syncs queued
+swipes when a connection returns. The Liked screen and first 100 swipes remain
+usable offline after the shell and one batch are fetched. `npm run test:e2e`
+starts an isolated local Wrangler D1 fixture and runs the Playwright offline
+checks in installed Chrome.
+
+To generate the private §6.5 report when needed, download `etymology.db` from
+the dictionary release pinned by RWG's `database/RELEASE`, then export only
+the two APP tables needed for analysis. From `apps/api/`:
+
+```sh
+npx wrangler d1 export APP --remote --table=swipe --no-schema --output=/tmp/ef-swipes.sql
+npx wrangler d1 export APP --remote --table=word_stats --no-schema --output=/tmp/ef-word-stats.sql
+python3 scripts/report_stats.py --swipes-sql /tmp/ef-swipes.sql --word-stats-sql /tmp/ef-word-stats.sql --dict-db /path/to/etymology.db > /tmp/ef-report.json
+```
+
+The script uses only Python's standard library. The report covers the last
+7 and 30 UTC calendar days, including today's partial data, and its rates
+describe current stored verdicts rather than every historical swipe. Keep
+the exports and release database outside git. A D1 export can temporarily
+block other database requests, so run it during a quiet period. The separate
+five-minute cron keeps feed candidate pools fresh; it does not produce this
+report.

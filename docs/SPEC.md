@@ -266,7 +266,7 @@ All tunable via `wrangler.toml` vars: `REC_SLOTS`, `UNKNOWN_SLOTS`, `WILD_SLOTS`
 
 ### 6.5 Measure it — this is how the §4.1 thresholds get revisited
 
-Every swipe carries `bucket`, and joins to `DICT` give `etym_band`, `shape`, `tier`, `has_signal`. `GET /api/admin/stats` (header `Authorization: Bearer $ADMIN_TOKEN`) returns, over the last 7 and 30 days: like-rate by bucket, **by `etym_band`**, **by `shape`**, by tier, and by `has_signal`; counts of words with `n >= 5`; pool sizes and `builtAt`; swipes/day. (Computed by a nightly cron into KV key `stats:v1`, not on request — the join is a full scan of `swipe`.)
+Every swipe carries `bucket`, and the pinned `DICT` release gives `etym_band`, `shape`, `tier`, `has_signal`. Run `apps/api/scripts/report_stats.py` locally on demand using data-only D1 exports of APP's `swipe` and `word_stats` tables and the release's `etymology.db` (never vendored). It reports like-rates for the last 7 and 30 UTC calendar days, including the current partial day: global, by bucket, **by `etym_band`**, **by `shape`**, by tier, and by `has_signal`; counts of words with `n >= 5`, recommended-eligible and unknown words; and current swipe rows by day. The script joins the two datasets in local SQLite. There is no nightly stats cron, KV snapshot, or admin stats endpoint. The table stores one current verdict per user and word, so this report cannot reconstruct earlier verdicts or deleted likes; `received_at` places offline swipes on the sync day. Export and local scan costs are incurred only when a report is requested.
 
 Decision rules to apply once there are ≥ 2,000 swipes per band: if `lt40` like-rate is below half of `80_120`, raise the length floor for un-signalled stories; if a shape's like-rate is below half the plain rate, add it as a default-off filter rather than removing it. Also report the global like-rate so the prior can be re-centered on it (§4.3). Record the outcome in `docs/DECISIONS.md`.
 
@@ -326,7 +326,6 @@ Types flow to the frontend through `hc<AppType>()`. All bodies validated with zo
 | `DELETE /api/me` | signed-in | Delete account and all rows. |
 | `GET /api/words/{word}` | none | One card by headword (share links; RWG later). `Cache-Control: public, max-age=86400`. |
 | `/auth/*` | — | Better Auth handler. |
-| `GET /api/admin/stats` | bearer token | §6.5 (served from KV). |
 | `GET /healthz` | none | Pings both D1s and KV. |
 
 Card payload (shared type in `packages/shared`):
@@ -370,7 +369,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 ### 9.4 Build & dev
 
 - `apps/web/astro.config.mjs`: `output: 'static'`, `integrations: [solid()]`, PWA plugin, Vite dev proxy `/api` and `/auth` → `http://127.0.0.1:8787` (wrangler dev).
-- `apps/api/wrangler.toml`: `main = "src/index.ts"`, `[assets] directory = "../web/dist"`, `run_worker_first = ["/api/*", "/auth/*"]`, `[[d1_databases]]` ×2, `[[kv_namespaces]]`, `[triggers] crons = ["*/5 * * * *", "17 3 * * *"]` (pools, nightly stats), rate-limit bindings, `[vars]` tunables. Secrets via `wrangler secret put`: `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET`, `ADMIN_TOKEN`.
+- `apps/api/wrangler.toml`: `main = "src/index.ts"`, `[assets] directory = "../web/dist"`, `run_worker_first = ["/api/*", "/auth/*"]`, `[[d1_databases]]` ×2, `[[kv_namespaces]]`, `[triggers] crons = ["*/5 * * * *"]` (feed pools), rate-limit bindings, `[vars]` tunables. Secrets via `wrangler secret put`: `BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET`.
 - Local D1: `wrangler d1 execute DICT --local --file=fixtures/etymology-500.sql` (500-word fixture in `apps/api/fixtures/`).
 - Playwright e2e against `wrangler dev` with the fixture and a mocked OIDC provider; one suite runs with `context.setOffline(true)`.
 
@@ -391,8 +390,8 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 - ✅ Playwright: swipe right adds to Liked and survives reload; with `setOffline(true)` after one fetch, 100 swipes work and Liked updates; back online, nothing is lost; keyboard works; Lighthouse mobile ≥ 90 perf/a11y/PWA.
 
 **M3 — Persistence + algorithm**
-- `APP` migrations; Better Auth with the anonymous plugin (no social yet); `served` record; `POST /api/sync` (idempotent upsert + stats delta + served update); `DELETE /api/swipes/{word}`; `word_stats` seeding script; pools cron → KV; Thompson sampling; slot composition + interleave; `known=` reseed; nightly stats cron; `admin/stats`; rate limiting.
-- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 101 rows read and 1 write, and a 100-swipe sync of 50 likes and 50 dislikes costs ≤ 650 rows written including index updates; a simulated user of 5,000 fetches never receives a repeat; `admin/stats` reports global like-rate and like-rate by bucket, band and shape.
+- `APP` migrations; Better Auth with the anonymous plugin (no social yet); `served` record; `POST /api/sync` (idempotent upsert + stats delta + served update); `DELETE /api/swipes/{word}`; `word_stats` seeding script; pools cron → KV; Thompson sampling; slot composition + interleave; `known=` reseed; local on-demand stats report script; rate limiting.
+- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 101 rows read and 1 write, and a 100-swipe sync of 50 likes and 50 dislikes costs ≤ 650 rows written including index updates; a simulated user of 5,000 fetches never receives a repeat; the local report script produces global like-rate and like-rate by bucket, band and shape from exported tables.
 
 **M4 — Accounts**
 - Google + GitHub providers; `onLinkAccount` merge (swipes + served); post-login sync + likes reconcile; `GET /api/me/likes`; `DELETE /api/me`; sign-in/out UI and avatar.
@@ -400,7 +399,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 
 **M5 — Production**
 - Production Worker, D1s, KV, secrets; custom domain; GitHub Actions: on push → test, build, `wrangler deploy`; on `database/RELEASE` change → create `dict-<tag>`, import, update `database_id`, seed missing `word_stats`, deploy; weekly `wrangler d1 export` of `APP` to R2. Restore drill: import the export into a fresh D1 and point a preview Worker at it.
-- ✅ Restore drill documented and passing; `docs/RUNBOOK.md` covers release, restore, rotating secrets, reading `admin/stats`.
+- ✅ Restore drill documented and passing; `docs/RUNBOOK.md` covers release, restore, rotating secrets, and running the local stats report.
 
 **M6 — Optional: RWG reads from the Worker**
 - Third D1 with the full dictionary (needs Workers Paid for the import); port `get_words.php` to `GET /api/words/random` (same params, same JSON); CORS for `randomwordgenerator.info`; RWG's `tests/words-api.test.mjs` passes against it; flip RWG's `WORD_API_URL`.
