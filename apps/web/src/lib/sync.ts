@@ -25,9 +25,9 @@ export function drainSync(): Promise<void> {
         },
         body: JSON.stringify({
           swipes: pending.map(
-            ({ id, word, verdict, bucket, shownAt, swipedAt }) => ({
+            ({ id, cardId, verdict, bucket, shownAt, swipedAt }) => ({
               id,
-              word,
+              cardId,
               verdict,
               bucket,
               shownAt,
@@ -48,7 +48,7 @@ export function drainSync(): Promise<void> {
     }
     for (const swipe of await getPendingRemovals()) {
       const response = await fetch(
-        `/api/swipes/${encodeURIComponent(swipe.word)}`,
+        `/api/swipes/${encodeURIComponent(swipe.cardId)}`,
         { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } },
       );
       if (!response.ok) throw new Error(`Remove returned ${response.status}.`);

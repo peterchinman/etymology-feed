@@ -12,6 +12,7 @@ export type Verdict = 1 | -1;
 export type ColorMode = 'system' | 'light' | 'dark';
 export type LocalSwipe = {
   id: string;
+  cardId: string;
   word: string;
   verdict: Verdict;
   bucket: Card['bucket'];
@@ -34,6 +35,16 @@ interface FeedDB extends DBSchema {
 }
 
 let database: Promise<IDBPDatabase<FeedDB>> | undefined;
+function normalizeCard(card: Card): Card {
+  return { ...card, id: card.id ?? card.word, etymNo: card.etymNo ?? null };
+}
+function normalizeSwipe(swipe: LocalSwipe): LocalSwipe {
+  return {
+    ...swipe,
+    cardId: swipe.cardId ?? swipe.word,
+    card: normalizeCard(swipe.card),
+  };
+}
 function getDatabase(): Promise<IDBPDatabase<FeedDB>> {
   database ??= openDB<FeedDB>('etymology-feed', 1, {
     upgrade(db) {
@@ -49,7 +60,9 @@ function getDatabase(): Promise<IDBPDatabase<FeedDB>> {
 }
 
 export async function getStack(): Promise<Card[]> {
-  return (await (await getDatabase()).get('stack', 'cards')) ?? [];
+  return ((await (await getDatabase()).get('stack', 'cards')) ?? []).map(
+    normalizeCard,
+  );
 }
 
 export async function getServed(): Promise<string[]> {
@@ -63,13 +76,14 @@ export async function appendCards(cards: Card[]): Promise<Card[]> {
     tx.objectStore('stack').get('cards'),
     tx.objectStore('served').get('words'),
   ]);
-  const nextStack = stack ?? [];
+  const nextStack = (stack ?? []).map(normalizeCard);
   const known = new Set(served ?? []);
   const nextServed = served ?? [];
-  for (const card of cards) {
-    if (known.has(card.word)) continue;
-    known.add(card.word);
-    nextServed.push(card.word);
+  for (const incoming of cards) {
+    const card = normalizeCard(incoming);
+    if (known.has(card.id)) continue;
+    known.add(card.id);
+    nextServed.push(card.id);
     nextStack.push(card);
   }
   tx.objectStore('stack').put(nextStack, 'cards');
@@ -91,6 +105,7 @@ export async function saveSwipes(
   const swipedAt = Date.now();
   const swipes = pending.map<LocalSwipe>(({ card, verdict, shownAt }) => ({
     id: crypto.randomUUID(),
+    cardId: card.id,
     word: card.word,
     verdict,
     bucket: card.bucket,
@@ -102,7 +117,7 @@ export async function saveSwipes(
   const tx = db.transaction(['stack', 'swipes'], 'readwrite');
   const stack = (await tx.objectStore('stack').get('cards')) ?? [];
   pending.forEach(({ card }, index) => {
-    if (stack[index]?.word !== card.word) {
+    if (stack[index]?.id !== card.id && stack[index]?.word !== card.id) {
       throw new Error('The card stack changed before the swipe was saved.');
     }
   });
@@ -116,7 +131,7 @@ export async function undoSwipe(swipe: LocalSwipe): Promise<Card[]> {
   const db = await getDatabase();
   const tx = db.transaction(['stack', 'swipes'], 'readwrite');
   const stack = (await tx.objectStore('stack').get('cards')) ?? [];
-  const nextStack = [swipe.card, ...stack];
+  const nextStack = [normalizeCard(swipe.card), ...stack.map(normalizeCard)];
   tx.objectStore('stack').put(nextStack, 'cards');
   tx.objectStore('swipes').delete(swipe.id);
   await tx.done;
@@ -124,9 +139,9 @@ export async function undoSwipe(swipe: LocalSwipe): Promise<Card[]> {
 }
 
 export async function getSwipes(): Promise<LocalSwipe[]> {
-  return (await (await getDatabase()).getAll('swipes')).sort(
-    (a, b) => b.swipedAt - a.swipedAt,
-  );
+  return (await (await getDatabase()).getAll('swipes'))
+    .map(normalizeSwipe)
+    .sort((a, b) => b.swipedAt - a.swipedAt);
 }
 
 export async function getUnsyncedSwipes(): Promise<LocalSwipe[]> {

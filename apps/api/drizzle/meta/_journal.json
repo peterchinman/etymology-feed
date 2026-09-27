@@ -22,6 +22,20 @@
       "when": 1790526789240,
       "tag": "0002_eminent_sue_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790530626691,
+      "tag": "0003_card_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790531450019,
+      "tag": "0004_lanes",
+      "breakpoints": true
     }
   ]
 }

@@ -1,17 +1,29 @@
 import { z } from 'zod';
 
-export const swipeInput = z.object({
-  id: z.uuid(),
-  word: z.string().min(1).max(200),
-  verdict: z.union([z.literal(1), z.literal(-1)]),
-  bucket: z.enum(['rec', 'unknown', 'wild']).nullable().optional(),
-  shownAt: z.number().int().nonnegative(),
-  swipedAt: z.number().int().nonnegative(),
-});
+export const swipeInput = z
+  .object({
+    id: z.uuid(),
+    cardId: z.string().min(1).max(200).optional(),
+    word: z.string().min(1).max(200).optional(), // older offline clients send the primary card's word
+    verdict: z.union([z.literal(1), z.literal(-1)]),
+    // Legacy 'rec' and 'unknown' may still arrive from offline queues filled
+    // before the lane feed shipped.
+    bucket: z
+      .enum(['confirmed', 'promising', 'fresh', 'wild', 'rec', 'unknown'])
+      .nullable()
+      .optional(),
+    shownAt: z.number().int().nonnegative(),
+    swipedAt: z.number().int().nonnegative(),
+  })
+  .refine((item) => item.cardId || item.word)
+  .transform((item) => ({
+    ...item,
+    cardId: item.cardId ?? item.word ?? '',
+  }));
 export const syncInput = z.object({ swipes: z.array(z.unknown()).max(500) });
 export type SwipeInput = z.infer<typeof swipeInput>;
 type OldSwipe = { id: string; verdict: number; swiped_at: number };
-type WordStat = { likes: number; dislikes: number; prior: number };
+type WordStat = { likes: number; dislikes: number };
 
 export async function syncSwipes(
   env: CloudflareBindings,
@@ -29,6 +41,7 @@ export async function syncSwipes(
     message: 'Invalid swipe.',
   }));
   const strength = Number(env.PRIOR_STRENGTH);
+  const pseudoLikes = strength * Number(env.BASE_RATE);
   const now = Date.now();
   const distinct = new Set<string>();
   const parsed: { item: SwipeInput; index: number }[] = [];
@@ -36,14 +49,17 @@ export async function syncSwipes(
     const check = swipeInput.safeParse(item);
     if (check.success) parsed.push({ item: check.data, index });
   }
-  const latestByWord = new Map<string, { index: number; swipedAt: number }>();
+  const latestByCard = new Map<string, { index: number; swipedAt: number }>();
   for (const { item, index } of parsed) {
-    const latest = latestByWord.get(item.word);
+    const latest = latestByCard.get(item.cardId);
     if (!latest || latest.swipedAt <= item.swipedAt)
-      latestByWord.set(item.word, { index, swipedAt: item.swipedAt });
+      latestByCard.set(item.cardId, { index, swipedAt: item.swipedAt });
   }
   const valid = parsed.filter(({ item, index }) => {
-    if (distinct.has(item.id) || latestByWord.get(item.word)?.index !== index) {
+    if (
+      distinct.has(item.id) ||
+      latestByCard.get(item.cardId)?.index !== index
+    ) {
       results[index] = { id: item.id, status: 'duplicate' };
       return false;
     }
@@ -55,8 +71,8 @@ export async function syncSwipes(
     ? await env.APP.batch(
         valid.map(({ item }) =>
           env.APP.prepare(
-            'SELECT id, verdict, swiped_at FROM swipe WHERE user_id = ? AND word = ?',
-          ).bind(userId, item.word),
+            'SELECT id, verdict, swiped_at FROM swipe WHERE user_id = ? AND card_id = ?',
+          ).bind(userId, item.cardId),
         ),
       )
     : [];
@@ -64,8 +80,8 @@ export async function syncSwipes(
     ? await env.APP.batch(
         valid.map(({ item }) =>
           env.APP.prepare(
-            'SELECT likes, dislikes, prior FROM word_stats WHERE word = ?',
-          ).bind(item.word),
+            'SELECT likes, dislikes FROM word_stats WHERE card_id = ?',
+          ).bind(item.cardId),
         ),
       )
     : [];
@@ -83,7 +99,7 @@ export async function syncSwipes(
       results[index] = {
         id: item.id,
         status: 'invalid',
-        message: 'Word is not in the statistics table.',
+        message: 'Card is not in the statistics table.',
       };
       continue;
     }
@@ -91,14 +107,14 @@ export async function syncSwipes(
       (item.verdict === 1 ? 1 : 0) - (old?.verdict === 1 ? 1 : 0);
     const dislikeDelta =
       (item.verdict === -1 ? 1 : 0) - (old?.verdict === -1 ? 1 : 0);
-    // UNIQUE(user_id,word) and id PK: one swipe row, then one stats row.
+    // UNIQUE(user_id,card_id) and id PK: one swipe row, then one stats row.
     writes.push(
       env.APP.prepare(
-        'INSERT INTO swipe (id,user_id,word,verdict,bucket,shown_at,swiped_at,received_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id,word) DO UPDATE SET id=excluded.id,verdict=excluded.verdict,bucket=excluded.bucket,shown_at=excluded.shown_at,swiped_at=excluded.swiped_at,received_at=excluded.received_at',
+        'INSERT INTO swipe (id,user_id,card_id,verdict,bucket,shown_at,swiped_at,received_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id,card_id) DO UPDATE SET id=excluded.id,verdict=excluded.verdict,bucket=excluded.bucket,shown_at=excluded.shown_at,swiped_at=excluded.swiped_at,received_at=excluded.received_at',
       ).bind(
         item.id,
         userId,
-        item.word,
+        item.cardId,
         item.verdict,
         item.bucket ?? null,
         item.shownAt,
@@ -106,20 +122,23 @@ export async function syncSwipes(
         now,
       ),
     );
-    // PK word: one row written. Compute from the current DB counters inside the transaction.
+    // PK card_id: one row written. SET expressions see the pre-update row, so
+    // the deltas are added explicitly. Score is the flat-prior posterior mean
+    // (§6.2): (likes + K*base) / (n + K); the heuristic prior orders only the
+    // fresh lane.
     writes.push(
       env.APP.prepare(
-        'UPDATE word_stats SET likes=likes+?, dislikes=dislikes+?, score=(likes+?+?*prior)/(likes+dislikes+?+?+?), updated_at=? WHERE word=?',
+        'UPDATE word_stats SET likes=likes+?, dislikes=dislikes+?, score=(likes+?+?)/(likes+dislikes+?+?+?), updated_at=? WHERE card_id=?',
       ).bind(
         likeDelta,
         dislikeDelta,
         likeDelta,
-        strength,
+        pseudoLikes,
         likeDelta,
         dislikeDelta,
         strength,
         now,
-        item.word,
+        item.cardId,
       ),
     );
     applied.push(item);
@@ -128,24 +147,24 @@ export async function syncSwipes(
   const written = writes.length ? await env.APP.batch(writes) : [];
   let servedWritten = 0;
   // Normally every synced card is already in served. Cookie-loss recovery can
-  // add missing words with a single extra write for the whole batch.
+  // add missing card IDs with a single extra write for the whole batch.
   if (applied.length) {
     const record = await env.APP.prepare(
-      'SELECT words FROM served WHERE user_id = ?',
+      'SELECT card_ids FROM served WHERE user_id = ?',
     )
       .bind(userId)
-      .first<{ words: string }>();
-    const words: string[] = record ? JSON.parse(record.words) : [];
-    const seen = new Set(words);
+      .first<{ card_ids: string }>();
+    const ids: string[] = record ? JSON.parse(record.card_ids) : [];
+    const seen = new Set(ids);
     for (const item of applied)
-      if (!seen.has(item.word)) {
-        seen.add(item.word);
-        words.push(item.word);
+      if (!seen.has(item.cardId)) {
+        seen.add(item.cardId);
+        ids.push(item.cardId);
       }
-    if (!record || seen.size !== new Set(JSON.parse(record.words)).size) {
-      const capped = words.slice(-Number(env.SERVED_CAP));
+    if (!record || seen.size !== new Set(JSON.parse(record.card_ids)).size) {
+      const capped = ids.slice(-Number(env.SERVED_CAP));
       const updated = await env.APP.prepare(
-        'INSERT INTO served (user_id,words,count,updated_at) VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET words=excluded.words,count=excluded.count,updated_at=excluded.updated_at',
+        'INSERT INTO served (user_id,card_ids,count,updated_at) VALUES (?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET card_ids=excluded.card_ids,count=excluded.count,updated_at=excluded.updated_at',
       )
         .bind(userId, JSON.stringify(capped), capped.length, now)
         .run();
@@ -163,24 +182,25 @@ export async function syncSwipes(
 export async function deleteLiked(
   env: CloudflareBindings,
   userId: string,
-  word: string,
+  cardId: string,
 ): Promise<boolean> {
-  // UNIQUE(user_id,word): one row read.
+  // UNIQUE(user_id,card_id): one row read.
   const old = await env.APP.prepare(
-    'SELECT verdict FROM swipe WHERE user_id=? AND word=?',
+    'SELECT verdict FROM swipe WHERE user_id=? AND card_id=?',
   )
-    .bind(userId, word)
+    .bind(userId, cardId)
     .first<{ verdict: number }>();
   if (old?.verdict !== 1) return false;
   const now = Date.now();
   const strength = Number(env.PRIOR_STRENGTH);
+  const pseudoLikes = strength * Number(env.BASE_RATE);
   await env.APP.batch([
     env.APP.prepare(
-      'DELETE FROM swipe WHERE user_id=? AND word=? AND verdict=1',
-    ).bind(userId, word),
+      'DELETE FROM swipe WHERE user_id=? AND card_id=? AND verdict=1',
+    ).bind(userId, cardId),
     env.APP.prepare(
-      'UPDATE word_stats SET likes=likes-1,score=(likes-1+?*prior)/(likes+dislikes-1+?),updated_at=? WHERE word=?',
-    ).bind(strength, strength, now, word),
+      'UPDATE word_stats SET likes=likes-1,score=(likes-1+?)/(likes+dislikes-1+?),updated_at=? WHERE card_id=?',
+    ).bind(pseudoLikes, strength, now, cardId),
   ]);
   return true;
 }

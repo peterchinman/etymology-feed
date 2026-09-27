@@ -2,8 +2,13 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createAuth } from './auth';
-import { FeedUnavailable, getUserFeed, getWord } from './feed';
-import { buildPools } from './pools';
+import {
+  FeedUnavailable,
+  getUserFeed,
+  getWord,
+  getWordEtymologies,
+} from './feed';
+import { buildPools, POOLS_KEY } from './pools';
 import { deleteLiked, syncInput, syncSwipes } from './sync';
 
 type Variables = { userId: string; isAnonymous: boolean };
@@ -17,7 +22,11 @@ app.all('/auth/*', (c) =>
   createAuth(c.env, new URL(c.req.url).origin).handler(c.req.raw),
 );
 app.use('/api/*', async (c, next) => {
-  if (c.req.path.startsWith('/api/words/')) return next();
+  if (
+    c.req.path.startsWith('/api/words/') ||
+    c.req.path.startsWith('/api/cards/')
+  )
+    return next();
   if (
     ['POST', 'DELETE'].includes(c.req.method) &&
     c.req.header('X-Requested-With') !== 'fetch'
@@ -66,10 +75,10 @@ const routes = app
       c.env.APP.prepare('SELECT id FROM user WHERE id = ?')
         .bind('__health__')
         .first(),
-      c.env.CACHE.get('pools:v1'),
+      c.env.CACHE.get(POOLS_KEY),
     ]);
     if (!dict) throw new FeedUnavailable('The dictionary is not loaded.');
-    return c.json({ status: 'ok', dictWords: Number(dict.value) });
+    return c.json({ status: 'ok', dictCards: Number(dict.value) });
   })
   .get(
     '/api/feed',
@@ -99,7 +108,7 @@ const routes = app
           if (
             !Array.isArray(value) ||
             value.length > 30_000 ||
-            !value.every((word) => typeof word === 'string')
+            !value.every((id) => typeof id === 'string')
           )
             throw Error();
           seed = value;
@@ -108,7 +117,8 @@ const routes = app
             {
               error: {
                 code: 'invalid_query',
-                message: 'known must be a JSON array of at most 30,000 words.',
+                message:
+                  'known must be a JSON array of at most 30,000 card IDs.',
               },
             },
             400,
@@ -137,9 +147,9 @@ const routes = app
       await syncSwipes(c.env, c.get('userId'), c.req.valid('json').swipes),
     );
   })
-  .delete('/api/swipes/:word', async (c) =>
+  .delete('/api/swipes/:cardId', async (c) =>
     c.json({
-      removed: await deleteLiked(c.env, c.get('userId'), c.req.param('word')),
+      removed: await deleteLiked(c.env, c.get('userId'), c.req.param('cardId')),
     }),
   )
   .get('/api/me', (c) =>
@@ -153,7 +163,31 @@ const routes = app
       providers: [] as string[],
     }),
   )
+  .get('/api/cards/:id', async (c) => {
+    const card = await getWord({ dict: c.env.DICT }, c.req.param('id'));
+    if (!card)
+      return c.json(
+        { error: { code: 'card_not_found', message: 'Card not found.' } },
+        404,
+      );
+    c.header('Cache-Control', 'public, max-age=86400');
+    return c.json(card);
+  })
+  .get('/api/words/:word/etymologies', async (c) => {
+    const cards = await getWordEtymologies(
+      { dict: c.env.DICT },
+      c.req.param('word'),
+    );
+    if (!cards.length)
+      return c.json(
+        { error: { code: 'word_not_found', message: 'Word not found.' } },
+        404,
+      );
+    c.header('Cache-Control', 'public, max-age=86400');
+    return c.json({ cards });
+  })
   .get('/api/words/:word', async (c) => {
+    // Legacy links resolve to the primary card, whose ID remains the headword.
     const card = await getWord({ dict: c.env.DICT }, c.req.param('word'));
     if (!card)
       return c.json(

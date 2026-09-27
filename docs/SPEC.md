@@ -25,7 +25,7 @@ Source: `dictionary.db` from the Random Word Generator (RWG) repo, built from th
 
 ### 2.1 Length is the wrong filter; "morphology vs. story" is the right one
 
-Taking each word's longest etymology and classifying it with a regex as **morphology** (only says how the word is assembled from English parts: "From clergy + -man."), **pointer** ("Clipping of…", "Alternative form of…"), or **story** (everything else):
+The original baseline measured each word's longest etymology and classified it with a regex as **morphology** (only says how the word is assembled from English parts: "From clergy + -man."), **pointer** ("Clipping of…", "Alternative form of…"), or **story** (everything else). The following bands are historical word-level measurements; the local multi-etymology rebuild selected 155,032 cards across 148,180 headwords:
 
 | Length band | Words | Morphology | Pointer | Story | Story count |
 |---|---|---|---|---|---|
@@ -46,9 +46,9 @@ Counts of words with an etymology ≥ 80 chars, by shape flag: multiword **13,62
 
 ### 2.3 Consequences
 
-1. **Selection is by the etymology text, not the word** (§4.1). Expected pool ≈ **152k words**, every tier and shape.
-2. The dictionary export is ~40 MB of SQL; fine for D1 (5 GB free).
-3. **`word.id` is not stable across dictionary releases.** User data keys on the headword string, which is unique per row.
+1. **Selection is by each etymology text, not the word** (§4.1). The published one-card release has 147,954 cards; the rebuilt preview has **155,032 cards**.
+2. The rebuilt dictionary export is 47 MB of SQL; fine for D1 (5 GB free).
+3. **A headword is not a card ID.** User data keys on a distinct card ID for each retained etymology. The source build preserves the entry-to-etymology link so each card receives a matching definition.
 4. Wiktionary text is **CC BY-SA 4.0**: credit Wiktionary/kaikki.org and link the license (footer + a "source" line on each card).
 5. Whether short stories and each shape genre actually earn their place is a **post-launch, data question**: §6.5 reports like-rate by length band and by shape so the thresholds in §4.1 can be revisited with evidence.
 
@@ -87,7 +87,7 @@ Versions to pin at project start (check `npm view` on day one): astro 7.x, @astr
 
 ### 3.2 Two D1 databases, one Worker
 
-- **`DICT`** — read-only, ~152k rows, ~40 MB. Rebuilt per dictionary release: the release script creates a *new* D1 database `dict-<tag>`, imports `etymology.sql`, updates `database_id` in `wrangler.toml`, deploys, then deletes the old one. Swapping the id makes a release atomic.
+- **`DICT`** — read-only, 155,032 rows in the rebuilt preview (47 MB SQL). Rebuilt per dictionary release: the release script creates a *new* D1 database `dict-<tag>`, imports `etymology.sql`, updates `database_id` in `wrangler.toml`, deploys, then deletes the old one. Swapping the id makes a release atomic.
 - **`APP`** — read/write. Better Auth tables, `swipe`, `served`, `word_stats`. Migrations via `drizzle-kit generate` + `wrangler d1 migrations apply`. Backups: D1 Time Travel (check retention on the free plan) plus a weekly `wrangler d1 export` to R2 from CI.
 
 ### 3.3 "Should RWG be able to read from it?"
@@ -101,7 +101,7 @@ Versions to pin at project start (check `npm view` on day one): astro 7.x, @astr
 |---|---|---|---|
 | Worker requests | 100k / day | 1 per feed fetch (100 cards), 1 per sync (≤ 500 swipes) | very large |
 | Worker CPU | 10 ms / request | Thompson sampling over ≤ 3k candidates ≈ 1–2 ms; 100-card fetch ≈ 3 ms | fine |
-| D1 rows read | 5M / day | feed ≈ 1 (served blob) + 100 (cards); sync ≈ 2 per swipe | ~40k feed fetches/day |
+| D1 rows read | 5M / day | feed ≈ 1 (served blob) + 100 (cards); sync ≈ 2 per swipe; pool cron ≤ 3,000 + the rated lanes' populations per run (288 runs/day ≈ 0.9M at launch, ≤ 2.6M with every lane full) | ~40k feed fetches/day |
 | D1 rows written | **100k / day** ← binding limit | feed = 1 (served blob); 100 new swipes = 650 rows written including index updates | **at most ~15k swipes/day** before auth, cron, and feed writes |
 | KV reads | 100k / day | 1 per feed fetch | fine |
 | KV writes | 1k / day | cron every 5 min = 288 | fine |
@@ -116,7 +116,7 @@ Add `database/derive_etymology.py` to the RWG repo (stdlib only, like `build.py`
 
 ### 4.1 Selection rule (from §2.1; thresholds are script arguments and are recorded in `meta`)
 
-For each word, take the **longest** etymology as `text` (if several are kept, join with `\n\n`, longest first). Classify `text`:
+For each source word, classify **every distinct etymology section** separately. Retain the source entry number on both etymologies and meanings, then pair each retained etymology with the meanings in its source entries. Choose the first non-demoted definition within those entries. Keep the previous primary card ID equal to its headword for existing swipe and served data; assign each additional card a deterministic ID from its headword, etymology number, and text. Classify each `text`:
 
 - `morph`: matches the morphology regex — an optional lead-in ("From", "Equivalent to", "Formed from/as"), then two or more parts joined by ` + `, where a part is a word/affix, a quoted string, or a word followed by a parenthesized gloss, ending with optional punctuation or "See X." **The agent must extend the regex to handle multi-word parts** ("From di- + keto acid") and verify against the 25-sample check below.
 - `pointer`: starts with one of *Clipping, Abbreviation, Initialism, Acronym, Shortening, Short for, Alteration, Alternative form, Variant, Diminutive, Plural, Back-formation, Blend, Contraction, Ellipsis, Pronunciation spelling, Eye dialect, Misspelling, Compound, Univerbation, Hypocoristic, Reduplication, Doublet* and is under 70 chars.
@@ -124,7 +124,7 @@ For each word, take the **longest** etymology as `text` (if several are kept, jo
 
 `signal` = mentions a source language or period (a list of ~150 names in the script: Latin, Ancient Greek, Old English, Middle English, Old Norse, Old French, Proto-*, Sanskrit, Arabic, Hebrew, Teochew, Nahuatl, …) **or** contains a quoted gloss (`“…”` or `"…"`).
 
-**Keep** if `class == story AND (len >= 80 OR signal)`. Measured pool: **~152k words**. No filter on tier or word shape.
+**Keep** if `class == story AND (len >= 80 OR signal)` and a paired definition exists. The full local rebuild selected **155,032 cards across 148,180 headwords**. No filter on tier or word shape.
 
 Keep words of every tier (common … unattested) and every shape. Record the shape so the card and the analytics can use it.
 
@@ -135,7 +135,9 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 -- source release tag, build time, thresholds, classifier version, row count, tier & shape histograms
 
 CREATE TABLE word (
-  word        TEXT PRIMARY KEY,   -- headword; the stable key used by APP
+  id          TEXT PRIMARY KEY,   -- distinct card ID used by APP
+  word        TEXT NOT NULL,      -- display headword; may occur on several cards
+  etym_no     INTEGER,            -- Wiktionary etymology section, when supplied
   ipa         TEXT,
   tier        TEXT NOT NULL,      -- common | uncommon | scarce | rare | obscure | marginal | unattested
   zipf        REAL,
@@ -152,20 +154,21 @@ CREATE TABLE word (
 );
 CREATE UNIQUE INDEX idx_word_shuffle ON word(shuffle);
 CREATE INDEX idx_word_prior ON word(prior DESC);
+CREATE INDEX idx_word_headword ON word(word,etym_no);
 ```
 
 `shuffle` lets "k uniformly random words" be `WHERE shuffle IN (SELECT value FROM json_each(?))` with k random integers in `1..N` — k rows read, no scan.
 
 ### 4.3 Cold-start prior
 
-A heuristic in `[0.2, 0.8]` so the feed is decent on day one and unrated words are explored best-first. The prior is a *weak* opinion: it enters §6.2 as `K = 5` imaginary ratings, and the window is set so that five real ratings can overrule it in either direction, and so that both Beta shape parameters (`K·p`, `K·(1−p)`) stay ≥ 1, which keeps Thompson sampling well-behaved. From `text`:
+A heuristic in `[0.2, 0.8]` so unrated cards are explored best-first. **It orders the fresh lane only (§6.1); it does not enter the score.** Rated cards are judged by their ratings under a flat prior (§6.2). The heuristic was originally also the score's pseudo-count prior with `K = 5`; the release measured 16,352 of 147,954 cards clamped at 0.8, so under that design a single like on a 0.7 card still trailed 18,981 unrated cards. From `text`:
 - length: < 40 → −0.1; 40–80 → 0; 80–120 → +0.1; 120–250 → +0.2; 250+ → +0.25
 - each distinct language/period name: +0.05, cap +0.2
 - each of "doublet", "cognate", "folk etymology", "originally", "literally", "borrow", "named after", "coined": +0.04, cap +0.15
 - tier common/uncommon: +0.05; marginal/unattested: −0.05
 - clamp to `[0.2, 0.8]`
 
-The window is centered on a guess (~0.5) at the global like-rate. Once §6.5 reports the real one, re-center the prior on it (shift all values so the median prior equals the observed rate; keep the width) at the next dictionary release.
+The heuristic no longer needs re-centering, because only its order matters. What does track the global like-rate is `BASE_RATE` (§6.2): once §6.5 reports the real rate, set the var and rescore the rated rows with one indexed `UPDATE … WHERE likes + dislikes > 0`. Unrated rows keep a stale score harmlessly; no lane reads it.
 
 The report prints 20 random words from the top decile and 20 from the bottom decile, plus 25 random `morph`-classified and 25 random `story`-under-40 entries, so the classifier and the prior can be eyeballed. Tune once, then leave it; real ratings take over.
 
@@ -187,88 +190,96 @@ Drizzle schema in `apps/api/src/db/schema.ts`; migrations in `apps/api/drizzle/`
 CREATE TABLE swipe (
   id          TEXT PRIMARY KEY,        -- client uuid = idempotency key
   user_id     TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
-  word        TEXT NOT NULL,
+  card_id     TEXT NOT NULL,
   verdict     INTEGER NOT NULL CHECK (verdict IN (1, -1)),
-  bucket      TEXT,                     -- 'rec' | 'unknown' | 'wild' (which feed slot served it)
+  bucket      TEXT,                     -- 'confirmed' | 'promising' | 'fresh' | 'wild': the lane the card came from (§6.1)
   shown_at    INTEGER NOT NULL,         -- client clock: when the card was actually displayed
   swiped_at   INTEGER NOT NULL,         -- client clock
   received_at INTEGER NOT NULL,         -- server clock
-  UNIQUE (user_id, word)
+  UNIQUE (user_id, card_id)
 );
 CREATE INDEX idx_swipe_user_liked ON swipe(user_id, swiped_at DESC) WHERE verdict = 1;
 
-CREATE TABLE served (                   -- every word ever sent to this user: the no-repeats record
+CREATE TABLE served (                   -- every card ever sent to this user: the no-repeats record
   user_id     TEXT PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
-  words       TEXT NOT NULL,            -- JSON array of headwords, oldest first, capped at 30,000
+  card_ids    TEXT NOT NULL,            -- JSON array of card IDs, oldest first, capped at 30,000
   count       INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL
 ) WITHOUT ROWID;
 
 CREATE TABLE word_stats (               -- denormalized aggregate, upserted on every swipe
-  word        TEXT PRIMARY KEY,
+  card_id     TEXT PRIMARY KEY,
   likes       INTEGER NOT NULL DEFAULT 0,
   dislikes    INTEGER NOT NULL DEFAULT 0,
-  prior       REAL NOT NULL,            -- copied from DICT at seed time
-  score       REAL NOT NULL,            -- posterior mean, §6.2
+  prior       REAL NOT NULL,            -- heuristic prior copied from DICT at seed time; orders the fresh lane only
+  score       REAL NOT NULL,            -- flat-prior posterior mean, §6.2; BASE_RATE while unrated
   updated_at  INTEGER NOT NULL
 ) WITHOUT ROWID;
-CREATE INDEX idx_word_stats_score ON word_stats(score DESC);
-CREATE INDEX idx_word_stats_unrated ON word_stats((likes + dislikes), prior DESC);
+CREATE INDEX idx_word_stats_unrated ON word_stats((likes + dislikes), prior DESC);           -- fresh lane
+CREATE INDEX idx_word_stats_rec ON word_stats(score DESC)
+  WHERE likes + dislikes >= 5 AND score >= 0.5;                                              -- confirmed lane (partial)
+CREATE INDEX idx_word_stats_promising ON word_stats(score DESC)
+  WHERE likes > 0 AND likes >= dislikes AND likes + dislikes < 5;                            -- promising lane (partial)
 ```
+
+The two partial indexes cost writes only for rows that qualify, so at launch they are nearly free; the general score index was dropped because no lane needs a full-table order.
 
 Notes:
 - **`served` is one row per user, not one per card.** With offline prefetching of 100 cards at a time, a per-card impressions table would cost 100 D1 writes per fetch; a JSON blob costs 1 read + 1 write. 30k entries ≈ 400 KB, under D1's 2 MB row limit. Past the cap the oldest entries roll off and a very small chance of a repeat is accepted (documented in `/about/`).
 - Anonymous visitors are real `user` rows (`isAnonymous = 1`), so `user_id` is always present.
-- A re-swipe of the same word by the same user **updates** the verdict (UPSERT on `(user_id, word)`) and adjusts `word_stats` by the delta. The `(user_id, word)` unique index serves this lookup and user-ordered pagination; the partial index serves Liked. The unused word-only swipe index was removed after measuring its write cost.
-- `word_stats` is seeded from `DICT` by the release script (152k rows; run on the paid plan or spread over two days on free), inserting only missing rows.
-- There is no per-word "times served" counter (it would cost a write per card). Pool ordering uses ratings and prior instead (§6.1).
+- A re-swipe of the same card by the same user **updates** the verdict (UPSERT on `(user_id, card_id)`) and adjusts `word_stats` by the delta. The `(user_id, card_id)` unique index serves this lookup and user-ordered pagination; the partial index serves Liked.
+- `word_stats` is seeded from `DICT` by the release script (155,032 rows in the rebuilt preview; run on the paid plan or spread over multiple days on free), inserting only missing rows.
+- There is no per-card "times served" counter (it would cost a write per card). Lane membership uses ratings, and fresh-lane order uses the prior (§6.1).
 
 ---
 
 ## 6. Feed algorithm
 
-Goal: keep people swiping (show good stuff) while spreading ratings across the pool (show unknown stuff), never repeat a card for a user, and make the mix measurable so it can be tuned.
+Goal: keep people swiping (show good stuff) while spreading ratings across the pool (show unknown stuff), never repeat a card for a user, and make the mix measurable so it can be tuned. The regime is many cards and few users (~148k cards; a like is the scarce signal), so the design routes a single like to other users within one pool refresh and treats a dislike as cheap to act on.
 
-### 6.1 Definitions
+### 6.1 Lanes by information state
 
-- `n = likes + dislikes` for a word.
-- **Recommended pool (`rec`)**: words with `n >= 5 AND score >= 0.5`, top 3,000 by `score`.
-- **Unknown pool (`unknown`)**: words with `n < 5`, ordered by `n ASC, prior DESC` — fewest ratings first, and among those the most promising first. First 3,000.
-- **Wild**: any word, uniform via `shuffle`. (Words with many ratings and a low score are still reachable here; there is no retirement.)
+`n = likes + dislikes` for a card. Every card is in exactly one lane, and only the first three are queried as pools:
+
+- **Confirmed**: `n >= 5 AND score >= 0.5` (with the flat prior below that is exactly `likes >= dislikes`), top 3,000 by `score`. Empty for months; that is fine.
+- **Promising**: `likes > 0 AND likes >= dislikes AND n < 5`, top 3,000 by `score`. The lane that makes early users' likes visible.
+- **Fresh**: `n = 0`, ordered by the heuristic `prior DESC` (§4.3), first 3,000. The frontier sweeps the dictionary best-first as cards receive their first rating.
+- **Parked**: rated with `likes < dislikes`. Not pooled; reachable only through wild. With 148k cards, being wrong about a parked card is cheap.
+- **Wild**: any card, uniform via `shuffle`.
+
+There is no minimum-rating gate on being shown, and no cold-start branch: the lanes are shares, not gates, so nothing disappears when a count crosses a threshold.
 
 ### 6.2 Scoring (pure functions in `packages/shared/scoring.ts`, unit-tested)
 
-Bayesian posterior mean with the cold-start prior as pseudo-counts (prior strength `K = 5`):
+Rated lanes use a **flat prior**, not the heuristic one: prior strength `K = PRIOR_STRENGTH = 2` at `BASE_RATE = 0.5`, i.e. `Beta(1, 1)`.
 
 ```
-alpha0 = K * prior            beta0 = K * (1 - prior)
-score  = (likes + alpha0) / (likes + dislikes + alpha0 + beta0)
+alpha0 = K * BASE_RATE        beta0 = K * (1 - BASE_RATE)
+score  = (likes + alpha0) / (n + alpha0 + beta0)
 ```
 
-Stored in `word_stats.score`, recomputed on each swipe. For **ranking within `rec`** use **Thompson sampling**: draw `theta ~ Beta(likes + alpha0, dislikes + beta0)` per candidate and take the top draws (Beta via two Marsaglia–Tsang Gamma draws, ~30 lines, no dependency). This gives variety across users and mildly favors under-sampled winners.
+One like takes a card to 2/3 and one dislike to 1/3, so a single rating is decisive and any liked card is judged by its rating rather than by its etymology's length. Both shape parameters stay ≥ 1 for every count, which keeps Thompson sampling well-behaved. Stored in `word_stats.score`, recomputed on each swipe; unrated rows hold `BASE_RATE`, which no lane reads. For **ranking within `confirmed` and `promising`** use **Thompson sampling**: draw `theta ~ Beta(likes + alpha0, dislikes + beta0)` per candidate and take the top draws (Beta via two Marsaglia–Tsang Gamma draws, no dependency). This gives variety across users and mildly favors under-sampled winners.
 
 ### 6.3 Pools live in KV, refreshed by cron
 
-Cron Trigger `*/5 * * * *` runs two indexed queries (≤ 3,000 rows read each) and writes one KV key `pools:v1` = `{ builtAt, wordCount, rec: [[word, likes, dislikes, prior]…], unknown: [word…] }` (~200 KB). The feed handler reads that one key, samples in memory, then touches D1 twice.
-
-Cold start: if fewer than 500 words have `n >= 5`, `rec` is filled by `score DESC` (seeded from `prior`), same code path.
+Cron Trigger `*/5 * * * *` runs three indexed queries, one per pooled lane, each reading only that lane's own rows (≤ 3,000 for `fresh`; the partial indexes make `confirmed` and `promising` cost exactly their populations), and writes one KV key `pools:v3` = `{ builtAt, cardCount, confirmed: [[cardId, likes, dislikes]…], promising: [[cardId, likes, dislikes]…], fresh: [cardId…] }`. The feed handler reads that one key, samples in memory, then touches D1 twice. A vote therefore changes other users' feeds within about five minutes. If the read budget ever binds, a fifteen-minute cron is the lever.
 
 ### 6.4 Composing a fetch
 
 `GET /api/feed?n=100` (n ≤ 100; the client asks for large batches because it works offline, §7.4):
 
-1. Read `served.words` for the user (1 row).
-2. Fill slots per 20-card block using the pattern `R R R U R W R U R R U R R U R W R U R U` (12 rec / 6 unknown / 2 wild), repeated `n/20` times. `rec`: top Thompson draws; `unknown`: random from the first 1,000 of the pool (jitter so concurrent users don't all get the same word); `wild`: uniform via `shuffle`. Skip anything in `served`; refill from the same bucket, then relax to `wild`.
-3. Fetch the cards from `DICT` with `WHERE word IN (SELECT value FROM json_each(?))` (n rows read).
-4. Append the n words to `served.words`, trim to 30,000, write back (1 write).
+1. Read `served.card_ids` for the user (1 row).
+2. Fill slots per 20-card block with **6 confirmed / 6 promising / 6 fresh / 2 wild**, spread evenly by largest remainder, repeated `n/20` times. `confirmed`, `promising`: top Thompson draws; `fresh`: random from the first 1,000 of the lane (jitter so concurrent users don't all get the same card); `wild`: uniform via `shuffle`. Skip anything in `served`. **Fill-through**: a slot whose lane is exhausted takes from the lanes below it, then the lanes above, so an empty confirmed lane hands its slots to promising, then fresh; when every lane is exhausted, relax to `wild`. The card's `bucket` records the lane it actually came from, not the slot, so per-lane like-rates in §6.5 are honest.
+3. Fetch the cards from `DICT` by primary-key `id` lookups (n rows read).
+4. Append the n card IDs to `served.card_ids`, trim to 30,000, write back (1 write).
 
-All tunable via `wrangler.toml` vars: `REC_SLOTS`, `UNKNOWN_SLOTS`, `WILD_SLOTS`, `MIN_RATINGS`, `PRIOR_STRENGTH`, `SERVED_CAP`, pool sizes.
+All tunable via `wrangler.toml` vars: `CONFIRMED_SLOTS`, `PROMISING_SLOTS`, `FRESH_SLOTS`, `WILD_SLOTS`, `MIN_RATINGS`, `PRIOR_STRENGTH`, `BASE_RATE`, `SERVED_CAP`, `*_POOL_SIZE`. The partial indexes assume `MIN_RATINGS = 5`; another value still works but scans and needs new cost measurements.
 
 ### 6.5 Measure it — this is how the §4.1 thresholds get revisited
 
-Every swipe carries `bucket`, and the pinned `DICT` release gives `etym_band`, `shape`, `tier`, `has_signal`. Run `apps/api/scripts/report_stats.py` locally on demand using data-only D1 exports of APP's `swipe` and `word_stats` tables and the release's `etymology.db` (never vendored). It reports like-rates for the last 7 and 30 UTC calendar days, including the current partial day: global, by bucket, **by `etym_band`**, **by `shape`**, by tier, and by `has_signal`; counts of words with `n >= 5`, recommended-eligible and unknown words; and current swipe rows by day. The script joins the two datasets in local SQLite. There is no nightly stats cron, KV snapshot, or admin stats endpoint. The table stores one current verdict per user and word, so this report cannot reconstruct earlier verdicts or deleted likes; `received_at` places offline swipes on the sync day. Export and local scan costs are incurred only when a report is requested.
+Every swipe carries `bucket`, and the pinned `DICT` release gives `etym_band`, `shape`, `tier`, `has_signal`. Run `apps/api/scripts/report_stats.py` locally on demand using data-only D1 exports of APP's `swipe` and `word_stats` tables and the release's `etymology.db` (never vendored). It reports like-rates for the last 7 and 30 UTC calendar days, including the current partial day: global, by lane (`bucket`), **by `etym_band`**, **by `shape`**, by tier, and by `has_signal`; the count of cards with `n >= 5` and each lane's population (confirmed, promising, fresh, parked); and current swipe rows by day. The script joins the two datasets in local SQLite. There is no nightly stats cron, KV snapshot, or admin stats endpoint. The table stores one current verdict per user and word, so this report cannot reconstruct earlier verdicts or deleted likes; `received_at` places offline swipes on the sync day. Export and local scan costs are incurred only when a report is requested.
 
-Decision rules to apply once there are ≥ 2,000 swipes per band: if `lt40` like-rate is below half of `80_120`, raise the length floor for un-signalled stories; if a shape's like-rate is below half the plain rate, add it as a default-off filter rather than removing it. Also report the global like-rate so the prior can be re-centered on it (§4.3). Record the outcome in `docs/DECISIONS.md`.
+Decision rules to apply once there are ≥ 2,000 swipes per band: if `lt40` like-rate is below half of `80_120`, raise the length floor for un-signalled stories; if a shape's like-rate is below half the plain rate, add it as a default-off filter rather than removing it. Also report the global like-rate so `BASE_RATE` can be re-centered on it (§4.3, §6.2). Record the outcome in `docs/DECISIONS.md`.
 
 ---
 
@@ -288,7 +299,7 @@ Better Auth `socialProviders: { google, github }`, both in Milestone 4. Routes a
 ### 7.3 Merge on sign-in (idempotent, both directions)
 
 1. **Server** — the anonymous plugin's `onLinkAccount({ anonymousUser, newUser })` hook, in one D1 `batch()`:
-   - `swipe`: insert the anonymous user's rows under `newUser.id` with `ON CONFLICT(user_id, word) DO UPDATE` keeping the **newer `swiped_at`**; adjust `word_stats` only for rows whose verdict actually changed.
+   - `swipe`: insert the anonymous user's rows under `newUser.id` with `ON CONFLICT(user_id, card_id) DO UPDATE` keeping the **newer `swiped_at`**; adjust `word_stats` only for rows whose verdict actually changed.
    - `served`: union of both blobs, ordered by first appearance, trimmed to the cap.
    - Better Auth then deletes the anonymous user (default), cascading its rows.
 2. **Client** — after redirect, `POST /api/sync` with every unsynced swipe from IndexedDB (idempotent on `swipe.id`), then `GET /api/me/likes` and replace the local liked list with the server's. From here the server is the source of truth and IndexedDB is a cache.
@@ -297,8 +308,8 @@ Better Auth `socialProviders: { google, github }`, both in Milestone 4. Routes a
 
 **Stores (IndexedDB, via `idb`):**
 - `stack` — cards not yet swiped, in serve order. Target ≥ **150** buffered; fetch `n=100` whenever online and `stack.length < 60`, and on app start.
-- `served` — set of every word this device has ever received (mirror of the server record; sent as `known=` on the first fetch after a cookie loss so the server can rebuild its record).
-- `swipes` — every swipe `{id, word, verdict, bucket, shownAt, swipedAt, synced}`; also the source for the Liked screen (verdict = 1).
+- `served` — set of every card ID this device has ever received (mirror of the server record; sent as `known=` on the first fetch after a cookie loss so the server can rebuild its record).
+- `swipes` — every swipe `{id, cardId, word, verdict, bucket, shownAt, swipedAt, synced}`; also the source for the Liked screen (verdict = 1).
 - `settings` — show-definitions default, theme.
 
 **Sync:**
@@ -319,21 +330,23 @@ Types flow to the frontend through `hc<AppType>()`. All bodies validated with zo
 | Method & path | Session | Purpose |
 |---|---|---|
 | `GET /api/feed?n=100&known=` | any (creates anon) | Next batch (§6.4). Updates `served`. `known` (optional, JSON array, ≤ 30k) seeds `served` after cookie loss. |
-| `POST /api/sync` | any | Array of swipes (≤ 500): `{id, word, verdict, bucket, shownAt, swipedAt}`. Idempotent on `id`; per-item status. Updates `word_stats`; adds words to `served`. |
-| `DELETE /api/swipes/{word}` | any | Remove from liked list: delete the row and decrement stats ("unlike" is not "dislike"). |
+| `POST /api/sync` | any | Array of swipes (≤ 500): `{id, cardId, verdict, bucket, shownAt, swipedAt}`. Idempotent on `id`; per-item status. Updates `word_stats`; adds card IDs to `served`. |
+| `DELETE /api/swipes/{cardId}` | any | Remove one card from liked list: delete its row and decrement its stats. |
 | `GET /api/me` | any | `{ user: { id, isAnonymous, name, image }, providers: ['google','github'] }`. |
 | `GET /api/me/likes?cursor=&limit=200` | any | Liked cards, newest first, full card payload. |
 | `DELETE /api/me` | signed-in | Delete account and all rows. |
-| `GET /api/words/{word}` | none | One card by headword (share links; RWG later). `Cache-Control: public, max-age=86400`. |
+| `GET /api/cards/{id}` | none | One card by ID, including non-primary origins. `Cache-Control: public, max-age=86400`. |
+| `GET /api/words/{word}/etymologies` | none | All retained cards for a headword, in etymology order. |
+| `GET /api/words/{word}` | none | Legacy primary card by headword. `Cache-Control: public, max-age=86400`. |
 | `/auth/*` | — | Better Auth handler. |
 | `GET /healthz` | none | Pings both D1s and KV. |
 
 Card payload (shared type in `packages/shared`):
 
 ```ts
-type Card = { word: string; ipa: string | null; pos: string[]; definition: string; defPos: string;
+type Card = { id: string; word: string; etymNo: number | null; ipa: string | null; pos: string[]; definition: string; defPos: string;
               etymology: string; tier: string; shape: string; etymBand: string;
-              bucket?: 'rec' | 'unknown' | 'wild' }
+              bucket?: 'confirmed' | 'promising' | 'fresh' | 'wild' }
 ```
 
 Errors: `{ error: { code, message } }` with matching status. Rate limits via the binding: `/api/feed` 1 req/s per user, `/api/sync` 2 req/s.
@@ -390,8 +403,8 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 - ✅ Playwright: swipe right adds to Liked and survives reload; with `setOffline(true)` after one fetch, 100 swipes work and Liked updates; back online, nothing is lost; keyboard works; Lighthouse mobile ≥ 90 perf/a11y/PWA.
 
 **M3 — Persistence + algorithm**
-- `APP` migrations; Better Auth with the anonymous plugin (no social yet); `served` record; `POST /api/sync` (idempotent upsert + stats delta + served update); `DELETE /api/swipes/{word}`; `word_stats` seeding script; pools cron → KV; Thompson sampling; slot composition + interleave; `known=` reseed; local on-demand stats report script; rate limiting.
-- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 101 rows read and 1 write, and a 100-swipe sync of 50 likes and 50 dislikes costs ≤ 650 rows written including index updates; a simulated user of 5,000 fetches never receives a repeat; the local report script produces global like-rate and like-rate by bucket, band and shape from exported tables.
+- `APP` migrations; Better Auth with the anonymous plugin (no social yet); `served` record; `POST /api/sync` (idempotent upsert + stats delta + served update); `DELETE /api/swipes/{word}`; `word_stats` seeding script; lane pools (confirmed / promising / fresh) cron → KV with fill-through; Thompson sampling under the flat prior; slot composition + interleave; `known=` reseed; local on-demand stats report script; rate limiting.
+- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 101 rows read and 1 write, and a 100-swipe sync of 50 likes and 50 dislikes costs ≤ 650 rows written including index updates; a simulated user of 5,000 fetches never receives a repeat; one like moves a card into the promising lane at the next pool refresh and five ratings with `likes >= dislikes` move it into confirmed; every lane query uses its own index and a pool refresh reads no more than `FRESH_POOL_SIZE` plus the rated lanes' populations; the local report script produces global like-rate, like-rate by lane, band and shape, and lane populations from exported tables.
 
 **M4 — Accounts**
 - Google + GitHub providers; `onLinkAccount` merge (swipes + served); post-login sync + likes reconcile; `GET /api/me/likes`; `DELETE /api/me`; sign-in/out UI and avatar.

@@ -50,7 +50,7 @@ const wordsResult = spawnSync(
     persist,
     '--json',
     '--command',
-    'SELECT word,prior FROM word',
+    'SELECT id,prior FROM word',
   ],
   { cwd: api, encoding: 'utf8' },
 );
@@ -64,8 +64,8 @@ for (let i = 0; i < words.length; i += 100) {
   const rows = words
     .slice(i, i + 100)
     .map(
-      ({ word, prior }) =>
-        `(${quote(word)},0,0,${Number(prior)},${Number(prior)},0)`,
+      ({ id, prior }) =>
+        `(${quote(id)},0,0,${Number(prior)},${Number(prior)},0)`,
     )
     .join(',');
   const seeded = spawnSync(
@@ -78,7 +78,7 @@ for (let i = 0; i < words.length; i += 100) {
       '--persist-to',
       persist,
       '--command',
-      `INSERT INTO word_stats (word,likes,dislikes,prior,score,updated_at) VALUES ${rows}`,
+      `INSERT INTO word_stats (card_id,likes,dislikes,prior,score,updated_at) VALUES ${rows}`,
     ],
     { cwd: api, encoding: 'utf8' },
   );

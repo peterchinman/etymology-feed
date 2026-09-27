@@ -54,11 +54,11 @@ def make_report(connection, now=None, min_ratings=5):
     days = {date.isoformat(): day_bucket() for date in dates}
     start = int(datetime.combine(dates[0], datetime.min.time(), timezone.utc).timestamp() * 1000)
     end = int(datetime.combine(today + timedelta(days=1), datetime.min.time(), timezone.utc).timestamp() * 1000)
-    missing_words = 0
+    missing_cards = 0
     rows = connection.execute(
         """SELECT s.verdict, s.bucket, s.received_at,
                   w.etym_band, w.shape, w.tier, w.has_signal
-           FROM swipe AS s LEFT JOIN dictionary.word AS w ON w.word = s.word
+           FROM swipe AS s LEFT JOIN dictionary.word AS w ON w.id = s.card_id
            WHERE s.received_at >= ? AND s.received_at < ?""",
         (start, end),
     )
@@ -67,9 +67,9 @@ def make_report(connection, now=None, min_ratings=5):
         liked = verdict == 1
         day["total"]["total"] += 1
         day["total"]["likes"] += int(liked)
-        add(day["bucket"], bucket or "unknown", liked)
+        add(day["bucket"], bucket or "unrecorded", liked)
         if band is None:
-            missing_words += 1
+            missing_cards += 1
             continue
         add(day["etymBand"], band, liked)
         for value in shape.split(","):
@@ -80,17 +80,25 @@ def make_report(connection, now=None, min_ratings=5):
     ordered = list(days.values())
     seven = summarize(ordered[-7:])
     thirty = summarize(ordered)
+    # Lane populations (§6.1): how many cards each lane could draw from today.
     rated = connection.execute(
         "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes >= ?",
         (min_ratings,),
     ).fetchone()[0]
-    recommended = connection.execute(
+    confirmed = connection.execute(
         "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes >= ? AND score >= 0.5",
         (min_ratings,),
     ).fetchone()[0]
-    unknown = connection.execute(
-        "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes < ?",
+    promising = connection.execute(
+        "SELECT COUNT(*) FROM word_stats WHERE likes > 0 AND likes >= dislikes "
+        "AND likes + dislikes < ?",
         (min_ratings,),
+    ).fetchone()[0]
+    fresh = connection.execute(
+        "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes = 0"
+    ).fetchone()[0]
+    parked = connection.execute(
+        "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes > 0 AND likes < dislikes"
     ).fetchone()[0]
     release = connection.execute(
         "SELECT value FROM dictionary.meta WHERE key = 'source_release'"
@@ -101,10 +109,14 @@ def make_report(connection, now=None, min_ratings=5):
         "dictionaryRelease": release[0] if release else None,
         "globalLikeRate": thirty["globalLikeRate"],
         "periods": {"7": seven, "30": thirty},
-        "ratedWords": rated,
-        "recommendedEligibleWords": recommended,
-        "unknownWords": unknown,
-        "missingDictionaryRows": missing_words,
+        "ratedCards": rated,
+        "lanes": {
+            "confirmed": confirmed,
+            "promising": promising,
+            "fresh": fresh,
+            "parked": parked,
+        },
+        "missingDictionaryRows": missing_cards,
         "swipesPerDay": [
             {"date": date, "count": days[date]["total"]["total"]}
             for date in reversed(list(days))
@@ -126,9 +138,9 @@ def main():
     try:
         # Data-only table exports avoid copying Better Auth users and sessions.
         connection.executescript(
-            "CREATE TABLE swipe (id TEXT, user_id TEXT, word TEXT, verdict INTEGER, "
+            "CREATE TABLE swipe (id TEXT, user_id TEXT, card_id TEXT, verdict INTEGER, "
             "bucket TEXT, shown_at INTEGER, swiped_at INTEGER, received_at INTEGER);"
-            "CREATE TABLE word_stats (word TEXT, likes INTEGER, dislikes INTEGER, "
+            "CREATE TABLE word_stats (card_id TEXT, likes INTEGER, dislikes INTEGER, "
             "prior REAL, score REAL, updated_at INTEGER);"
         )
         for path in (args.swipes_sql, args.word_stats_sql):

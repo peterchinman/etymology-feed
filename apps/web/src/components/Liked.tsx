@@ -189,7 +189,7 @@ export default function Liked() {
                     <h2 class="display-voice">
                       <a
                         class="word-source"
-                        href={`https://en.wiktionary.org/wiki/${encodeURIComponent(swipe.word)}`}
+                        href={`https://en.wiktionary.org/wiki/${encodeURIComponent(swipe.word)}${swipe.card.etymNo ? `#Etymology_${swipe.card.etymNo}` : ''}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         title={`View ${swipe.word} on Wiktionary`}

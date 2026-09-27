@@ -133,16 +133,24 @@ test('keyboard controls and undo work without a toast', async ({ page }) => {
   );
 });
 
-test('Settings opens from navigation and the definition choice survives reload', async ({
+test('Settings is its own page on a phone and the definition choice reaches the feed', async ({
   page,
 }) => {
   await page.goto('/');
   await expect(page.getByTestId('top-card')).toBeVisible();
-  await page
-    .locator('.bottom-nav')
-    .getByRole('link', { name: 'Settings' })
-    .click();
+  const nav = page.locator('.bottom-nav');
+  await nav.getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/\/settings\/$/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Settings' }),
+  ).toBeVisible();
+  await expect(page.getByTestId('top-card')).toHaveCount(0);
+  await expect(nav.getByRole('link', { name: 'Settings' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
   await page.getByLabel('Always show definitions').check();
+  await nav.getByRole('link', { name: 'Feed' }).click();
   await expect(
     page.getByRole('button', { name: 'Hide definition' }),
   ).toBeVisible();
@@ -150,13 +158,34 @@ test('Settings opens from navigation and the definition choice survives reload',
   await expect(
     page.getByRole('button', { name: 'Hide definition' }),
   ).toBeVisible();
+
+  // An old overlay link on a phone lands on the page instead.
+  await page.goto('/?settings=1');
+  await expect(page).toHaveURL(/\/settings\/$/);
+});
+
+test('the active dock tab underlines its label, not its icon', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const feed = page.locator('.bottom-nav').getByRole('link', { name: 'Feed' });
+  await expect(feed).toHaveAttribute('aria-current', 'page');
+  await expect(feed).toHaveCSS('text-decoration-line', 'none');
+  await expect(feed.locator('.nav-label')).toHaveCSS(
+    'text-decoration-line',
+    'underline',
+  );
+  await expect(feed.locator('.nav-icon')).toHaveCSS(
+    'text-decoration-line',
+    'none',
+  );
 });
 
 test('the themes persist and system mode follows the device', async ({
   page,
 }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.goto('/?settings=1');
+  await page.goto('/settings/');
   await expect(page.locator('html')).toHaveClass(/gallery dark/);
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveClass(/gallery light/);
@@ -246,6 +275,52 @@ function topCardDrift(page: Page): Promise<number> {
   });
 }
 
+/** A single finger on the touchscreen, driven through the browser's real
+ * touch pipeline so touch-action and native scrolling take part. */
+async function finger(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  let at = { x: 0, y: 0 };
+  const send = (
+    type: 'touchStart' | 'touchMove' | 'touchEnd',
+    points: { x: number; y: number }[],
+  ) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+  return {
+    async down(x: number, y: number) {
+      at = { x, y };
+      await send('touchStart', [at]);
+    },
+    async move(x: number, y: number, { steps = 1, wait = 16 } = {}) {
+      const from = at;
+      for (let step = 1; step <= steps; step++) {
+        at = {
+          x: from.x + ((x - from.x) * step) / steps,
+          y: from.y + ((y - from.y) * step) / steps,
+        };
+        await send('touchMove', [at]);
+        await page.waitForTimeout(wait);
+      }
+    },
+    async up() {
+      await send('touchEnd', []);
+    },
+    async tap(x: number, y: number) {
+      at = { x, y };
+      await send('touchStart', [at]);
+      await page.waitForTimeout(40);
+      await send('touchEnd', []);
+    },
+    /** Chrome's own long-press gesture, which drives native selection. */
+    async hold(x: number, y: number) {
+      await cdp.send('Input.synthesizeTapGesture', {
+        x,
+        y,
+        duration: 1000,
+        gestureSourceType: 'touch',
+      });
+    },
+  };
+}
+
 test('horizontal drag commits a swipe while vertical movement leaves the card in place', async ({
   page,
 }) => {
@@ -255,18 +330,26 @@ test('horizontal drag commits a swipe while vertical movement leaves the card in
   const first = await card.locator('h2').innerText();
   const box = await card.boundingBox();
   if (!box) throw new Error('Card has no visible bounds.');
-  const x = box.x + box.width / 2;
-  const y = box.y + box.height / 2;
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + 4, y + 85, { steps: 5 });
-  await page.mouse.up();
+  // Start on the etymology text: it scrolls, but must not steal a swipe.
+  const text = await card.locator('.etymology').boundingBox();
+  if (!text) throw new Error('Etymology has no visible bounds.');
+  const x = text.x + Math.min(text.width / 2, 40);
+  const y = text.y + Math.min(text.height / 2, 12);
+  const touch = await finger(page);
+  await touch.down(x, y);
+  await touch.move(x + 4, y + 85, { steps: 5 });
+  await touch.up();
   await expect(card.locator('h2')).toHaveText(first);
   await recordAnimations(page);
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + box.width * 0.48, y, { steps: 8 });
-  await page.mouse.up();
+  await touch.down(x, y);
+  await touch.move(x + box.width * 0.48, y, { steps: 8 });
+  await touch.up();
+  // The card flying off-screen must not widen the page and let it pan.
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    ),
+  ).toBe(0);
   await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
     first,
   );
@@ -320,13 +403,10 @@ test('the exit speed follows the hand: a slow drag eases away, a flick leaves fa
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   await recordAnimations(page);
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  for (let step = 1; step <= 10; step++) {
-    await page.mouse.move(x + (box.width * 0.45 * step) / 10, y);
-    await page.waitForTimeout(60);
-  }
-  await page.mouse.up();
+  const touch = await finger(page);
+  await touch.down(x, y);
+  await touch.move(x + box.width * 0.45, y, { steps: 10, wait: 60 });
+  await touch.up();
   await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
     first,
   );
@@ -335,10 +415,9 @@ test('the exit speed follows the hand: a slow drag eases away, a flick leaves fa
   expect(slow?.duration).toBe(SWIPE.exitMax);
 
   const second = await page.getByTestId('top-card').locator('h2').innerText();
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + box.width * 0.4, y, { steps: 3 });
-  await page.mouse.up();
+  await touch.down(x, y);
+  await touch.move(x + box.width * 0.4, y, { steps: 3, wait: 0 });
+  await touch.up();
   await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
     second,
   );
@@ -361,11 +440,11 @@ test('a short drag springs the card home with the next card in step', async ({
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   await recordAnimations(page);
-  await page.mouse.move(x, y);
-  await page.mouse.down();
-  await page.mouse.move(x + box.width * 0.18, y, { steps: 6 });
+  const touch = await finger(page);
+  await touch.down(x, y);
+  await touch.move(x + box.width * 0.18, y, { steps: 6 });
   await page.waitForTimeout(150);
-  await page.mouse.up();
+  await touch.up();
   await expect(card.locator('h2')).toHaveText(first);
   const snaps = (await readAnimations(page)).filter((a) => a.id === 'snap');
   expect(snaps).toHaveLength(2);
@@ -384,6 +463,97 @@ test('a short drag springs the card home with the next card in step', async ({
     .evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform));
   expect(peek.a).toBeCloseTo(0.96, 3);
   expect(peek.f).toBeGreaterThan(0);
+  await page.goto('/liked/');
+  await expect(page.getByRole('heading', { name: first })).toHaveCount(0);
+});
+
+test('a mouse drag does not move the card', async ({ page }) => {
+  await page.goto('/');
+  const card = page.getByTestId('top-card');
+  await expect(card).toBeVisible();
+  const first = await card.locator('h2').innerText();
+  const box = await card.boundingBox();
+  if (!box) throw new Error('Card has no visible bounds.');
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + box.width * 0.48, y, { steps: 8 });
+  await expect(card).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
+  await page.mouse.up();
+  await expect(card.locator('h2')).toHaveText(first);
+});
+
+test('holding or double-tapping the text selects a word and holds the card still', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const card = page.getByTestId('top-card');
+  await expect(card).toBeVisible();
+  const first = await card.locator('h2').innerText();
+  const text = await card.locator('.etymology').boundingBox();
+  if (!text) throw new Error('Etymology has no visible bounds.');
+  // Just inside the first word of the etymology.
+  const x = text.x + 12;
+  const y = text.y + 12;
+  const selected = () => page.evaluate(() => getSelection()?.toString() ?? '');
+  const touch = await finger(page);
+
+  await touch.hold(x, y);
+  await expect.poll(selected).toMatch(/^\S+$/);
+  await touch.tap(x + 150, y + 150);
+  await expect.poll(selected).toBe('');
+
+  await touch.tap(x, y);
+  await page.waitForTimeout(90);
+  await touch.tap(x, y);
+  await expect.poll(selected).toMatch(/^\S+$/);
+
+  // While text is selected, a sideways drag does not swipe.
+  await touch.down(x, y);
+  await touch.move(x + 180, y, { steps: 8 });
+  await touch.up();
+  await page.waitForTimeout(400);
+  await expect(card.locator('h2')).toHaveText(first);
+
+  // A tap clears the selection and swiping works again.
+  await touch.tap(x + 150, y + 150);
+  await expect.poll(selected).toBe('');
+  await touch.down(x, y);
+  await touch.move(x + 180, y, { steps: 8 });
+  await touch.up();
+  await expect(card.locator('h2')).not.toHaveText(first);
+});
+
+test('a drag past the commit point arms its button until it is pulled back', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const card = page.getByTestId('top-card');
+  await expect(card).toBeVisible();
+  const first = await card.locator('h2').innerText();
+  const box = await card.boundingBox();
+  if (!box) throw new Error('Card has no visible bounds.');
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height * 0.6;
+  const like = page.getByRole('button', { name: 'Interesting' });
+  const skip = page.getByRole('button', { name: 'Not for me' });
+  const touch = await finger(page);
+
+  await touch.down(x, y);
+  await touch.move(x + box.width * 0.5, y, { steps: 12, wait: 40 });
+  await expect(like).toHaveClass(/is-armed/);
+  await expect(skip).not.toHaveClass(/is-armed/);
+  await touch.move(x + box.width * 0.05, y, { steps: 12, wait: 40 });
+  await expect(like).not.toHaveClass(/is-armed/);
+  await touch.move(x - box.width * 0.5, y, { steps: 12, wait: 40 });
+  await expect(skip).toHaveClass(/is-armed/);
+  await expect(like).not.toHaveClass(/is-armed/);
+  await touch.up();
+
+  // The armed verdict is the one committed, and the cue clears afterward.
+  await expect(card.locator('h2')).not.toHaveText(first);
+  await expect(skip).not.toHaveClass(/is-armed/);
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: first })).toHaveCount(0);
 });
