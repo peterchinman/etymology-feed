@@ -46,7 +46,8 @@ class ReportStatsTest(unittest.TestCase):
                 "INSERT INTO word_stats VALUES "
                 "('alpha',5,0,0.5,0.857,0),('beta',0,2,0.5,0.4,0),"
                 "('gamma',1,0,0.8,0.667,0),('delta',0,0,0.8,0.5,0),"
-                "('epsilon',1,3,0.6,0.533,0),('zeta',1,4,0.6,0.5,0);",
+                "('epsilon',1,3,0.6,0.533,0),('zeta',1,4,0.6,0.5,0),"
+                "('eta',1,14,0.6,0.308,0),('theta',0,5,0.6,0.308,0);",
                 encoding="utf-8",
             )
             output = subprocess.run(
@@ -72,12 +73,15 @@ class ReportStatsTest(unittest.TestCase):
         self.assertEqual(report["globalLikeRate"], 0.75)
         self.assertEqual(report["periods"]["30"]["etymBand"]["lt40"]["likeRate"], 0)
         self.assertEqual(report["periods"]["30"]["shape"]["capitalized"]["total"], 1)
-        self.assertEqual(report["ratedCards"], 2)
-        # epsilon keeps its promising place despite three lefts; zeta finished
-        # its five looks exactly average, below the 0.55 confirmed margin.
+        self.assertEqual(report["ratedCards"], 4)
+        # epsilon keeps its promising place despite three lefts; zeta is average
+        # after five looks and stays undecided until fifteen; eta is parked at
+        # fifteen looks below average; beta gets a second look once the
+        # never-seen frontier (delta) is exhausted; theta was never liked in
+        # five looks.
         self.assertEqual(
             report["lanes"],
-            {"confirmed": 1, "promising": 2, "fresh": 1, "parked": 2},
+            {"confirmed": 1, "promising": 3, "fresh": 2, "neverSeen": 1, "parked": 2},
         )
         self.assertEqual(report["suggestedDislikeWeight"], 3.0)
         self.assertEqual(report["periods"]["7"]["bucket"]["promising"]["total"], 1)

@@ -52,10 +52,11 @@ reload on `localhost:4321`, proxying `/api` and `/auth` to Wrangler. Open
 
 `GET /api/feed?n=100` returns 100 distinct cards drawn from lanes by what is
 known about each card: confirmed, promising (at least one like), fresh (never
-rated, best heuristic prior first), and wild. Empty lanes hand their slots
-down, so on day one the feed is fresh and wild. A left swipe counts as
-`DISLIKE_WEIGHT` (0.25) of a dislike, because in a swipe feed a left is usually
-just "next". After deploying migrations `0004_lanes` and `0005_weighted_lefts`
+liked, fewest looks then best heuristic prior), and wild. Empty lanes hand
+their slots down, so on day one the feed is fresh and wild. A left swipe
+counts as `DISLIKE_WEIGHT` (0.25) of a dislike, because in a swipe feed a left
+is usually just "next"; a liked card is parked only after `PARK_LOOKS` (15)
+looks below average. After deploying migrations `0004` through `0006`
 to a database that already has ratings, rescore the rated rows once with
 `UPDATE word_stats SET score = (likes + 1.0) / (likes + 0.25 * dislikes + 2) WHERE likes + dislikes > 0`,
 using the deployed weight. Repeat the same statement whenever the weight changes. The server records served card IDs and syncs queued
