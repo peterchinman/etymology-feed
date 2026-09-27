@@ -5,5 +5,5 @@
     "jsxImportSource": "solid-js",
     "types": ["astro/client", "@cloudflare/workers-types"]
   },
-  "include": [".astro/types.d.ts", "src/**/*", "tests/**/*.ts", "playwright.config.ts", "astro.config.mjs", "../api/worker-configuration.d.ts"]
+  "include": [".astro/types.d.ts", "src/**/*", "tests/**/*.ts", "playwright.config.ts", "astro.config.mjs", "../api/worker-configuration.d.ts", "../api/src/env.d.ts"]
 }

@@ -15,6 +15,11 @@ export type Direction = 1 | -1;
 export const SWIPE = {
   /** Pointer travel before a drag is recognized (px). */
   slop: 10,
+  /** A touch shorter than this that stays within `slop` is a tap (ms). */
+  tapTime: 300,
+  /** Two taps this close in time and space are a double tap (ms, px). */
+  doubleTapTime: 350,
+  doubleTapReach: 30,
   /** Distance past which a release commits, as a fraction of card width... */
   threshold: 0.35,
   /** ...capped so wide desktop cards do not demand a huge drag (px). */

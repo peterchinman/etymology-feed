@@ -6,17 +6,24 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run --config vitest.config.ts",
+    "test:report": "python3 -m unittest discover -s scripts -p 'test_*.py'",
+    "report:stats": "python3 scripts/report_stats.py",
+    "seed:word-stats": "node scripts/seed-word-stats.mjs",
     "types": "wrangler types --env-interface CloudflareBindings --include-runtime false"
   },
   "dependencies": {
+    "@better-auth/drizzle-adapter": "^1.7.6",
     "@etymology-feed/shared": "0.0.0",
     "@hono/zod-validator": "0.9.1",
+    "better-auth": "^1.7.6",
+    "drizzle-orm": "^0.45.3",
     "hono": "4.13.9",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.22.0",
     "@cloudflare/workers-types": "5.20260926.1",
+    "drizzle-kit": "^0.31.11",
     "wrangler": "4.141.0"
   }
 }

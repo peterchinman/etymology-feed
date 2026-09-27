@@ -7,6 +7,7 @@ import {
   Show,
 } from 'solid-js';
 import { getSwipes, type LocalSwipe, removeSwipe } from '../lib/local';
+import { drainSync } from '../lib/sync';
 
 export default function Liked() {
   const [swipes, setSwipes] = createSignal<LocalSwipe[]>([]);
@@ -18,7 +19,7 @@ export default function Liked() {
   const [error, setError] = createSignal('');
   let touch: { id: string; x: number; y: number } | null = null;
   const liked = createMemo(() =>
-    swipes().filter((swipe) => swipe.verdict === 1),
+    swipes().filter((swipe) => swipe.verdict === 1 && !swipe.removed),
   );
   const visible = createMemo(() =>
     liked().filter((swipe) => {
@@ -32,6 +33,7 @@ export default function Liked() {
     try {
       await removeSwipe(id);
       setSwipes((current) => current.filter((swipe) => swipe.id !== id));
+      void drainSync();
     } catch {
       setError('Could not remove this word. Please try again.');
     }
@@ -58,7 +60,11 @@ export default function Liked() {
     void getSwipes()
       .then(setSwipes)
       .catch(() => setError('Could not open your saved words.'));
-    const onOnline = () => setOnline(true);
+    void drainSync();
+    const onOnline = () => {
+      setOnline(true);
+      void drainSync();
+    };
     const onOffline = () => setOnline(false);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
@@ -183,7 +189,7 @@ export default function Liked() {
                     <h2 class="display-voice">
                       <a
                         class="word-source"
-                        href={`https://en.wiktionary.org/wiki/${encodeURIComponent(swipe.word)}`}
+                        href={`https://en.wiktionary.org/wiki/${encodeURIComponent(swipe.word)}${swipe.card.etymNo ? `#Etymology_${swipe.card.etymNo}` : ''}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         title={`View ${swipe.word} on Wiktionary`}

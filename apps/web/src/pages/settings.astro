@@ -1,0 +1,9 @@
+---
+import Settings from '../components/Settings';
+import Shell from '../layouts/Shell.astro';
+---
+<Shell title="Settings" page="settings">
+  <section class="settings-screen page-wrap">
+    <Settings client:load variant="page" />
+  </section>
+</Shell>

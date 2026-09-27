@@ -12,17 +12,14 @@ import { fetchCards } from '../lib/api';
 import {
   appendCards,
   applyTheme,
-  type ColorMode,
   getSettings,
   getStack,
   type LocalSwipe,
   type PendingSwipe,
   saveSwipes,
-  setColorMode,
-  setShowDefinitions,
-  setTheme,
   undoSwipe,
 } from '../lib/local';
+import { hasSelectionIn, selectWordAt } from '../lib/select';
 import {
   clamp,
   commitDistance,
@@ -35,7 +32,8 @@ import {
   SWIPE,
   springEasing,
 } from '../lib/swipe';
-import { DEFAULT_THEME, THEMES, type Theme } from '../lib/themes';
+import { drainSync } from '../lib/sync';
+import Settings from './Settings';
 
 /** A card that has been swiped and is still flying off-screen. */
 type Departing = {
@@ -116,15 +114,14 @@ export default function Feed() {
   const [stack, setStack] = createSignal<Card[]>([]);
   const [departing, setDeparting] = createSignal<Departing[]>([]);
   const [dragging, setDragging] = createSignal(false);
+  /** The verdict a release would commit right now, shown on its button. */
+  const [armed, setArmed] = createSignal<Direction | 0>(0);
   const [ready, setReady] = createSignal(false);
   const [online, setOnline] = createSignal(true);
   const [fetching, setFetching] = createSignal(false);
   const [error, setError] = createSignal('');
   const [showDefinitions, setShowDefinitionsState] = createSignal(false);
   const [definitionOpen, setDefinitionOpen] = createSignal(false);
-  const [theme, setThemeState] = createSignal<Theme>(DEFAULT_THEME);
-  const [colorMode, setColorModeState] = createSignal<ColorMode>('system');
-  const [dark, setDark] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [pendingUndo, setPendingUndo] = createSignal<LocalSwipe | null>(null);
   let shownAt = Date.now();
@@ -141,6 +138,7 @@ export default function Feed() {
   let queue: (PendingSwipe & { entry: Departing })[] = [];
   /** Resolves when everything queued so far has been written or rolled back. */
   let saveChain: Promise<void> = Promise.resolve();
+  let swipesSinceSync = 0;
 
   /** Departing cards first so their nodes keep the same list position. */
   const rendered = createMemo(() => [
@@ -154,10 +152,10 @@ export default function Feed() {
    * already swiped but not yet written.
    */
   function reconcile(current: Card[], incoming: Card[]): Card[] {
-    const known = new Map(current.map((card) => [card.word, card]));
+    const known = new Map(current.map((card) => [card.id, card]));
     return incoming
-      .filter((card) => !inFlight.has(card.word))
-      .map((card) => known.get(card.word) ?? card);
+      .filter((card) => !inFlight.has(card.id))
+      .map((card) => known.get(card.id) ?? card);
   }
 
   async function fillStack(force = false) {
@@ -167,20 +165,17 @@ export default function Feed() {
     setFetching(true);
     let misses = 0;
     try {
-      // The read-only M1 API can send previously seen words; the local served set filters them.
+      // The server records served cards; IndexedDB also filters after cookie loss.
       for (
         let attempt = 0;
         attempt < 6 && navigator.onLine && stack().length < 150;
         attempt++
       ) {
         const cards = await fetchCards();
-        const known = new Set([
-          ...stack().map((card) => card.word),
-          ...inFlight,
-        ]);
+        const known = new Set([...stack().map((card) => card.id), ...inFlight]);
         const next = reconcile(stack(), await appendCards(cards));
         setStack(next);
-        if (next.every((card) => known.has(card.word))) misses++;
+        if (next.every((card) => known.has(card.id))) misses++;
         else misses = 0;
         if (misses >= 2) {
           exhaustedUntil = Date.now() + 5 * 60_000;
@@ -208,6 +203,7 @@ export default function Feed() {
 
   function resetDrag() {
     paintDrag(0, 0, 1, 1);
+    setArmed(0);
   }
 
   /** Horizontal translation that puts the card fully past the viewport edge. */
@@ -292,7 +288,7 @@ export default function Feed() {
       );
     }
 
-    inFlight.add(card.word);
+    inFlight.add(card.id);
     queue.push({ card, verdict: direction, shownAt, entry });
     batch(() => {
       if (element) setDeparting((current) => [...current, entry]);
@@ -312,14 +308,19 @@ export default function Feed() {
     queue = [];
     try {
       const swipes = await saveSwipes(pending);
-      for (const { card } of pending) inFlight.delete(card.word);
+      swipesSinceSync += swipes.length;
+      if (swipesSinceSync >= 10) {
+        swipesSinceSync = 0;
+        void drainSync();
+      }
+      for (const { card } of pending) inFlight.delete(card.id);
       if (undoTimer) clearTimeout(undoTimer);
       setPendingUndo(swipes[swipes.length - 1]);
       undoTimer = setTimeout(() => setPendingUndo(null), 5000);
       if (stack().length < 60) void fillStack();
     } catch {
       for (const { card, entry } of pending) {
-        inFlight.delete(card.word);
+        inFlight.delete(card.id);
         entry.animation?.cancel();
       }
       shownAt = pending[0].shownAt;
@@ -335,7 +336,7 @@ export default function Feed() {
       batch(() => {
         setDeparting((current) =>
           current.filter(
-            (item) => !cards.some((card) => card.word === item.card.word),
+            (item) => !cards.some((card) => card.id === item.card.id),
           ),
         );
         setStack(cards);
@@ -370,7 +371,7 @@ export default function Feed() {
     setPendingUndo(null);
     try {
       const restored = reconcile(stack(), await undoSwipe(swipe));
-      const entry = departing().find((item) => item.card.word === swipe.word);
+      const entry = departing().find((item) => item.card.id === swipe.cardId);
       const previousTop = stack()[0];
       const rect = deck.getBoundingClientRect();
       const before = new Map<Card, string>();
@@ -403,42 +404,16 @@ export default function Feed() {
     }
   }
 
-  async function changeDefinitionSetting(value: boolean) {
-    try {
-      await setShowDefinitions(value);
-      setShowDefinitionsState(value);
-      setDefinitionOpen(value);
-    } catch {
-      setError('Could not save the definition setting.');
-    }
-  }
-
-  async function changeTheme(value: Theme) {
-    try {
-      await setTheme(value);
-      setThemeState(value);
-    } catch {
-      setError('Could not save the theme setting.');
-    }
-  }
-
-  async function changeColorMode(value: Exclude<ColorMode, 'system'>) {
-    try {
-      await setColorMode(value);
-      setColorModeState(value);
-      setDark(value === 'dark');
-    } catch {
-      setError('Could not save the dark mode setting.');
-    }
-  }
-
   function pointerDown(event: PointerEvent) {
-    if (event.button !== 0 || gesture || !deck) return;
+    // Only a finger drags the card; mouse and pen use the buttons or keys.
+    if (event.pointerType !== 'touch' || gesture || !deck) return;
     const target = event.target as HTMLElement;
     if (target.closest('button, a')) return;
     const card = stack()[0];
     const top = card && elements.get(card);
     if (!card || !top?.contains(target)) return;
+    // Selected text holds the card still; a tap elsewhere clears it.
+    if (hasSelectionIn(top)) return;
     const rect = deck.getBoundingClientRect();
     gesture = {
       id: event.pointerId,
@@ -462,6 +437,11 @@ export default function Feed() {
     const dx = event.clientX - gesture.startX;
     const dy = event.clientY - gesture.startY;
     if (!gesture.active) {
+      // A long press that started selecting text is not a swipe.
+      if (hasSelectionIn(elements.get(gesture.card))) {
+        gesture.cancelled = true;
+        return;
+      }
       if (Math.abs(dy) > SWIPE.slop && Math.abs(dy) >= Math.abs(dx)) {
         gesture.cancelled = true;
         return;
@@ -492,6 +472,11 @@ export default function Feed() {
     gesture.x = dx + gesture.offsetX;
     gesture.y = dy + gesture.offsetY;
     paintDrag(gesture.x, gesture.y, gesture.grab, gesture.width);
+    // Light the button a release would commit to now, using the same
+    // decision the release makes, so the cue never promises a snap-back.
+    const { vx } = releaseVelocity(gesture.samples, event.timeStamp);
+    const verdict = decide(gesture.x, vx, gesture.width);
+    setArmed(verdict.action === 'commit' ? verdict.direction : 0);
   }
 
   function pointerUp(event: PointerEvent) {
@@ -517,6 +502,54 @@ export default function Feed() {
     if (current.active) snapBack(current.card, current.x, 0);
   }
 
+  /** The last quick, still touch on the card text, for spotting a double tap. */
+  let lastTap: { x: number; y: number; t: number } | null = null;
+  let touchStart: { x: number; y: number; t: number } | null = null;
+
+  function touchBegan(event: TouchEvent) {
+    const touch = event.touches.length === 1 ? event.touches[0] : null;
+    touchStart = touch
+      ? { x: touch.clientX, y: touch.clientY, t: event.timeStamp }
+      : null;
+  }
+
+  /** A second tap on the card text selects the word under the finger. */
+  function touchEnded(event: TouchEvent) {
+    const start = touchStart;
+    const touch = event.changedTouches[0];
+    touchStart = null;
+    const target = event.target as HTMLElement;
+    const top = stack()[0] && elements.get(stack()[0]);
+    const onText =
+      top?.contains(target) &&
+      !!target.closest('.card-body') &&
+      !target.closest('button, a');
+    const tap =
+      start &&
+      touch &&
+      event.timeStamp - start.t < SWIPE.tapTime &&
+      Math.hypot(touch.clientX - start.x, touch.clientY - start.y) <=
+        SWIPE.slop;
+    if (!tap || !onText || !top) {
+      lastTap = null;
+      return;
+    }
+    const here = { x: touch.clientX, y: touch.clientY, t: event.timeStamp };
+    const second =
+      lastTap &&
+      here.t - lastTap.t < SWIPE.doubleTapTime &&
+      Math.hypot(here.x - lastTap.x, here.y - lastTap.y) <=
+        SWIPE.doubleTapReach;
+    if (!second) {
+      lastTap = here;
+      return;
+    }
+    lastTap = null;
+    // Stop the tap's emulated mouse events, which would collapse the selection.
+    event.preventDefault();
+    selectWordAt(here.x, here.y, top);
+  }
+
   function keyDown(event: KeyboardEvent) {
     const target = event.target as HTMLElement;
     if (
@@ -538,9 +571,14 @@ export default function Feed() {
 
   onMount(() => {
     setOnline(navigator.onLine);
-    setSettingsOpen(
-      new URLSearchParams(window.location.search).has('settings'),
-    );
+    if (new URLSearchParams(window.location.search).has('settings')) {
+      // On a phone, Settings is a page of its own rather than an overlay.
+      if (window.matchMedia('(max-width: 48rem)').matches) {
+        window.location.replace('/settings/');
+        return;
+      }
+      setSettingsOpen(true);
+    }
     void (async () => {
       try {
         const [cards, settings] = await Promise.all([
@@ -550,10 +588,9 @@ export default function Feed() {
         setStack(cards);
         setShowDefinitionsState(settings.showDefinitions);
         setDefinitionOpen(settings.showDefinitions);
-        setThemeState(settings.theme);
-        setColorModeState(settings.colorMode);
-        setDark(applyTheme(settings.theme, settings.colorMode));
+        applyTheme(settings.theme, settings.colorMode);
         setReady(true);
+        void drainSync();
         void fillStack(true);
       } catch {
         setError(
@@ -564,27 +601,27 @@ export default function Feed() {
     })();
     const onOnline = () => {
       setOnline(true);
+      void drainSync();
       void fillStack(true);
     };
     const onOffline = () => setOnline(false);
-    const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
-    const onSystemThemeChange = () => {
-      if (colorMode() === 'system') setDark(systemDark.matches);
-    };
     const onVisible = () => {
+      if (document.visibilityState === 'visible') void drainSync();
       if (document.visibilityState === 'visible' && stack().length < 60)
         void fillStack();
     };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
-    systemDark.addEventListener('change', onSystemThemeChange);
+    deck?.addEventListener('touchstart', touchBegan, { passive: true });
+    deck?.addEventListener('touchend', touchEnded, { passive: false });
     window.addEventListener('keydown', keyDown);
     document.addEventListener('visibilitychange', onVisible);
     onCleanup(() => {
+      deck?.removeEventListener('touchstart', touchBegan);
+      deck?.removeEventListener('touchend', touchEnded);
       if (undoTimer) clearTimeout(undoTimer);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
-      systemDark.removeEventListener('change', onSystemThemeChange);
       window.removeEventListener('keydown', keyDown);
       document.removeEventListener('visibilitychange', onVisible);
     });
@@ -594,104 +631,17 @@ export default function Feed() {
     <section class="feed-page page-wrap">
       <h1 class="sr-only">Feed</h1>
       <Show when={settingsOpen()}>
-        <section
-          class="settings-panel"
-          id="feed-settings"
-          aria-label="Settings"
-        >
-          <div class="settings-panel-heading">
-            <strong class="display-voice">Settings</strong>
-            <button
-              type="button"
-              aria-label="Close settings"
-              onClick={() => {
-                setSettingsOpen(false);
-                window.history.replaceState(null, '', '/');
-              }}
-            >
-              ×
-            </button>
-          </div>
-          <label class="setting-row label-voice">
-            <span>Always show definitions</span>
-            <input
-              type="checkbox"
-              checked={showDefinitions()}
-              onChange={(event) => {
-                void changeDefinitionSetting(event.currentTarget.checked);
-              }}
-            />
-          </label>
-          <div
-            class="setting-group"
-            role="radiogroup"
-            aria-labelledby="theme-label"
-          >
-            <span id="theme-label" class="label-voice">
-              Theme
-            </span>
-            <div class="segmented">
-              <For each={THEMES}>
-                {(option) => (
-                  <label class="segment label-voice">
-                    <input
-                      type="radio"
-                      name="theme"
-                      value={option.id}
-                      checked={theme() === option.id}
-                      onChange={() => void changeTheme(option.id)}
-                    />
-                    <span>{option.name}</span>
-                  </label>
-                )}
-              </For>
-            </div>
-            <p class="theme-blurb caption-voice">
-              {THEMES.find((option) => option.id === theme())?.blurb}
-            </p>
-          </div>
-          <label class="setting-row label-voice">
-            <span>Dark mode</span>
-            <input
-              class="theme-switch"
-              type="checkbox"
-              checked={dark()}
-              onChange={(event) => {
-                void changeColorMode(
-                  event.currentTarget.checked ? 'dark' : 'light',
-                );
-              }}
-            />
-            <span class="switch-track" aria-hidden="true" />
-          </label>
-          <p class="source-credit caption-voice">
-            Etymologies and definitions are adapted from{' '}
-            <a
-              href="https://en.wiktionary.org/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Wiktionary contributors
-            </a>
-            , via{' '}
-            <a
-              href="https://kaikki.org/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              kaikki.org
-            </a>
-            , under{' '}
-            <a
-              href="https://creativecommons.org/licenses/by-sa/4.0/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              CC BY-SA 4.0
-            </a>
-            . Select a word to open its original entry.
-          </p>
-        </section>
+        <Settings
+          variant="panel"
+          onClose={() => {
+            setSettingsOpen(false);
+            window.history.replaceState(null, '', '/');
+          }}
+          onShowDefinitions={(value) => {
+            setShowDefinitionsState(value);
+            setDefinitionOpen(value);
+          }}
+        />
       </Show>
       <div
         class={`deck-area ${dragging() ? 'is-dragging' : ''}`}
@@ -751,18 +701,7 @@ export default function Feed() {
                 aria-hidden={!top()}
               >
                 <div class="word-head">
-                  <h2 class="display-voice">
-                    <a
-                      class="word-source"
-                      href={`https://en.wiktionary.org/wiki/${encodeURIComponent(card.word)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={`View ${card.word} on Wiktionary`}
-                      tabindex={top() ? undefined : -1}
-                    >
-                      {card.word}
-                    </a>
-                  </h2>
+                  <h2 class="display-voice">{card.word}</h2>
                 </div>
                 <div class="card-body">
                   <p class="etymology reading-voice">{card.etymology}</p>
@@ -792,6 +731,16 @@ export default function Feed() {
                     {open() ? 'Hide definition' : 'Show definition'}{' '}
                     <span aria-hidden="true">{open() ? '−' : '+'}</span>
                   </button>
+                  <a
+                    class="entry-link caption-voice"
+                    href={`https://en.wiktionary.org/wiki/${encodeURIComponent(card.word)}${card.etymNo ? `#Etymology_${card.etymNo}` : ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`View ${card.word} on Wiktionary`}
+                    tabindex={top() ? undefined : -1}
+                  >
+                    Wiktionary
+                  </a>
                 </div>
               </article>
             );
@@ -804,7 +753,7 @@ export default function Feed() {
         data-stack-count={stack().length}
       >
         <button
-          class="swipe-button skip-button"
+          class={`swipe-button skip-button${armed() === -1 ? ' is-armed' : ''}`}
           type="button"
           disabled={!stack().length}
           aria-label="Not for me"
@@ -820,7 +769,7 @@ export default function Feed() {
           </svg>
         </button>
         <button
-          class="swipe-button like-button"
+          class={`swipe-button like-button${armed() === 1 ? ' is-armed' : ''}`}
           type="button"
           disabled={!stack().length}
           aria-label="Interesting"
