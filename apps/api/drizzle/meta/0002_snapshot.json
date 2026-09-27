@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a912682d-6d85-450f-9f24-191756242d2a",
+  "id": "3ebb872c-4b86-414a-aab3-396f7ecaa8f7",
   "prevId": "e0d33ef2-c4b1-4e6d-8df8-f577c6fb1339",
   "tables": {
     "served": {
@@ -62,7 +62,7 @@
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
@@ -117,10 +117,11 @@
         }
       },
       "indexes": {
-        "swipe_id_unique": {
-          "name": "swipe_id_unique",
+        "idx_swipe_user_word": {
+          "name": "idx_swipe_user_word",
           "columns": [
-            "id"
+            "user_id",
+            "word"
           ],
           "isUnique": true
         },
@@ -149,15 +150,7 @@
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "swipe_user_id_word_pk": {
-          "columns": [
-            "user_id",
-            "word"
-          ],
-          "name": "swipe_user_id_word_pk"
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
         "swipe_verdict_check": {
