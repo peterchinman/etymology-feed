@@ -168,7 +168,7 @@ A heuristic in `[0.2, 0.8]` so unrated cards are explored best-first. **It order
 - tier common/uncommon: +0.05; marginal/unattested: −0.05
 - clamp to `[0.2, 0.8]`
 
-The heuristic no longer needs re-centering, because only its order matters. What does track the global like-rate is `BASE_RATE` (§6.2): once §6.5 reports the real rate, set the var and rescore the rated rows with one indexed `UPDATE … WHERE likes + dislikes > 0`. Unrated rows keep a stale score harmlessly; no lane reads it.
+The heuristic no longer needs re-centering, because only its order matters. What does track the global like-rate is `DISLIKE_WEIGHT` (§6.2): once §6.5 reports the real rate `p`, set the var to `p / (1 - p)` (or lower) and rescore the rated rows with one indexed `UPDATE … WHERE likes + dislikes > 0`. Unrated rows keep a stale score harmlessly; no lane reads it.
 
 The report prints 20 random words from the top decile and 20 from the bottom decile, plus 25 random `morph`-classified and 25 random `story`-under-40 entries, so the classifier and the prior can be eyeballed. Tune once, then leave it; real ratings take over.
 
@@ -219,7 +219,8 @@ CREATE INDEX idx_word_stats_unrated ON word_stats((likes + dislikes), prior DESC
 CREATE INDEX idx_word_stats_rec ON word_stats(score DESC)
   WHERE likes + dislikes >= 5 AND score >= 0.5;                                              -- confirmed lane (partial)
 CREATE INDEX idx_word_stats_promising ON word_stats(score DESC)
-  WHERE likes > 0 AND likes >= dislikes AND likes + dislikes < 5;                            -- promising lane (partial)
+  WHERE likes > 0 AND (likes + dislikes < 5 OR score < 0.55)
+    AND (likes + dislikes < 15 OR score >= 0.5);                                             -- promising lane (partial)
 ```
 
 The two partial indexes cost writes only for rows that qualify, so at launch they are nearly free; the general score index was dropped because no lane needs a full-table order.
@@ -241,24 +242,26 @@ Goal: keep people swiping (show good stuff) while spreading ratings across the p
 
 `n = likes + dislikes` for a card. Every card is in exactly one lane, and only the first three are queried as pools:
 
-- **Confirmed**: `n >= 5 AND score >= 0.5` (with the flat prior below that is exactly `likes >= dislikes`), top 3,000 by `score`. Empty for months; that is fine.
-- **Promising**: `likes > 0 AND likes >= dislikes AND n < 5`, top 3,000 by `score`. The lane that makes early users' likes visible.
-- **Fresh**: `n = 0`, ordered by the heuristic `prior DESC` (§4.3), first 3,000. The frontier sweeps the dictionary best-first as cards receive their first rating.
-- **Parked**: rated with `likes < dislikes`. Not pooled; reachable only through wild. With 148k cards, being wrong about a parked card is cheap.
+- **Confirmed**: `n >= MIN_RATINGS (5) AND score >= CONFIRM_SCORE (0.55)`: clearly above the average card (§6.2), top 3,000 by `score`. Re-evaluated every refresh, so a wrongly confirmed card keeps getting looks and drops out on its own. Empty for months; that is fine.
+- **Promising**: liked, and neither confirmed nor parked: `likes > 0 AND (n < 5 OR score < 0.55) AND (n < PARK_LOOKS (15) OR score >= 0.5)`, top 3,000 by `score`. Thompson ranking inside the lane already shows a card less as lefts arrive, so undecided cards cost little. This is the lane that makes early users' likes visible.
+- **Fresh**: never liked and under `MIN_RATINGS` looks (`likes = 0 AND n < 5`), ordered by `n ASC, prior DESC` (§4.3), first 3,000. Never-seen cards fill the lane until the whole frontier is exhausted; only then do cards passed over once get a second look, so no card's fate is sealed by one swipe and no exploration budget is spent on second looks while new cards remain.
+- **Parked**: never liked in `MIN_RATINGS` looks, or liked but below average (`score < 0.5`) after `PARK_LOOKS` looks. Not pooled; reachable only through wild. Parking is the one irreversible call, because a parked card gets no more looks, so it waits for three times the evidence that confirming does: at a 20% base rate a five-look rule would park one in eight cards twice as good as average, the fifteen-look rule about one in two thousand.
 - **Wild**: any card, uniform via `shuffle`.
 
 There is no minimum-rating gate on being shown, and no cold-start branch: the lanes are shares, not gates, so nothing disappears when a count crosses a threshold.
 
 ### 6.2 Scoring (pure functions in `packages/shared/scoring.ts`, unit-tested)
 
-Rated lanes use a **flat prior**, not the heuristic one: prior strength `K = PRIOR_STRENGTH = 2` at `BASE_RATE = 0.5`, i.e. `Beta(1, 1)`.
+A left swipe is the default action in a swipe feed, so it is weak evidence: sometimes active dislike, often just "next". Each left therefore counts as `w = DISLIKE_WEIGHT` of a negative, under a flat `Beta(1, 1)` prior on that weighted scale:
 
 ```
-alpha0 = K * BASE_RATE        beta0 = K * (1 - BASE_RATE)
-score  = (likes + alpha0) / (n + alpha0 + beta0)
+score = (likes + 1) / (likes + w * dislikes + 2)
+theta ~ Beta(likes + 1, w * dislikes + 1)          -- Thompson draw
 ```
 
-One like takes a card to 2/3 and one dislike to 1/3, so a single rating is decisive and any liked card is judged by its rating rather than by its etymology's length. Both shape parameters stay ≥ 1 for every count, which keeps Thompson sampling well-behaved. Stored in `word_stats.score`, recomputed on each swipe; unrated rows hold `BASE_RATE`, which no lane reads. For **ranking within `confirmed` and `promising`** use **Thompson sampling**: draw `theta ~ Beta(likes + alpha0, dislikes + beta0)` per candidate and take the top draws (Beta via two Marsaglia–Tsang Gamma draws, no dependency). This gives variety across users and mildly favors under-sampled winners.
+The weight is not a fudge: `likes >= w * dislikes` is exactly `like-rate >= p` when `w = p / (1 - p)`, so weighting lefts by the odds of the base like-rate makes `score = 0.5` mean "the average card". The default 0.25 assumes a 20% like-rate; §6.5 prints the weight implied by the observed rate, and setting it lower still says that many lefts are boredom rather than dislike. `w = 1` recovers "a left is a dislike"; `w = 0` says a left carries no information. Looks (`n = likes + dislikes`) stay unweighted, because a left still proves the card was seen.
+
+At `w = 0.25`: one like is 2/3, one left is 0.44, one like then two lefts is 0.57 and still promising, one like in five looks is exactly 0.5 (average: undecided until fifteen looks), two likes in five looks is 0.64 (confirmed), one like in fifteen looks is 0.31 (parked). Both shape parameters stay ≥ 1 for every count, which keeps Thompson sampling well-behaved. Stored in `word_stats.score`, recomputed on each swipe; unrated rows hold 0.5, which no lane reads. The heuristic prior never enters the score. For **ranking within `confirmed` and `promising`** use **Thompson sampling**: draw `theta ~ Beta(likes + alpha0, dislikes + beta0)` per candidate and take the top draws (Beta via two Marsaglia–Tsang Gamma draws, no dependency). This gives variety across users and mildly favors under-sampled winners.
 
 ### 6.3 Pools live in KV, refreshed by cron
 
@@ -273,13 +276,23 @@ Cron Trigger `*/5 * * * *` runs three indexed queries, one per pooled lane, each
 3. Fetch the cards from `DICT` by primary-key `id` lookups (n rows read).
 4. Append the n card IDs to `served.card_ids`, trim to 30,000, write back (1 write).
 
-All tunable via `wrangler.toml` vars: `CONFIRMED_SLOTS`, `PROMISING_SLOTS`, `FRESH_SLOTS`, `WILD_SLOTS`, `MIN_RATINGS`, `PRIOR_STRENGTH`, `BASE_RATE`, `SERVED_CAP`, `*_POOL_SIZE`. The partial indexes assume `MIN_RATINGS = 5`; another value still works but scans and needs new cost measurements.
+All tunable via `wrangler.toml` vars: `CONFIRMED_SLOTS`, `PROMISING_SLOTS`, `FRESH_SLOTS`, `WILD_SLOTS`, `MIN_RATINGS`, `DISLIKE_WEIGHT`, `CONFIRM_SCORE`, `PARK_LOOKS`, `SERVED_CAP`, `*_POOL_SIZE`. The partial indexes assume the default `MIN_RATINGS = 5`, `CONFIRM_SCORE = 0.55`, `PARK_LOOKS = 15`; other values still work but the promising query scans and needs new cost measurements.
 
 ### 6.5 Measure it — this is how the §4.1 thresholds get revisited
 
-Every swipe carries `bucket`, and the pinned `DICT` release gives `etym_band`, `shape`, `tier`, `has_signal`. Run `apps/api/scripts/report_stats.py` locally on demand using data-only D1 exports of APP's `swipe` and `word_stats` tables and the release's `etymology.db` (never vendored). It reports like-rates for the last 7 and 30 UTC calendar days, including the current partial day: global, by lane (`bucket`), **by `etym_band`**, **by `shape`**, by tier, and by `has_signal`; the count of cards with `n >= 5` and each lane's population (confirmed, promising, fresh, parked); and current swipe rows by day. The script joins the two datasets in local SQLite. There is no nightly stats cron, KV snapshot, or admin stats endpoint. The table stores one current verdict per user and word, so this report cannot reconstruct earlier verdicts or deleted likes; `received_at` places offline swipes on the sync day. Export and local scan costs are incurred only when a report is requested.
+Every swipe carries `bucket`, and the pinned `DICT` release gives `etym_band`, `shape`, `tier`, `has_signal`. Run `apps/api/scripts/report_stats.py` locally on demand using data-only D1 exports of APP's `swipe` and `word_stats` tables and the release's `etymology.db` (never vendored). It reports like-rates for the last 7 and 30 UTC calendar days, including the current partial day: global, by lane (`bucket`), **by `etym_band`**, **by `shape`**, by tier, and by `has_signal`; the count of cards with `n >= 5` and each lane's population (confirmed, promising, fresh, never seen, parked); and current swipe rows by day. The script joins the two datasets in local SQLite. There is no nightly stats cron, KV snapshot, or admin stats endpoint. The table stores one current verdict per user and word, so this report cannot reconstruct earlier verdicts or deleted likes; `received_at` places offline swipes on the sync day. Export and local scan costs are incurred only when a report is requested.
 
-Decision rules to apply once there are ≥ 2,000 swipes per band: if `lt40` like-rate is below half of `80_120`, raise the length floor for un-signalled stories; if a shape's like-rate is below half the plain rate, add it as a default-off filter rather than removing it. Also report the global like-rate so `BASE_RATE` can be re-centered on it (§4.3, §6.2). Record the outcome in `docs/DECISIONS.md`.
+Decision rules to apply once there are ≥ 2,000 swipes per band: if `lt40` like-rate is below half of `80_120`, raise the length floor for un-signalled stories; if a shape's like-rate is below half the plain rate, add it as a default-off filter rather than removing it. Also report the global like-rate and the `DISLIKE_WEIGHT` it implies, `p / (1 - p)`, so the weight can be re-centered on it (§4.3, §6.2). Record the outcome in `docs/DECISIONS.md`.
+
+**Tuning the lane parameters once there is swipe data.** The lane rules in §6.1–6.2 were set from a guessed 20% like-rate and no observations. Everything below is a var change plus the one-statement rescore of rated rows (README); none of it needs a dictionary release, and every swipe row keeps its verdict and lane, so a rule can be backtested offline before it is adopted.
+
+1. **`DISLIKE_WEIGHT`, after about 1,000 swipes.** Take the like-rate `p` of the *fresh and wild* buckets only, not the global rate: promising and confirmed cards are selected for being liked, so the global rate is inflated by the feed's own choices. Set the weight to `p / (1 - p)` (the report prints `suggestedDislikeWeight` from the global rate as a ceiling). Go lower than the odds if lefts look like boredom rather than dislike: `swiped_at - shown_at` gives dwell time, and if most lefts are under a second or two while likes dwell longer, a left is closer to "no information" than to a dislike. Rescore, and re-check the lane populations: the weight moves every liked card's score at once.
+2. **Whether the lanes are doing their jobs, at ≥ 2,000 swipes per lane.** Like-rate by bucket should read `confirmed > promising > fresh ≈ wild`. If promising is not above fresh, an early like is not predicting later likes: shrink `PROMISING_SLOTS` in favour of fresh rather than changing thresholds. If confirmed is not above promising, the margin is too low: raise `CONFIRM_SCORE`. If confirmed stays empty while promising holds hundreds of cards with `n >= 5`, the margin is too high or `MIN_RATINGS` too strict. If fresh runs well below wild, the heuristic prior is ordering the frontier badly and §4.3 should be revisited at the next release.
+3. **`PARK_LOOKS`, by backtest.** For every card with at least fifteen looks, compute what the five-look rule would have decided and compare with where the card ended up. If many cards that ended above average would have been parked, fifteen is earning its keep; if almost none would have, and the promising lane is carrying many cards with `5 <= n < 15` and `score < 0.5` whose later like-rate stays below `p`, lower it. Raise it if the like-path parked cards (`likes > 0 AND n >= 15`) include a meaningful share with like-rate at or above `p`.
+4. **Second looks, once `neverSeen` in the report approaches zero.** The fresh lane will start returning once-passed cards. Their like-rate is the test of the single-left path: if it is close to the never-seen like-rate, one left was carrying almost no information and `MIN_RATINGS` for the fresh cap can rise; if it is far below, one left was informative and the cap can fall to spend fewer looks there.
+5. **Slot shares, when confirmed holds a few hundred cards.** Move slots from fresh to confirmed only if the confirmed like-rate is clearly above the feed's overall rate and the frontier is not the bottleneck; the exploration share is what keeps the rated lanes fed.
+
+Change one parameter at a time, give it a week of data, and record the before-and-after per-lane like-rates in `docs/DECISIONS.md`.
 
 ---
 
@@ -404,7 +417,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 
 **M3 — Persistence + algorithm**
 - `APP` migrations; Better Auth with the anonymous plugin (no social yet); `served` record; `POST /api/sync` (idempotent upsert + stats delta + served update); `DELETE /api/swipes/{word}`; `word_stats` seeding script; lane pools (confirmed / promising / fresh) cron → KV with fill-through; Thompson sampling under the flat prior; slot composition + interleave; `known=` reseed; local on-demand stats report script; rate limiting.
-- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 101 rows read and 1 write, and a 100-swipe sync of 50 likes and 50 dislikes costs ≤ 650 rows written including index updates; a simulated user of 5,000 fetches never receives a repeat; one like moves a card into the promising lane at the next pool refresh and five ratings with `likes >= dislikes` move it into confirmed; every lane query uses its own index and a pool refresh reads no more than `FRESH_POOL_SIZE` plus the rated lanes' populations; the local report script produces global like-rate, like-rate by lane, band and shape, and lane populations from exported tables.
+- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 101 rows read and 1 write, and a 100-swipe sync of 50 likes and 50 dislikes costs ≤ 650 rows written including index updates; a simulated user of 5,000 fetches never receives a repeat; one like moves a card into the promising lane at the next pool refresh, two lefts from other users do not remove it, five looks scoring at or above `CONFIRM_SCORE` move it into confirmed, five looks at exactly average leave it promising, and fifteen looks below average park it; a card passed over once returns to the tail of the fresh lane behind every never-seen card; every lane query uses its own index and a pool refresh reads no more than `FRESH_POOL_SIZE` plus the rated lanes' populations; the local report script produces global like-rate, like-rate by lane, band and shape, and lane populations from exported tables.
 
 **M4 — Accounts**
 - Google + GitHub providers; `onLinkAccount` merge (swipes + served); post-login sync + likes reconcile; `GET /api/me/likes`; `DELETE /api/me`; sign-in/out UI and avatar.

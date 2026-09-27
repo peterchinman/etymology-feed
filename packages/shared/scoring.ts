@@ -2,35 +2,49 @@
 export const MIN_PRIOR = 0.2;
 export const MAX_PRIOR = 0.8;
 /**
- * Rated lanes use a flat prior instead of the heuristic one (§6.2): a card
- * with data should be judged by its data. Strength 2 at rate 0.5 is Beta(1, 1),
- * so both shape parameters stay >= 1 and Thompson sampling stays well-behaved.
+ * A left swipe is the default action in a swipe feed, so it is weak evidence:
+ * it counts as DISLIKE_WEIGHT of a negative (§6.2). Weighting lefts by the
+ * odds of the base like-rate, p / (1 - p), makes `score >= 0.5` mean "at or
+ * above the average card". 0.25 assumes a 20% like-rate until §6.5 reports it.
  */
-export const DEFAULT_BASE_RATE = 0.5;
-export const DEFAULT_PRIOR_STRENGTH = 2;
+export const DEFAULT_DISLIKE_WEIGHT = 0.25;
+/** Confirmed means clearly above average, not merely at it. */
+export const DEFAULT_CONFIRM_SCORE = 0.55;
+/** Looks before a card may be judged: confirmed at MIN_LOOKS, parked at PARK_LOOKS. */
+export const DEFAULT_MIN_LOOKS = 5;
+/**
+ * Parking is the one irreversible call, because a parked card gets no more
+ * looks, so it waits for three times the evidence that confirming does. A
+ * wrongly confirmed card keeps getting looks and drops back out on its own.
+ */
+export const DEFAULT_PARK_LOOKS = 15;
 
-/** Beta posterior parameters used by Thompson sampling in §6.2. */
+/**
+ * Beta posterior parameters used by Thompson sampling in §6.2: a flat Beta(1, 1)
+ * prior on the weighted scale, so both shape parameters stay >= 1 and the
+ * heuristic prior never enters the score.
+ */
 export function betaShapeParameters(
-  prior: number,
   likes = 0,
   dislikes = 0,
-  strength = DEFAULT_PRIOR_STRENGTH,
+  dislikeWeight = DEFAULT_DISLIKE_WEIGHT,
 ): { alpha: number; beta: number } {
-  const alpha0 = strength * prior;
-  return {
-    alpha: likes + alpha0,
-    beta: dislikes + (strength - alpha0),
-  };
+  return { alpha: likes + 1, beta: dislikeWeight * dislikes + 1 };
 }
 
 export function posteriorMean(
-  prior: number,
   likes: number,
   dislikes: number,
-  strength = DEFAULT_PRIOR_STRENGTH,
+  dislikeWeight = DEFAULT_DISLIKE_WEIGHT,
 ): number {
-  const { alpha, beta } = betaShapeParameters(prior, likes, dislikes, strength);
+  const { alpha, beta } = betaShapeParameters(likes, dislikes, dislikeWeight);
   return alpha / (alpha + beta);
+}
+
+/** The weight at which the average card scores exactly 0.5 (§4.3, §6.5). */
+export function suggestedDislikeWeight(likeRate: number): number | null {
+  if (!(likeRate > 0) || !(likeRate < 1)) return null;
+  return likeRate / (1 - likeRate);
 }
 
 export function betaVariance(alpha: number, beta: number): number {

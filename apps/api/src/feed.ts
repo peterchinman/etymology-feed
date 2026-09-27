@@ -120,11 +120,10 @@ export async function getUserFeed(
       }
       if (!found) break;
     }
-    const baseRate = Number(env.BASE_RATE);
-    const strength = Number(env.PRIOR_STRENGTH);
+    const dislikeWeight = Number(env.DISLIKE_WEIGHT);
     const lanes = {
-      confirmed: rankLane(pools.confirmed, baseRate, strength),
-      promising: rankLane(pools.promising, baseRate, strength),
+      confirmed: rankLane(pools.confirmed, dislikeWeight),
+      promising: rankLane(pools.promising, dislikeWeight),
       fresh: shuffleFresh(pools.fresh),
     };
     const slots = interleave(count, pattern);
