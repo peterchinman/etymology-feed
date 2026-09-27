@@ -29,7 +29,7 @@ export const swipe = sqliteTable(
   (table) => [
     uniqueIndex('idx_swipe_user_card').on(table.userId, table.cardId),
     index('idx_swipe_user_liked')
-      .on(table.userId, table.swipedAt)
+      .on(table.userId, sql`${table.swipedAt} DESC`, sql`${table.id} DESC`)
       .where(sql`${table.verdict} = 1`),
     check('swipe_verdict_check', sql`${table.verdict} IN (1, -1)`),
   ],

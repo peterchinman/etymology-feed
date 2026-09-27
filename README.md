@@ -1,6 +1,8 @@
 # Etymology Feed
 
-M3 adds anonymous persistence and a scored feed to the offline-first Astro/Solid app. The
+M4 adds optional Google and GitHub accounts to the anonymous, offline-first
+Astro/Solid app. Signing in merges anonymous swipes and served history into the
+account; Liked then reconciles from the server across devices. The
 dictionary comes from the `dictionary-2026-09-20b` release of
 [`random-word-generator-site`](https://github.com/peterchinman/random-word-generator-site/releases/tag/dictionary-2026-09-20b).
 The full release assets are never committed here. `apps/api/fixtures/etymology-500.sql`
@@ -13,14 +15,26 @@ release still contains 147,954 one-card headwords.
 Wiktionary text is from kaikki.org and licensed CC BY-SA 4.0.
 
 The app and APP migration now use per-etymology card IDs. The upstream source
-builder change is on the
-[`codex/multi-etymology-cards` branch](https://github.com/peterchinman/random-word-generator-site/tree/codex/multi-etymology-cards).
+builder change is in
+[`random-word-generator-site`](https://github.com/peterchinman/random-word-generator-site).
 The local preview was rebuilt from the original 883,995-word Wiktionary
 extract; publish its rebuilt `dictionary.db`, `etymology.db`, and
 `etymology.sql` under a new release tag. The
 published `dictionary-2026-09-20b` assets still use the old one-card schema;
 the 501-card fixture is for local validation only. Bind the updated API to a
 new `DICT` database imported from the rebuilt SQL when releasing it.
+
+To enable real sign-in, put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET` in the ignored
+`apps/api/.dev.vars` for local development and configure them as Worker
+secrets when deploying. Either provider can be configured alone. Set
+`BETTER_AUTH_URL` to the public app origin when the Worker is behind a proxy.
+Register the corresponding OAuth
+callback URLs as `<origin>/auth/callback/google` and
+`<origin>/auth/callback/github`. Locally, the Astro proxy origin is
+`http://localhost:4321`. Without provider credentials the app continues in
+anonymous mode. The browser account test uses a local mock OIDC provider and
+does not require external credentials.
 
 Use Node 24:
 
@@ -56,10 +70,12 @@ liked, fewest looks then best heuristic prior), and wild. Empty lanes hand
 their slots down, so on day one the feed is fresh and wild. A left swipe
 counts as `DISLIKE_WEIGHT` (0.25) of a dislike, because in a swipe feed a left
 is usually just "next"; a liked card is parked only after `PARK_LOOKS` (15)
-looks below average. After deploying migrations `0004` through `0006`
-to a database that already has ratings, rescore the rated rows once with
+looks below average. The pre-launch APP schema is in one `0000_initial`
+migration; apply it to a fresh APP database and seed `word_stats` before the
+first deployment. When `DISLIKE_WEIGHT` changes after ratings exist, rescore
+the rated rows with
 `UPDATE word_stats SET score = (likes + 1.0) / (likes + 0.25 * dislikes + 2) WHERE likes + dislikes > 0`,
-using the deployed weight. Repeat the same statement whenever the weight changes.
+substituting the new weight.
 Spec §6.5 says how to set the weight, the confirmed margin, and the parking
 threshold from real swipe data once there is some. The server records served card IDs and syncs queued
 swipes when a connection returns. The Liked screen and first 100 swipes remain

@@ -46,6 +46,21 @@ export function toCard(row: WordRow, bucket?: Card['bucket']): Card {
   };
 }
 
+/** Resolve a bounded page of liked cards without one D1 parameter per ID. */
+export async function getCardsByIds(
+  dict: D1Database,
+  ids: string[],
+): Promise<Map<string, Card>> {
+  if (!ids.length) return new Map();
+  const rows = await dict
+    .prepare(
+      `SELECT ${CARD_COLUMNS} FROM word WHERE id IN (SELECT value FROM json_each(?))`,
+    )
+    .bind(JSON.stringify(ids))
+    .all<WordRow>();
+  return new Map(rows.results.map((row) => [row.id, toCard(row)]));
+}
+
 export function randomPosition(maximum: number): number {
   const random = new Uint32Array(1);
   const range = 0x1_0000_0000;

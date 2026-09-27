@@ -8,6 +8,7 @@ import {
   setTheme,
 } from '../lib/local';
 import { DEFAULT_THEME, THEMES, type Theme } from '../lib/themes';
+import AccountControls from './AccountControls';
 
 type Props = {
   /** A floating panel over the feed (desktop) or a page of its own (mobile). */
@@ -150,6 +151,7 @@ export default function Settings(props: Props) {
         />
         <span class="switch-track" aria-hidden="true" />
       </label>
+      <AccountControls variant="settings" />
       <p class="source-credit caption-voice">
         Etymologies and definitions are adapted from{' '}
         <a

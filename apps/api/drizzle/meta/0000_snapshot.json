@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "9984be7b-c4ec-47b0-b027-90620cb24501",
+  "id": "741f7b96-18ee-4a93-befe-3087fe94a851",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "served": {
@@ -14,8 +14,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "words": {
-          "name": "words",
+        "card_ids": {
+          "name": "card_ids",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -73,8 +73,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "word": {
-          "name": "word",
+        "card_id": {
+          "name": "card_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -117,11 +117,11 @@
         }
       },
       "indexes": {
-        "idx_swipe_user_word": {
-          "name": "idx_swipe_user_word",
+        "idx_swipe_user_card": {
+          "name": "idx_swipe_user_card",
           "columns": [
             "user_id",
-            "word"
+            "card_id"
           ],
           "isUnique": true
         },
@@ -129,17 +129,11 @@
           "name": "idx_swipe_user_liked",
           "columns": [
             "user_id",
-            "swiped_at"
+            "\"swiped_at\" DESC",
+            "\"id\" DESC"
           ],
           "isUnique": false,
           "where": "\"swipe\".\"verdict\" = 1"
-        },
-        "idx_swipe_word": {
-          "name": "idx_swipe_word",
-          "columns": [
-            "word"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -169,8 +163,8 @@
     "word_stats": {
       "name": "word_stats",
       "columns": {
-        "word": {
-          "name": "word",
+        "card_id": {
+          "name": "card_id",
           "type": "text",
           "primaryKey": true,
           "notNull": true,
@@ -215,20 +209,29 @@
         }
       },
       "indexes": {
-        "idx_word_stats_score": {
-          "name": "idx_word_stats_score",
-          "columns": [
-            "score"
-          ],
-          "isUnique": false
-        },
         "idx_word_stats_unrated": {
           "name": "idx_word_stats_unrated",
           "columns": [
             "(\"likes\" + \"dislikes\")",
-            "prior"
+            "\"prior\" DESC"
           ],
           "isUnique": false
+        },
+        "idx_word_stats_rec": {
+          "name": "idx_word_stats_rec",
+          "columns": [
+            "\"score\" DESC"
+          ],
+          "isUnique": false,
+          "where": "\"word_stats\".\"likes\" + \"word_stats\".\"dislikes\" >= 5 AND \"word_stats\".\"score\" >= 0.5"
+        },
+        "idx_word_stats_promising": {
+          "name": "idx_word_stats_promising",
+          "columns": [
+            "\"score\" DESC"
+          ],
+          "isUnique": false,
+          "where": "\"word_stats\".\"likes\" > 0 AND (\"word_stats\".\"likes\" + \"word_stats\".\"dislikes\" < 5 OR \"word_stats\".\"score\" < 0.55) AND (\"word_stats\".\"likes\" + \"word_stats\".\"dislikes\" < 15 OR \"word_stats\".\"score\" >= 0.5)"
         }
       },
       "foreignKeys": {},
@@ -606,9 +609,36 @@
   },
   "internal": {
     "indexes": {
+      "idx_swipe_user_liked": {
+        "columns": {
+          "\"swiped_at\" DESC": {
+            "isExpression": true
+          },
+          "\"id\" DESC": {
+            "isExpression": true
+          }
+        }
+      },
       "idx_word_stats_unrated": {
         "columns": {
           "(\"likes\" + \"dislikes\")": {
+            "isExpression": true
+          },
+          "\"prior\" DESC": {
+            "isExpression": true
+          }
+        }
+      },
+      "idx_word_stats_rec": {
+        "columns": {
+          "\"score\" DESC": {
+            "isExpression": true
+          }
+        }
+      },
+      "idx_word_stats_promising": {
+        "columns": {
+          "\"score\" DESC": {
             "isExpression": true
           }
         }

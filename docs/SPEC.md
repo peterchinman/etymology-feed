@@ -198,7 +198,7 @@ CREATE TABLE swipe (
   received_at INTEGER NOT NULL,         -- server clock
   UNIQUE (user_id, card_id)
 );
-CREATE INDEX idx_swipe_user_liked ON swipe(user_id, swiped_at DESC) WHERE verdict = 1;
+CREATE INDEX idx_swipe_user_liked ON swipe(user_id, swiped_at DESC, id DESC) WHERE verdict = 1;
 
 CREATE TABLE served (                   -- every card ever sent to this user: the no-repeats record
   user_id     TEXT PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
@@ -212,7 +212,7 @@ CREATE TABLE word_stats (               -- denormalized aggregate, upserted on e
   likes       INTEGER NOT NULL DEFAULT 0,
   dislikes    INTEGER NOT NULL DEFAULT 0,
   prior       REAL NOT NULL,            -- heuristic prior copied from DICT at seed time; orders the fresh lane only
-  score       REAL NOT NULL,            -- flat-prior posterior mean, §6.2; BASE_RATE while unrated
+  score       REAL NOT NULL,            -- weighted flat-prior posterior mean, §6.2; 0.5 while unrated
   updated_at  INTEGER NOT NULL
 ) WITHOUT ROWID;
 CREATE INDEX idx_word_stats_unrated ON word_stats((likes + dislikes), prior DESC);           -- fresh lane
@@ -312,7 +312,7 @@ Better Auth `socialProviders: { google, github }`, both in Milestone 4. Routes a
 ### 7.3 Merge on sign-in (idempotent, both directions)
 
 1. **Server** — the anonymous plugin's `onLinkAccount({ anonymousUser, newUser })` hook, in one D1 `batch()`:
-   - `swipe`: insert the anonymous user's rows under `newUser.id` with `ON CONFLICT(user_id, card_id) DO UPDATE` keeping the **newer `swiped_at`**; adjust `word_stats` only for rows whose verdict actually changed.
+   - `swipe`: keep the newer `swiped_at` for each card. Each duplicate card loses one aggregate rating, even when both users had the same verdict; unique anonymous cards retain their rating. Move the anonymous rows before the plugin deletes the user.
    - `served`: union of both blobs, ordered by first appearance, trimmed to the cap.
    - Better Auth then deletes the anonymous user (default), cascading its rows.
 2. **Client** — after redirect, `POST /api/sync` with every unsynced swipe from IndexedDB (idempotent on `swipe.id`), then `GET /api/me/likes` and replace the local liked list with the server's. From here the server is the source of truth and IndexedDB is a cache.
