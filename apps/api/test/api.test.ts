@@ -3,7 +3,6 @@ import type { Card } from '@etymology-feed/shared/card';
 import { describe, expect, it } from 'vitest';
 import { getUserFeed, getWildFeed } from '../src/feed';
 import { buildPools } from '../src/pools';
-import { buildNightlyStats } from '../src/stats';
 import { deleteLiked, syncSwipes } from '../src/sync';
 
 describe('dictionary and persistent feed API', () => {
@@ -142,45 +141,5 @@ describe('dictionary and persistent feed API', () => {
       'duplicate',
     ]);
     expect(first.rowsWritten).toBeLessThanOrEqual(650);
-  });
-
-  it('reports bucket, band, shape and global like-rates from the nightly snapshot', async () => {
-    const yesterday = Date.now() - 86_400_000;
-    const cards = [
-      ...(await getWildFeed({ dict: env.DICT }, 100, 1)).cards,
-      ...(await getWildFeed({ dict: env.DICT }, 5, 101)).cards,
-    ];
-    expect(new Set(cards.map(({ word }) => word)).size).toBe(105);
-    const user = crypto.randomUUID();
-    await env.APP.prepare(
-      'INSERT INTO user (id,name,email,updated_at,is_anonymous) VALUES (?,?,?,?,1)',
-    )
-      .bind(user, 'Test', `${user}@test.local`, Date.now())
-      .run();
-    await syncSwipes(
-      env,
-      user,
-      cards.map((card, i) => ({
-        id: crypto.randomUUID(),
-        word: card.word,
-        verdict: (i ? -1 : 1) as 1 | -1,
-        bucket: 'wild' as const,
-        shownAt: yesterday,
-        swipedAt: yesterday,
-      })),
-    );
-    await env.APP.prepare('UPDATE swipe SET received_at=? WHERE user_id=?')
-      .bind(yesterday, user)
-      .run();
-    const report = await buildNightlyStats(env);
-    expect(report.periods[30].total.total).toBe(105);
-    expect(report.globalLikeRate).toBeGreaterThan(0);
-    expect(Object.keys(report.periods[30].bucket)).toContain('wild');
-    expect(Object.keys(report.periods[30].etymBand).length).toBeGreaterThan(0);
-    expect(Object.keys(report.periods[30].shape).length).toBeGreaterThan(0);
-    const admin = await SELF.fetch('http://localhost/api/admin/stats', {
-      headers: { Authorization: 'Bearer test-admin-token' },
-    });
-    expect(admin.status).toBe(200);
   });
 });

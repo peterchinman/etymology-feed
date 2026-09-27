@@ -1,5 +1,24 @@
 # Decisions
 
+## 2026-09-27 — Run §6.5 reporting locally on demand
+
+Remove the nightly stats cron, `stats:v1` KV snapshot, admin stats endpoint,
+and its token. At zero users, a daily full scan would spend D1 reads even when
+no one needs the report. A stdlib Python script combines data-only exports of
+APP's `swipe` and `word_stats` tables with the pinned release's local
+`etymology.db`, then writes the 7/30-day report as JSON. The exports are run
+manually; Cloudflare notes that an export blocks other database requests, so
+run them at a quiet time once the site has users. The script and exported
+data stay local and are never committed. There is no way to reconstruct
+earlier verdicts or deleted likes from the current-state `swipe` table; dates
+use server `received_at`, so offline activity counts on its sync day.
+
+Keep the five-minute pool cron: it serves live feed requests from one bounded
+KV value instead of re-running pool-selection queries for every fetch. Its
+288 KV writes/day fit under the 1,000/day free allowance. The local report
+does not change the §4.1 classifier thresholds or the §4.3 prior; those
+remain decisions for a later dictionary release based on observed rates.
+
 ## 2026-09-26 — M3 auth, quotas, and measurable D1 costs (§3.4, §5–8)
 
 Use the current `auth` CLI with the anonymous plugin to generate the Better
@@ -43,11 +62,8 @@ index for the default `MIN_RATINGS=5`: the five-minute pool cron otherwise
 scans the entire seeded score index while looking for rated words, exceeding
 the 5M daily read budget. The `MIN_RATINGS` variable remains respected; a
 value below five takes the general score-index path and needs new cost
-measurements. Nightly stats scan the 30-day window in rowid order, paged to
-bound Worker memory, and use indexed DICT lookups because D1 has no
-cross-database join. The APP scan can read older swipe rows while
-filtering by date; its rows-read cost grows with retained history and remains
-an explicit free-plan risk to measure in production.
+measurements. The §6.5 report is run locally on demand from D1 table exports
+and the pinned release database; its scan does not run on the Worker.
 
 The `known` JSON is sent in URL-sized chunks after cookie loss, merging into
 the server's served blob on successive fetches. A single 30k-word URL would
@@ -166,3 +182,15 @@ is stored under the `theme` key in IndexedDB and `etymology-theme` in
 localStorage; a light/dark value found there is the pre-picker preference and
 is migrated to `colorMode`. `theme-color` comes from one map in
 `lib/themes.ts`, passed to the pre-paint script with `define:vars`.
+
+## 2026-09-27 — Card source link placement (§3, §7.4)
+
+Keep one link per card to its Wiktionary entry, but move it from the word
+heading to a quiet caption-voice link in the card footer beside the definition
+toggle. CC BY-SA 4.0 §3(a)(1)(A)(v) asks for a link to the licensed material
+where reasonably practicable, and Wikimedia's Terms of Use §7 treat a link to
+the page as the accepted way to credit its authors, so the per-entry link
+stays. §3(a)(2) lets attribution take any reasonable form for the medium, so
+the heading itself need not be the link. The license and modification notices
+remain in Settings. This supersedes the heading link chosen on 2026-09-26 for
+the Feed card; the Liked list still links its headings.

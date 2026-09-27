@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { createAuth } from './auth';
 import { FeedUnavailable, getUserFeed, getWord } from './feed';
 import { buildPools } from './pools';
-import { buildNightlyStats } from './stats';
 import { deleteLiked, syncInput, syncSwipes } from './sync';
 
 type Variables = { userId: string; isAnonymous: boolean };
@@ -18,8 +17,7 @@ app.all('/auth/*', (c) =>
   createAuth(c.env, new URL(c.req.url).origin).handler(c.req.raw),
 );
 app.use('/api/*', async (c, next) => {
-  if (c.req.path === '/api/admin/stats' || c.req.path.startsWith('/api/words/'))
-    return next();
+  if (c.req.path.startsWith('/api/words/')) return next();
   if (
     ['POST', 'DELETE'].includes(c.req.method) &&
     c.req.header('X-Requested-With') !== 'fetch'
@@ -155,28 +153,6 @@ const routes = app
       providers: [] as string[],
     }),
   )
-  .get('/api/admin/stats', async (c) => {
-    if (
-      !c.env.ADMIN_TOKEN ||
-      c.req.header('Authorization') !== `Bearer ${c.env.ADMIN_TOKEN}`
-    )
-      return c.json(
-        { error: { code: 'unauthorized', message: 'Unauthorized.' } },
-        401,
-      );
-    const stats = await c.env.CACHE.get('stats:v1', 'json');
-    if (!stats)
-      return c.json(
-        {
-          error: {
-            code: 'stats_unavailable',
-            message: 'Stats have not been built yet.',
-          },
-        },
-        503,
-      );
-    return c.json(stats);
-  })
   .get('/api/words/:word', async (c) => {
     const card = await getWord({ dict: c.env.DICT }, c.req.param('word'));
     if (!card)
@@ -212,10 +188,6 @@ export default {
     env: CloudflareBindings,
     ctx: ExecutionContext,
   ) {
-    ctx.waitUntil(
-      controller.cron === '*/5 * * * *'
-        ? buildPools(env)
-        : buildNightlyStats(env),
-    );
+    if (controller.cron === '*/5 * * * *') ctx.waitUntil(buildPools(env));
   },
 };

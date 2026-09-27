@@ -6,6 +6,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run --config vitest.config.ts",
+    "test:report": "python3 -m unittest discover -s scripts -p 'test_*.py'",
+    "report:stats": "python3 scripts/report_stats.py",
     "seed:word-stats": "node scripts/seed-word-stats.mjs",
     "types": "wrangler types --env-interface CloudflareBindings --include-runtime false"
   },
