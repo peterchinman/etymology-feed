@@ -4,8 +4,8 @@ export type Candidate = [cardId: string, likes: number, dislikes: number];
 /**
  * Lanes by information state (§6.1). `confirmed` and `promising` carry their
  * counts so the feed can Thompson-sample them; `fresh` is already ordered by
- * the heuristic prior. Parked cards (rated, more dislikes than likes) are
- * reachable only through wild.
+ * the heuristic prior. Parked cards (lefts and no likes, or judged below
+ * average after five looks) are reachable only through wild.
  */
 export type Pools = {
   builtAt: number;
@@ -25,23 +25,26 @@ export async function buildPools(
   const promisingSize = Number(env.PROMISING_POOL_SIZE);
   const freshSize = Number(env.FRESH_POOL_SIZE);
   const minRatings = Number(env.MIN_RATINGS);
-  // idx_word_stats_rec (partial, n >= 5 AND score >= 0.5): reads only the
-  // confirmed lane's own rows, at most confirmedSize. The literal 5 lets SQLite
-  // prove the partial index applies; a MIN_RATINGS below 5 falls back to a scan
-  // and needs new cost measurements.
+  const confirmScore = Number(env.CONFIRM_SCORE);
+  // idx_word_stats_rec (partial, n >= 5 AND score >= 0.5): reads only rows at
+  // or above average, at most confirmedSize. The literals let SQLite prove the
+  // partial index applies; the bound CONFIRM_SCORE (>= 0.5) then narrows to
+  // clearly-above-average. A MIN_RATINGS below 5 falls back to a scan and
+  // needs new cost measurements.
   const confirmed = await env.APP.prepare(
     minRatings >= 5
-      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 ORDER BY score DESC LIMIT ?'
-      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= ? AND score >= 0.5 ORDER BY score DESC LIMIT ?',
+      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC LIMIT ?'
+      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC LIMIT ?',
   )
-    .bind(minRatings, confirmedSize)
+    .bind(minRatings, confirmScore, confirmedSize)
     .all<StatRow>();
-  // idx_word_stats_promising (partial, likes > 0 AND likes >= dislikes AND
-  // n < 5): reads only the promising lane's own rows, at most promisingSize.
+  // idx_word_stats_promising (partial, likes > 0 AND n < 5): reads only the
+  // promising lane's own rows, at most promisingSize. No dislike test: a like
+  // buys a card its five looks (§6.1).
   const promising = await env.APP.prepare(
     minRatings <= 5
-      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND likes >= dislikes AND likes + dislikes < 5 AND likes + dislikes < ? ORDER BY score DESC LIMIT ?'
-      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND likes >= dislikes AND likes + dislikes < ? ORDER BY score DESC LIMIT ?',
+      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND likes + dislikes < 5 AND likes + dislikes < ? ORDER BY score DESC LIMIT ?'
+      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND likes + dislikes < ? ORDER BY score DESC LIMIT ?',
   )
     .bind(minRatings, promisingSize)
     .all<StatRow>();
@@ -85,20 +88,18 @@ export async function getPools(env: CloudflareBindings): Promise<Pools> {
   return cached ?? buildPools(env);
 }
 
-/** Thompson sampling over a rated lane with the flat base-rate prior (§6.2). */
+/** Thompson sampling over a rated lane with weighted lefts (§6.2). */
 export function rankLane(
   candidates: readonly Candidate[],
-  baseRate: number,
-  strength: number,
+  dislikeWeight: number,
   random: () => number = Math.random,
 ): string[] {
   return candidates
     .map(([cardId, likes, dislikes]) => {
       const { alpha, beta } = betaShapeParameters(
-        baseRate,
         likes,
         dislikes,
-        strength,
+        dislikeWeight,
       );
       return { cardId, draw: betaDraw(alpha, beta, random) };
     })
