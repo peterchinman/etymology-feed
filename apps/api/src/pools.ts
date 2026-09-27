@@ -4,8 +4,8 @@ export type Candidate = [cardId: string, likes: number, dislikes: number];
 /**
  * Lanes by information state (§6.1). `confirmed` and `promising` carry their
  * counts so the feed can Thompson-sample them; `fresh` is already ordered by
- * the heuristic prior. Parked cards (rated, more dislikes than likes) are
- * reachable only through wild.
+ * looks then the heuristic prior. Parked cards (never liked in five looks, or
+ * liked but below average after fifteen) are reachable only through wild.
  */
 export type Pools = {
   builtAt: number;
@@ -25,32 +25,50 @@ export async function buildPools(
   const promisingSize = Number(env.PROMISING_POOL_SIZE);
   const freshSize = Number(env.FRESH_POOL_SIZE);
   const minRatings = Number(env.MIN_RATINGS);
-  // idx_word_stats_rec (partial, n >= 5 AND score >= 0.5): reads only the
-  // confirmed lane's own rows, at most confirmedSize. The literal 5 lets SQLite
-  // prove the partial index applies; a MIN_RATINGS below 5 falls back to a scan
-  // and needs new cost measurements.
+  const confirmScore = Number(env.CONFIRM_SCORE);
+  const parkLooks = Number(env.PARK_LOOKS);
+  // idx_word_stats_rec (partial, n >= 5 AND score >= 0.5): reads only rows at
+  // or above average, at most confirmedSize. The literals let SQLite prove the
+  // partial index applies; the bound CONFIRM_SCORE (>= 0.5) then narrows to
+  // clearly-above-average. A MIN_RATINGS below 5 falls back to a scan and
+  // needs new cost measurements.
   const confirmed = await env.APP.prepare(
     minRatings >= 5
-      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 ORDER BY score DESC LIMIT ?'
-      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= ? AND score >= 0.5 ORDER BY score DESC LIMIT ?',
+      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC LIMIT ?'
+      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC LIMIT ?',
   )
-    .bind(minRatings, confirmedSize)
+    .bind(minRatings, confirmScore, confirmedSize)
     .all<StatRow>();
-  // idx_word_stats_promising (partial, likes > 0 AND likes >= dislikes AND
-  // n < 5): reads only the promising lane's own rows, at most promisingSize.
+  // idx_word_stats_promising (partial): liked cards that are neither confirmed
+  // (n >= 5 AND score >= 0.55) nor parked (n >= 15 AND score < 0.5). Reads only
+  // the lane's own rows, at most promisingSize. The index predicate hardcodes
+  // the default thresholds; other values fall back to a scan that needs new
+  // cost measurements (§6.1).
+  const defaultThresholds =
+    minRatings === 5 && confirmScore === 0.55 && parkLooks === 15;
   const promising = await env.APP.prepare(
-    minRatings <= 5
-      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND likes >= dislikes AND likes + dislikes < 5 AND likes + dislikes < ? ORDER BY score DESC LIMIT ?'
-      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND likes >= dislikes AND likes + dislikes < ? ORDER BY score DESC LIMIT ?',
+    defaultThresholds
+      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND (likes + dislikes < 5 OR score < 0.55) AND (likes + dislikes < 15 OR score >= 0.5) ORDER BY score DESC LIMIT ?'
+      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND (likes + dislikes < ? OR score < ?) AND (likes + dislikes < ? OR score >= 0.5) ORDER BY score DESC LIMIT ?',
   )
-    .bind(minRatings, promisingSize)
+    .bind(
+      ...(defaultThresholds
+        ? [promisingSize]
+        : [minRatings, confirmScore, parkLooks, promisingSize]),
+    )
     .all<StatRow>();
-  // idx_word_stats_unrated ((likes + dislikes), prior DESC): equality on n = 0
-  // then index order, at most freshSize rows read.
+  if (!defaultThresholds)
+    console.warn(
+      'Non-default MIN_RATINGS/CONFIRM_SCORE/PARK_LOOKS: promising lane scans instead of using idx_word_stats_promising.',
+    );
+  // idx_word_stats_unrated ((likes + dislikes), prior DESC): never-liked cards,
+  // fewest looks first, best prior first. Never-seen cards fill the lane until
+  // the frontier is exhausted; only then do cards passed over once get a second
+  // look. Reads freshSize rows plus any liked low-n rows the index range skips.
   const fresh = await env.APP.prepare(
-    'SELECT card_id FROM word_stats WHERE likes + dislikes = 0 ORDER BY prior DESC LIMIT ?',
+    'SELECT card_id FROM word_stats WHERE likes = 0 AND likes + dislikes < ? ORDER BY likes + dislikes ASC, prior DESC LIMIT ?',
   )
-    .bind(freshSize)
+    .bind(minRatings, freshSize)
     .all<{ card_id: string }>();
   // Primary-key lookup: one row read.
   const meta = await env.DICT.prepare(
@@ -85,20 +103,18 @@ export async function getPools(env: CloudflareBindings): Promise<Pools> {
   return cached ?? buildPools(env);
 }
 
-/** Thompson sampling over a rated lane with the flat base-rate prior (§6.2). */
+/** Thompson sampling over a rated lane with weighted lefts (§6.2). */
 export function rankLane(
   candidates: readonly Candidate[],
-  baseRate: number,
-  strength: number,
+  dislikeWeight: number,
   random: () => number = Math.random,
 ): string[] {
   return candidates
     .map(([cardId, likes, dislikes]) => {
       const { alpha, beta } = betaShapeParameters(
-        baseRate,
         likes,
         dislikes,
-        strength,
+        dislikeWeight,
       );
       return { cardId, draw: betaDraw(alpha, beta, random) };
     })

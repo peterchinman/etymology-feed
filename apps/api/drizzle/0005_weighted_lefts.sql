@@ -1,0 +1,2 @@
+DROP INDEX `idx_word_stats_promising`;--> statement-breakpoint
+CREATE INDEX `idx_word_stats_promising` ON `word_stats` ("score" DESC) WHERE "word_stats"."likes" > 0 AND "word_stats"."likes" + "word_stats"."dislikes" < 5;

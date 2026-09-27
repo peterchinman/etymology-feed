@@ -55,22 +55,25 @@ export const wordStats = sqliteTable(
     updatedAt: integer('updated_at').notNull(),
   },
   (table) => [
-    // Fresh lane: n = 0 ordered by the heuristic prior (§6.1).
+    // Fresh lane: never-liked cards, fewest looks then best prior (§6.1).
     index('idx_word_stats_unrated').on(
       sql`(${table.likes} + ${table.dislikes})`,
       sql`${table.prior} DESC`,
     ),
-    // Confirmed lane. Partial, so it costs writes only for rows that qualify.
+    // Confirmed lane: at or above average with five looks; the query narrows
+    // to CONFIRM_SCORE. Partial, so it costs writes only for qualifying rows.
     index('idx_word_stats_rec')
       .on(sql`${table.score} DESC`)
       .where(
         sql`${table.likes} + ${table.dislikes} >= 5 AND ${table.score} >= 0.5`,
       ),
-    // Promising lane: at least one like, not outvoted, under five ratings.
+    // Promising lane: liked, and neither confirmed (5 looks, score >= 0.55)
+    // nor parked (15 looks, score < 0.5). Parking waits for three times the
+    // evidence because it is the irreversible call (§6.1).
     index('idx_word_stats_promising')
       .on(sql`${table.score} DESC`)
       .where(
-        sql`${table.likes} > 0 AND ${table.likes} >= ${table.dislikes} AND ${table.likes} + ${table.dislikes} < 5`,
+        sql`${table.likes} > 0 AND (${table.likes} + ${table.dislikes} < 5 OR ${table.score} < 0.55) AND (${table.likes} + ${table.dislikes} < 15 OR ${table.score} >= 0.5)`,
       ),
   ],
 );

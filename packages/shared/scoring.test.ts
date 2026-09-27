@@ -3,8 +3,8 @@ import {
   betaDraw,
   betaShapeParameters,
   betaVariance,
-  DEFAULT_BASE_RATE,
-  DEFAULT_PRIOR_STRENGTH,
+  DEFAULT_CONFIRM_SCORE,
+  DEFAULT_DISLIKE_WEIGHT,
   fillOrder,
   interleave,
   LANES,
@@ -12,44 +12,62 @@ import {
   posteriorMean,
   SLOT_PATTERN,
   slotPattern,
+  suggestedDislikeWeight,
 } from './scoring';
 
-describe('flat rated-lane prior', () => {
-  it('is Beta(1, 1) before any rating, so Thompson sampling stays well-behaved', () => {
-    const { alpha, beta } = betaShapeParameters(DEFAULT_BASE_RATE);
-    expect(alpha).toBeGreaterThanOrEqual(1);
-    expect(beta).toBeGreaterThanOrEqual(1);
-    expect(alpha + beta).toBeCloseTo(DEFAULT_PRIOR_STRENGTH);
+describe('weighted-left scoring', () => {
+  it('is Beta(1, 1) before any rating and keeps both shapes at least 1 after', () => {
+    const { alpha, beta } = betaShapeParameters();
+    expect(alpha).toBe(1);
+    expect(beta).toBe(1);
+    for (const [likes, dislikes] of [
+      [0, 1],
+      [1, 0],
+      [0, 40],
+      [7, 3],
+    ]) {
+      const shape = betaShapeParameters(likes, dislikes);
+      expect(shape.alpha).toBeGreaterThanOrEqual(1);
+      expect(shape.beta).toBeGreaterThanOrEqual(1);
+    }
   });
 
-  it('lets a single rating move the score decisively', () => {
-    expect(posteriorMean(DEFAULT_BASE_RATE, 0, 0)).toBeCloseTo(0.5);
-    expect(posteriorMean(DEFAULT_BASE_RATE, 1, 0)).toBeCloseTo(2 / 3);
-    expect(posteriorMean(DEFAULT_BASE_RATE, 0, 1)).toBeCloseTo(1 / 3);
-    expect(posteriorMean(DEFAULT_BASE_RATE, 2, 0)).toBeCloseTo(0.75);
-    // The confirmed threshold score >= 0.5 is exactly likes >= dislikes.
-    expect(posteriorMean(DEFAULT_BASE_RATE, 3, 3)).toBeCloseTo(0.5);
-    expect(posteriorMean(DEFAULT_BASE_RATE, 2, 3)).toBeLessThan(0.5);
+  it('treats a like as decisive and a left as weak evidence', () => {
+    expect(posteriorMean(0, 0)).toBeCloseTo(0.5);
+    expect(posteriorMean(1, 0)).toBeCloseTo(2 / 3);
+    expect(posteriorMean(0, 1)).toBeCloseTo(1 / 2.25);
+    // One like survives two lefts, and one like in five looks is exactly average.
+    expect(posteriorMean(1, 2)).toBeGreaterThan(0.5);
+    expect(posteriorMean(1, 4)).toBeCloseTo(0.5);
+    expect(posteriorMean(1, 4)).toBeLessThan(DEFAULT_CONFIRM_SCORE);
+    expect(posteriorMean(2, 3)).toBeGreaterThan(DEFAULT_CONFIRM_SCORE);
+    // With weight 1 a left is a full dislike again.
+    expect(posteriorMean(1, 4, 1)).toBeCloseTo(2 / 7);
+  });
+
+  it('suggests the weight at which the average card scores 0.5', () => {
+    // likes >= w * dislikes is like-rate >= p exactly when w = p / (1 - p).
+    const p = 0.2;
+    const w = suggestedDislikeWeight(p);
+    expect(w).toBeCloseTo(0.25);
+    expect(DEFAULT_DISLIKE_WEIGHT).toBeCloseTo(w as number);
+    expect(posteriorMean(20, 80, w as number)).toBeCloseTo(0.5, 1);
+    expect(suggestedDislikeWeight(0)).toBeNull();
+    expect(suggestedDislikeWeight(1)).toBeNull();
+    expect(suggestedDislikeWeight(Number.NaN)).toBeNull();
   });
 
   it('matches the posterior mean and Beta variance by sampling', () => {
     const likes = 8;
     const dislikes = 3;
-    const { alpha, beta } = betaShapeParameters(
-      DEFAULT_BASE_RATE,
-      likes,
-      dislikes,
-    );
+    const { alpha, beta } = betaShapeParameters(likes, dislikes);
     const samples = Array.from({ length: 20_000 }, () => betaDraw(alpha, beta));
     const mean =
       samples.reduce((sum, value) => sum + value, 0) / samples.length;
     const variance =
       samples.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
       samples.length;
-    expect(mean).toBeCloseTo(
-      posteriorMean(DEFAULT_BASE_RATE, likes, dislikes),
-      2,
-    );
+    expect(mean).toBeCloseTo(posteriorMean(likes, dislikes), 2);
     expect(variance).toBeCloseTo(betaVariance(alpha, beta), 2);
   });
 });
