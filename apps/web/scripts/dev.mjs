@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 const web = resolve(import.meta.dirname, '..');
 const api = resolve(web, '../api');
-const persist = resolve(api, '.wrangler/dev');
+const persist = resolve(api, '.wrangler/dev-v2');
 const bin = resolve(web, '../../node_modules/.bin');
 const wrangler = resolve(bin, 'wrangler');
 const astro = resolve(bin, 'astro');
@@ -55,22 +55,22 @@ const statsCount = JSON.parse(
   ]),
 )[0].results[0].count;
 if (statsCount === 0) {
-  console.log('Seeding local APP statistics from the 500-word fixture…');
+  console.log('Seeding local APP statistics from the card fixture…');
   const words = JSON.parse(
-    d1('DICT', ['--json', '--command', 'SELECT word,prior FROM word']),
+    d1('DICT', ['--json', '--command', 'SELECT id,prior FROM word']),
   )[0].results;
   const quote = (value) => `'${value.replaceAll("'", "''")}'`;
   for (let i = 0; i < words.length; i += 100) {
     const rows = words
       .slice(i, i + 100)
       .map(
-        ({ word, prior }) =>
-          `(${quote(word)},0,0,${Number(prior)},${Number(prior)},0)`,
+        ({ id, prior }) =>
+          `(${quote(id)},0,0,${Number(prior)},${Number(prior)},0)`,
       )
       .join(',');
     d1('APP', [
       '--command',
-      `INSERT INTO word_stats (word,likes,dislikes,prior,score,updated_at) VALUES ${rows}`,
+      `INSERT INTO word_stats (card_id,likes,dislikes,prior,score,updated_at) VALUES ${rows}`,
     ]);
   }
 }

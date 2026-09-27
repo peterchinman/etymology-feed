@@ -19,7 +19,7 @@ export const swipe = sqliteTable(
     userId: text('user_id')
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    word: text('word').notNull(),
+    cardId: text('card_id').notNull(),
     verdict: integer('verdict').notNull(),
     bucket: text('bucket'),
     shownAt: integer('shown_at').notNull(),
@@ -27,7 +27,7 @@ export const swipe = sqliteTable(
     receivedAt: integer('received_at').notNull(),
   },
   (table) => [
-    uniqueIndex('idx_swipe_user_word').on(table.userId, table.word),
+    uniqueIndex('idx_swipe_user_card').on(table.userId, table.cardId),
     index('idx_swipe_user_liked')
       .on(table.userId, table.swipedAt)
       .where(sql`${table.verdict} = 1`),
@@ -39,7 +39,7 @@ export const served = sqliteTable('served', {
   userId: text('user_id')
     .primaryKey()
     .references(() => user.id, { onDelete: 'cascade' }),
-  words: text('words').notNull(),
+  cardIds: text('card_ids').notNull(),
   count: integer('count').notNull(),
   updatedAt: integer('updated_at').notNull(),
 });
@@ -47,7 +47,7 @@ export const served = sqliteTable('served', {
 export const wordStats = sqliteTable(
   'word_stats',
   {
-    word: text('word').primaryKey(),
+    cardId: text('card_id').primaryKey(),
     likes: integer('likes').notNull().default(0),
     dislikes: integer('dislikes').notNull().default(0),
     prior: real('prior').notNull(),
@@ -55,15 +55,22 @@ export const wordStats = sqliteTable(
     updatedAt: integer('updated_at').notNull(),
   },
   (table) => [
-    index('idx_word_stats_score').on(sql`${table.score} DESC`),
+    // Fresh lane: n = 0 ordered by the heuristic prior (§6.1).
     index('idx_word_stats_unrated').on(
       sql`(${table.likes} + ${table.dislikes})`,
       sql`${table.prior} DESC`,
     ),
+    // Confirmed lane. Partial, so it costs writes only for rows that qualify.
     index('idx_word_stats_rec')
       .on(sql`${table.score} DESC`)
       .where(
         sql`${table.likes} + ${table.dislikes} >= 5 AND ${table.score} >= 0.5`,
+      ),
+    // Promising lane: at least one like, not outvoted, under five ratings.
+    index('idx_word_stats_promising')
+      .on(sql`${table.score} DESC`)
+      .where(
+        sql`${table.likes} > 0 AND ${table.likes} >= ${table.dislikes} AND ${table.likes} + ${table.dislikes} < 5`,
       ),
   ],
 );

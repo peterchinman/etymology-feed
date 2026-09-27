@@ -53,7 +53,7 @@ function quote(value) {
 for (;;) {
   const query = execute(
     'DICT',
-    `SELECT shuffle,word,prior FROM word WHERE shuffle>${after} ORDER BY shuffle LIMIT 100`,
+    `SELECT shuffle,id,prior FROM word WHERE shuffle>${after} ORDER BY shuffle LIMIT 100`,
   );
   const words = query[0]?.results ?? [];
   if (!words.length) break;
@@ -62,11 +62,11 @@ for (;;) {
   const now = Date.now();
   const rows = words
     .map(
-      ({ word, prior }) =>
-        `(${quote(word)},0,0,${Number(prior)},${Number(prior)},${now})`,
+      // score = BASE_RATE for unrated rows (§6.2); prior orders the fresh lane.
+      ({ id, prior }) => `(${quote(id)},0,0,${Number(prior)},0.5,${now})`,
     )
     .join(',');
-  const sql = `INSERT INTO word_stats (word,likes,dislikes,prior,score,updated_at) VALUES ${rows} ON CONFLICT(word) DO NOTHING;`;
+  const sql = `INSERT INTO word_stats (card_id,likes,dislikes,prior,score,updated_at) VALUES ${rows} ON CONFLICT(card_id) DO NOTHING;`;
   const directory = mkdtempSync(join(tmpdir(), 'etymology-seed-'));
   const path = join(directory, 'seed.sql');
   try {

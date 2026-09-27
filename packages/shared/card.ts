@@ -1,5 +1,9 @@
+import type { Bucket } from './scoring';
+
 export type Card = {
+  id: string;
   word: string;
+  etymNo: number | null;
   ipa: string | null;
   pos: string[];
   definition: string;
@@ -8,5 +12,5 @@ export type Card = {
   tier: string;
   shape: string;
   etymBand: string;
-  bucket?: 'rec' | 'unknown' | 'wild';
+  bucket?: Bucket;
 };

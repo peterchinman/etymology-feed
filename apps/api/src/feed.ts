@@ -2,13 +2,15 @@ import type { Card } from '@etymology-feed/shared/card';
 import {
   type Bucket,
   interleave,
-  pickAvailable,
+  pickFromLanes,
   slotPattern,
 } from '@etymology-feed/shared/scoring';
-import { getPools, rankRecommended, shuffleUnknown } from './pools';
+import { getPools, rankLane, shuffleFresh } from './pools';
 
 type WordRow = {
+  id: string;
   word: string;
+  etym_no: number | null;
   ipa: string | null;
   tier: string;
   shape: string;
@@ -23,13 +25,15 @@ type WordRow = {
 type Bindings = { dict: D1Database };
 
 const CARD_COLUMNS =
-  'word, ipa, tier, shape, pos, definition, def_pos, etymology, etym_band, shuffle';
+  'id, word, etym_no, ipa, tier, shape, pos, definition, def_pos, etymology, etym_band, shuffle';
 
 export class FeedUnavailable extends Error {}
 
 export function toCard(row: WordRow, bucket?: Card['bucket']): Card {
   return {
+    id: row.id,
     word: row.word,
+    etymNo: row.etym_no,
     ipa: row.ipa,
     pos: JSON.parse(row.pos) as string[],
     definition: row.definition,
@@ -52,7 +56,7 @@ export function randomPosition(maximum: number): number {
   return (random[0] % maximum) + 1;
 }
 
-const SERVED_KEY = 'SELECT words FROM served WHERE user_id = ?';
+const SERVED_KEY = 'SELECT card_ids FROM served WHERE user_id = ?';
 
 export async function getUserFeed(
   env: CloudflareBindings,
@@ -61,28 +65,29 @@ export async function getUserFeed(
   known: string[] = [],
 ): Promise<{ cards: Card[]; rowsRead: number; rowsWritten: number }> {
   const pools = await getPools(env);
-  if (pools.wordCount < count)
+  if (pools.cardCount < count)
     throw new FeedUnavailable(
       'The dictionary is not ready for this batch size.',
     );
   const cap = Number(env.SERVED_CAP);
-  const pattern = slotPattern(
-    Number(env.REC_SLOTS),
-    Number(env.UNKNOWN_SLOTS),
-    Number(env.WILD_SLOTS),
-  );
+  const pattern = slotPattern({
+    confirmed: Number(env.CONFIRMED_SLOTS),
+    promising: Number(env.PROMISING_SLOTS),
+    fresh: Number(env.FRESH_SLOTS),
+    wild: Number(env.WILD_SLOTS),
+  });
   for (let attempt = 0; attempt < 3; attempt++) {
     // served.user_id PK: one row read.
     const record = await env.APP.prepare(SERVED_KEY)
       .bind(userId)
-      .all<{ words: string }>();
-    const oldWords = record.results[0]?.words;
+      .all<{ card_ids: string }>();
+    const oldWords = record.results[0]?.card_ids;
     const previous: string[] = oldWords ? JSON.parse(oldWords) : [];
     const previousSet = new Set(previous);
-    for (const word of known)
-      if (!previousSet.has(word)) {
-        previousSet.add(word);
-        previous.push(word);
+    for (const id of known)
+      if (!previousSet.has(id)) {
+        previousSet.add(id);
+        previous.push(id);
       }
     if (previous.length > cap) previous.splice(0, previous.length - cap);
     const seen = new Set(previous);
@@ -95,8 +100,8 @@ export async function getUserFeed(
     // Draw wild positions first; the remaining pools then skip these words.
     for (let i = 0; i < wildNeeded; i++) {
       let found = false;
-      for (let tries = 0; tries < Math.min(pools.wordCount, 1000); tries++) {
-        const position = randomPosition(pools.wordCount);
+      for (let tries = 0; tries < Math.min(pools.cardCount, 1000); tries++) {
+        const position = randomPosition(pools.cardCount);
         if (positions.has(position)) continue;
         positions.add(position);
         // idx_word_shuffle equality: one row read.
@@ -107,35 +112,38 @@ export async function getUserFeed(
           .all<WordRow>();
         rowsRead += query.meta.rows_read;
         const row = query.results[0];
-        if (!row || seen.has(row.word)) continue;
-        seen.add(row.word);
-        wild.set(row.word, row);
+        if (!row || seen.has(row.id)) continue;
+        seen.add(row.id);
+        wild.set(row.id, row);
         found = true;
         break;
       }
       if (!found) break;
     }
-    const rec = rankRecommended(pools.rec, Number(env.PRIOR_STRENGTH));
-    const unknown = shuffleUnknown(pools.unknown);
+    const baseRate = Number(env.BASE_RATE);
+    const strength = Number(env.PRIOR_STRENGTH);
+    const lanes = {
+      confirmed: rankLane(pools.confirmed, baseRate, strength),
+      promising: rankLane(pools.promising, baseRate, strength),
+      fresh: shuffleFresh(pools.fresh),
+    };
     const slots = interleave(count, pattern);
-    const chosen: { word: string; bucket: Bucket }[] = [];
+    const chosen: { id: string; bucket: Bucket }[] = [];
     let wildIndex = 0;
-    const wildWords = [...wild.keys()];
+    const wildIds = [...wild.keys()];
     for (const slot of slots) {
-      if (slot === 'wild' && wildIndex < wildWords.length) {
-        chosen.push({ word: wildWords[wildIndex++], bucket: 'wild' });
+      if (slot === 'wild' && wildIndex < wildIds.length) {
+        chosen.push({ id: wildIds[wildIndex++], bucket: 'wild' });
         continue;
       }
-      const candidate = pickAvailable(
-        slot === 'rec' ? rec : unknown,
-        seen,
-        slot === 'rec' ? unknown : rec,
-      );
-      if (candidate) chosen.push({ word: candidate, bucket: slot });
+      // Fill-through: an empty lane hands its slot down (§6.4). The recorded
+      // bucket is the lane the card came from, so per-lane like-rates are honest.
+      const picked = pickFromLanes(slot, lanes, seen);
+      if (picked) chosen.push({ id: picked.item, bucket: picked.lane });
     }
     // Pool exhaustion relaxes to wild, drawing until the requested count is reached.
-    while (chosen.length < count && seen.size < pools.wordCount) {
-      const position = randomPosition(pools.wordCount);
+    while (chosen.length < count && seen.size < pools.cardCount) {
+      const position = randomPosition(pools.cardCount);
       if (positions.has(position)) continue;
       positions.add(position);
       const query = await env.DICT.prepare(
@@ -145,48 +153,48 @@ export async function getUserFeed(
         .all<WordRow>();
       rowsRead += query.meta.rows_read;
       const row = query.results[0];
-      if (!row || seen.has(row.word)) continue;
-      seen.add(row.word);
-      wild.set(row.word, row);
-      chosen.push({ word: row.word, bucket: 'wild' });
+      if (!row || seen.has(row.id)) continue;
+      seen.add(row.id);
+      wild.set(row.id, row);
+      chosen.push({ id: row.id, bucket: 'wild' });
     }
     // Individual primary-key lookups cost one row each in D1, whereas the
     // JSON-array IN query measured three rows per card on the fixture.
-    const lookups = chosen.filter(({ word }) => !wild.has(word));
+    const lookups = chosen.filter(({ id }) => !wild.has(id));
     const fetched = lookups.length
       ? await env.DICT.batch(
-          lookups.map(({ word }) =>
+          lookups.map(({ id }) =>
             env.DICT.prepare(
-              `SELECT ${CARD_COLUMNS} FROM word WHERE word = ?`,
-            ).bind(word),
+              `SELECT ${CARD_COLUMNS} FROM word WHERE id = ?`,
+            ).bind(id),
           ),
         )
       : [];
     const byWord = new Map<string, WordRow>(wild);
     fetched.forEach((result) => {
       rowsRead += result.meta.rows_read;
-      for (const row of result.results as WordRow[]) byWord.set(row.word, row);
+      for (const row of result.results as WordRow[]) byWord.set(row.id, row);
     });
     const cards = chosen
-      .map(({ word, bucket }) => {
-        const row = byWord.get(word);
+      .map(({ id, bucket }) => {
+        const row = byWord.get(id);
         return row ? toCard(row, bucket) : undefined;
       })
       .filter((card): card is Card => !!card);
     const nextWords = JSON.stringify(
-      [...previous, ...cards.map(({ word }) => word)].slice(-cap),
+      [...previous, ...cards.map(({ id }) => id)].slice(-cap),
     );
     const now = Date.now();
     // CAS on the JSON value prevents concurrent fetches from losing updates.
     const write =
       oldWords === undefined
         ? await env.APP.prepare(
-            'INSERT INTO served (user_id, words, count, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+            'INSERT INTO served (user_id, card_ids, count, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
           )
             .bind(userId, nextWords, JSON.parse(nextWords).length, now)
             .run()
         : await env.APP.prepare(
-            'UPDATE served SET words = ?, count = ?, updated_at = ? WHERE user_id = ? AND words = ?',
+            'UPDATE served SET card_ids = ?, count = ?, updated_at = ? WHERE user_id = ? AND card_ids = ?',
           )
             .bind(
               nextWords,
@@ -267,12 +275,23 @@ export async function getWildFeed(
 
 export async function getWord(
   { dict }: Bindings,
-  word: string,
+  id: string,
 ): Promise<Card | null> {
-  // Primary-key lookup on word.word: 1 row read, 0 written.
+  // Primary-key lookup on word.id: 1 row read, 0 written.
   const row = await dict
-    .prepare(`SELECT ${CARD_COLUMNS} FROM word WHERE word = ?`)
-    .bind(word)
+    .prepare(`SELECT ${CARD_COLUMNS} FROM word WHERE id = ?`)
+    .bind(id)
     .first<WordRow>();
   return row ? toCard(row) : null;
+}
+
+export async function getWordEtymologies(
+  { dict }: Bindings,
+  word: string,
+): Promise<Card[]> {
+  const rows = await dict
+    .prepare(`SELECT ${CARD_COLUMNS} FROM word WHERE word = ? ORDER BY etym_no`)
+    .bind(word)
+    .all<WordRow>();
+  return rows.results.map((row) => toCard(row));
 }

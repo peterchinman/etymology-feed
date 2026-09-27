@@ -1,5 +1,64 @@
 # Decisions
 
+## 2026-09-27 — Feed lanes by information state; flat prior for rated cards (§6)
+
+Replace the recommended/unknown pools and the five-rating gate with lanes
+defined by what is known about a card: confirmed (`n >= 5`, `likes >=
+dislikes`), promising (at least one like, not outvoted, `n < 5`), fresh
+(`n = 0`, ordered by the heuristic prior), and parked (outvoted; wild only).
+Each 20-card block is 6/6/6/2 with fill-through, so an empty lane hands its
+slots down instead of leaving a cliff. The swipe `bucket` now records the lane
+the card came from rather than the slot, so per-lane like-rates are honest;
+the sync endpoint still accepts the legacy `rec` and `unknown` values from
+offline queues.
+
+Why redesign rather than reserve a share of `rec` for one-to-four-rated
+cards: with the release downloaded locally (`data/etymology.db`, gitignored),
+16,352 of 147,954 cards (11.1%) sit at the prior clamp of 0.8, almost all
+200+ character etymologies. Both old pools were therefore arbitrary slices of
+that tie group, and under the `K = 5` heuristic prior one like on a 0.7 card
+(posterior 0.75) still trailed 18,981 unrated cards; two likes on a 0.6 card
+trailed 25,537. The heuristic prior was doing two jobs. It now only orders
+the fresh lane; rated cards are scored with a flat `Beta(1, 1)` prior
+(`PRIOR_STRENGTH = 2`, `BASE_RATE = 0.5`), so one like is 2/3 and one dislike
+is 1/3. Re-centering on the observed like-rate becomes a var change plus one
+indexed `UPDATE` of rated rows instead of a dictionary release.
+
+Costs. The old refresh read up to 6,500 rows per run (500 + 3,000 + 3,000),
+about 1.87M of the 5M daily reads. The new refresh reads at most
+`FRESH_POOL_SIZE` plus the confirmed and promising populations, because those
+two lanes are served by partial indexes: about 0.86M/day at launch and at most
+2.6M/day with every lane full. On the 501-card fixture the refresh measured
+503 rows read: 501 for the fresh lane and one per empty partial-index query. Migration `0004_lanes` drops the general score index
+(unused now; it cost 100 writes per 100 swipes) and adds the partial promising
+index, which costs writes only for qualifying rows. No reseed: unrated rows
+keep their old score harmlessly since no lane reads it, and rated rows are
+rescored once after deploying with
+`UPDATE word_stats SET score = (likes + 1.0) / (likes + dislikes + 2) WHERE likes + dislikes > 0`,
+a range on `idx_word_stats_unrated` that reads only rated rows. The KV key
+moved to `pools:v3`; the first cron or feed request after deploy rebuilds it.
+Web typecheck, lint, API, shared, and report tests pass.
+
+## 2026-09-27 — Rate etymologies as distinct cards
+
+Keep every etymology that passes the existing story and signal rule, with a
+definition and preferred pronunciation from its own source entry. The source
+dictionary must retain an entry number on meanings, pronunciations, and
+etymologies; the old release cannot safely pair a secondary etymology with its
+meaning because `meaning` lacks that link. `DICT.word` now has one row per
+selected etymology, keyed by card ID. APP scores, swipes, and served history
+use that ID so two senses of a headword can be shown and rated independently.
+The previous longest-etymology card keeps its headword ID, preserving existing
+APP and offline records; new cards use a deterministic content-derived ID.
+The full local rebuild from the original extract produced **155,032 cards for
+148,180 headwords**, in a 58 MB SQLite database and 47 MB SQL import. The old
+published release has 147,954 cards. Every legacy primary card ID and its
+etymology text survives the rebuild; some paired definitions and POS values
+change because they now come from the matching source entry. The ignored local
+preview and a 501-card fixture test both Bluff origins. The published release
+remains on the old schema until a new source release is published and DICT is
+replaced.
+
 ## 2026-09-27 — Run §6.5 reporting locally on demand
 
 Remove the nightly stats cron, `stats:v1` KV snapshot, admin stats endpoint,
@@ -48,9 +107,11 @@ rows.** The §10 acceptance target was revised from ≤200 to the measured
 swipes before auth, cron, and feed writes. The added nightly scan index was
 removed because it increased the original measurement to 850. Revisit the
 compact table only if measured usage approaches the free-plan write limit.
-This key choice preserves the current one-card-per-headword model. If future
-sources supply separately rated etymologies for the same headword, those cards
-will need distinct entry IDs regardless of the swipe table's primary key.
+The 2026-09-27 multi-etymology decision supersedes the one-card-per-headword
+assumption below. Each qualified source etymology is now its own card, paired
+with a definition from the same source entry. Feed history, swipes, and scores
+use card IDs. The former primary card retains its headword as ID to preserve
+existing local and APP records; additional cards use deterministic content IDs.
 The seed script meters actual `rows_written` and defaults to a 50k budget
 per run (at most 80k when explicitly requested), so seeding 152k indexed rows
 takes more than the spec's suggested two days on the free plan. A sync after
