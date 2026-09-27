@@ -6,6 +6,7 @@ import {
   onMount,
   Show,
 } from 'solid-js';
+import { getAccount, reconcileAccountLikes } from '../lib/account';
 import { getSwipes, type LocalSwipe, removeSwipe } from '../lib/local';
 import { drainSync } from '../lib/sync';
 
@@ -15,6 +16,8 @@ export default function Liked() {
   const [open, setOpen] = createSignal<string | null>(null);
   const [online, setOnline] = createSignal(true);
   const [banner, setBanner] = createSignal(true);
+  const [accountLoaded, setAccountLoaded] = createSignal(false);
+  const [registered, setRegistered] = createSignal(false);
   const [copied, setCopied] = createSignal(false);
   const [error, setError] = createSignal('');
   let touch: { id: string; x: number; y: number } | null = null;
@@ -60,10 +63,26 @@ export default function Liked() {
     void getSwipes()
       .then(setSwipes)
       .catch(() => setError('Could not open your saved words.'));
-    void drainSync();
+    void getAccount()
+      .then(async (account) => {
+        setRegistered(!account.user.isAnonymous);
+        setAccountLoaded(true);
+        if (!account.user.isAnonymous && navigator.onLine)
+          setSwipes(await reconcileAccountLikes());
+        else void drainSync();
+      })
+      .catch(() => {
+        if (navigator.onLine) setError('Could not refresh saved words.');
+      });
     const onOnline = () => {
       setOnline(true);
-      void drainSync();
+      if (registered())
+        void reconcileAccountLikes()
+          .then(setSwipes)
+          .catch(() => {
+            setError('Could not refresh saved words.');
+          });
+      else void drainSync();
     };
     const onOffline = () => setOnline(false);
     window.addEventListener('online', onOnline);
@@ -77,21 +96,16 @@ export default function Liked() {
   return (
     <section class="liked-page page-wrap">
       <h1 class="sr-only">Liked</h1>
-      <Show when={banner()}>
+      <Show when={accountLoaded() && !registered() && banner()}>
         <aside class="anon-banner body-voice">
           <div>
             <strong>You're not signed in.</strong> Your list is saved only on
             this device.
           </div>
           <div class="banner-actions">
-            <button
-              type="button"
-              class="banner-signin label-voice"
-              disabled
-              title="Sign-in arrives in a later milestone"
-            >
+            <a class="banner-signin label-voice" href="/settings/#account">
               Sign in
-            </button>
+            </a>
             <button
               type="button"
               class="banner-dismiss"

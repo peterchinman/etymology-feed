@@ -6,12 +6,13 @@ import {
   markSwipesSynced,
 } from './local';
 
-let draining: Promise<void> | undefined;
+let draining: Promise<boolean> | undefined;
 let retryAt = 0;
 let failures = 0;
 
-export function drainSync(): Promise<void> {
-  if (!navigator.onLine || Date.now() < retryAt) return Promise.resolve();
+export function drainSync(force = false): Promise<boolean> {
+  if (!navigator.onLine || (!force && Date.now() < retryAt))
+    return Promise.resolve(false);
   draining ??= (async () => {
     await ensureAnonymousSession();
     for (;;) {
@@ -44,6 +45,8 @@ export function drainSync(): Promise<void> {
         .filter(({ status }) => status === 'synced' || status === 'duplicate')
         .map(({ id }) => id);
       await markSwipesSynced(done);
+      if (done.length !== pending.length)
+        throw new Error('Some swipes could not be synced.');
       if (!done.length || pending.length < 500) break;
     }
     for (const swipe of await getPendingRemovals()) {
@@ -56,10 +59,12 @@ export function drainSync(): Promise<void> {
     }
     failures = 0;
     retryAt = 0;
+    return true;
   })()
     .catch(() => {
       failures++;
       retryAt = Date.now() + Math.min(60_000, 1000 * 2 ** failures);
+      return false;
     })
     .finally(() => {
       draining = undefined;

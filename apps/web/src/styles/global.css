@@ -226,6 +226,22 @@ a {
   color: var(--color-bar-ink);
   border-bottom-color: var(--color-nav-mark);
 }
+.account-badge {
+  display: grid;
+  place-items: center;
+  min-width: var(--space-7);
+  min-height: var(--space-7);
+  border: var(--stroke-control) solid currentColor;
+  border-radius: var(--radius-control);
+  color: var(--color-bar-ink);
+  text-decoration: none;
+  overflow: hidden;
+}
+.account-badge img {
+  width: var(--space-7);
+  height: var(--space-7);
+  object-fit: cover;
+}
 .bottom-nav {
   display: none;
 }
@@ -396,6 +412,29 @@ a {
   color: var(--color-muted);
 }
 .source-credit a {
+  color: var(--color-accent);
+}
+.account-section {
+  border-top: var(--stroke-rule) solid var(--color-divider);
+  padding-block: var(--space-4);
+}
+.account-section h2,
+.account-section p {
+  margin: 0 0 var(--space-3);
+}
+.account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.account-actions button {
+  border: var(--stroke-control) solid var(--color-line);
+  border-radius: var(--radius-control);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+.account-actions .account-delete {
   color: var(--color-accent);
 }
 
@@ -660,6 +699,7 @@ a {
   padding: var(--space-2) var(--space-3);
   background: transparent;
   color: inherit;
+  text-decoration: none;
 }
 .banner-dismiss {
   padding: var(--space-2);
