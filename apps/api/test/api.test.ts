@@ -146,10 +146,10 @@ describe('dictionary and persistent feed API', () => {
     );
     const plans = await env.APP.batch([
       env.APP.prepare(
-        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 ORDER BY score DESC LIMIT ?',
-      ).bind(5, 3000),
+        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC LIMIT ?',
+      ).bind(5, 0.55, 3000),
       env.APP.prepare(
-        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes > 0 AND likes >= dislikes AND likes + dislikes < 5 AND likes + dislikes < ? ORDER BY score DESC LIMIT ?',
+        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes > 0 AND likes + dislikes < 5 AND likes + dislikes < ? ORDER BY score DESC LIMIT ?',
       ).bind(5, 3000),
       env.APP.prepare(
         'EXPLAIN QUERY PLAN SELECT card_id FROM word_stats WHERE likes + dislikes = 0 ORDER BY prior DESC LIMIT ?',
@@ -168,7 +168,7 @@ describe('dictionary and persistent feed API', () => {
     expect(details.flat().some((d) => d.includes('TEMP B-TREE'))).toBe(false);
   });
 
-  it('moves a card into promising after one like and into confirmed after five', async () => {
+  it('promotes on one like, survives lefts, and confirms only clearly above average', async () => {
     const newUser = async () => {
       const user = crypto.randomUUID();
       await env.APP.prepare(
@@ -179,7 +179,7 @@ describe('dictionary and persistent feed API', () => {
       return user;
     };
     const rater = await newUser();
-    const [liked, disliked] = (await getUserFeed(env, rater, 2)).cards;
+    const [liked, disliked, average] = (await getUserFeed(env, rater, 3)).cards;
     const swipe = (cardId: string, verdict: 1 | -1) => ({
       id: crypto.randomUUID(),
       cardId,
@@ -187,42 +187,71 @@ describe('dictionary and persistent feed API', () => {
       shownAt: Date.now(),
       swipedAt: Date.now(),
     });
-    await syncSwipes(env, rater, [swipe(liked.id, 1), swipe(disliked.id, -1)]);
-    // Flat prior K=2 at base rate 0.5: one like is 2/3, one dislike is 1/3.
-    const scores = await env.APP.prepare(
-      'SELECT card_id, score FROM word_stats WHERE card_id IN (?, ?)',
-    )
-      .bind(liked.id, disliked.id)
-      .all<{ card_id: string; score: number }>();
-    const score = new Map(scores.results.map((r) => [r.card_id, r.score]));
-    expect(score.get(liked.id)).toBeCloseTo(2 / 3);
-    expect(score.get(disliked.id)).toBeCloseTo(1 / 3);
+    const scoreOf = async (cardId: string) =>
+      (
+        await env.APP.prepare('SELECT score FROM word_stats WHERE card_id = ?')
+          .bind(cardId)
+          .first<{ score: number }>()
+      )?.score;
+    const laneOf = (
+      pools: Awaited<ReturnType<typeof buildPools>>,
+      id: string,
+    ) =>
+      pools.confirmed.some(([c]) => c === id)
+        ? 'confirmed'
+        : pools.promising.some(([c]) => c === id)
+          ? 'promising'
+          : pools.fresh.includes(id)
+            ? 'fresh'
+            : 'parked';
+    await syncSwipes(env, rater, [
+      swipe(liked.id, 1),
+      swipe(disliked.id, -1),
+      swipe(average.id, 1),
+    ]);
+    // Weighted lefts at 0.25: one like is 2/3, one left is 1/2.25.
+    expect(await scoreOf(liked.id)).toBeCloseTo(2 / 3);
+    expect(await scoreOf(disliked.id)).toBeCloseTo(1 / 2.25);
 
     let pools = await buildPools(env);
     expect(pools.promising).toContainEqual([liked.id, 1, 0]);
-    expect(pools.promising.map(([id]) => id)).not.toContain(disliked.id);
-    expect(pools.fresh).not.toContain(liked.id);
-    expect(pools.fresh).not.toContain(disliked.id);
+    expect(laneOf(pools, disliked.id)).toBe('parked');
+    expect(laneOf(pools, average.id)).toBe('promising');
     expect(pools.confirmed).toHaveLength(0);
 
     // Another user sees the liked card in a promising slot on their next fetch.
     const reader = await newUser();
     const { cards } = await getUserFeed(env, reader, 20);
-    const shown = cards.find((card) => card.id === liked.id);
-    expect(shown?.bucket).toBe('promising');
+    expect(cards.find((card) => card.id === liked.id)?.bucket).toBe(
+      'promising',
+    );
     expect(cards.map(({ id }) => id)).not.toContain(disliked.id);
 
-    // Four more likes reach MIN_RATINGS with likes >= dislikes: confirmed.
-    for (let i = 0; i < 4; i++)
-      await syncSwipes(env, await newUser(), [swipe(liked.id, 1)]);
+    // Two strangers swiping past do not veto the like: still promising.
+    for (let i = 0; i < 2; i++)
+      await syncSwipes(env, await newUser(), [swipe(liked.id, -1)]);
     pools = await buildPools(env);
-    expect(pools.confirmed).toContainEqual([liked.id, 5, 0]);
-    expect(pools.promising.map(([id]) => id)).not.toContain(liked.id);
+    expect(pools.promising).toContainEqual([liked.id, 1, 2]);
+    expect(await scoreOf(liked.id)).toBeCloseTo(2 / 3.5);
+
+    // Two more likes complete five looks at 3 likes / 2 lefts: clearly above
+    // average, so confirmed. One like in five looks is exactly average and
+    // misses the 0.55 margin: parked.
+    for (let i = 0; i < 2; i++)
+      await syncSwipes(env, await newUser(), [swipe(liked.id, 1)]);
+    for (let i = 0; i < 4; i++)
+      await syncSwipes(env, await newUser(), [swipe(average.id, -1)]);
+    pools = await buildPools(env);
+    expect(pools.confirmed).toContainEqual([liked.id, 3, 2]);
+    expect(await scoreOf(liked.id)).toBeCloseTo(4 / 5.5);
+    expect(await scoreOf(average.id)).toBeCloseTo(0.5);
+    expect(laneOf(pools, average.id)).toBe('parked');
     const third = await newUser();
     const confirmedFeed = await getUserFeed(env, third, 20);
     expect(
       confirmedFeed.cards.find((card) => card.id === liked.id)?.bucket,
     ).toBe('confirmed');
+    expect(confirmedFeed.cards.map(({ id }) => id)).not.toContain(average.id);
   });
 
   it('keeps a 100-card fetch inside the read and write budgets', async () => {

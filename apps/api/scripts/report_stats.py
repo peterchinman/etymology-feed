@@ -47,7 +47,7 @@ def rate(item):
     return item["likes"] / item["total"] if item["total"] else None
 
 
-def make_report(connection, now=None, min_ratings=5):
+def make_report(connection, now=None, min_ratings=5, confirm_score=0.55):
     now = now or datetime.now(timezone.utc)
     today = now.date()
     dates = [today - timedelta(days=offset) for offset in range(29, -1, -1)]
@@ -86,20 +86,27 @@ def make_report(connection, now=None, min_ratings=5):
         (min_ratings,),
     ).fetchone()[0]
     confirmed = connection.execute(
-        "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes >= ? AND score >= 0.5",
-        (min_ratings,),
+        "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes >= ? AND score >= ?",
+        (min_ratings, confirm_score),
     ).fetchone()[0]
     promising = connection.execute(
-        "SELECT COUNT(*) FROM word_stats WHERE likes > 0 AND likes >= dislikes "
-        "AND likes + dislikes < ?",
+        "SELECT COUNT(*) FROM word_stats WHERE likes > 0 AND likes + dislikes < ?",
         (min_ratings,),
     ).fetchone()[0]
     fresh = connection.execute(
         "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes = 0"
     ).fetchone()[0]
     parked = connection.execute(
-        "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes > 0 AND likes < dislikes"
+        "SELECT COUNT(*) FROM word_stats WHERE likes + dislikes > 0 "
+        "AND NOT (likes > 0 AND likes + dislikes < ?) "
+        "AND NOT (likes + dislikes >= ? AND score >= ?)",
+        (min_ratings, min_ratings, confirm_score),
     ).fetchone()[0]
+    # The DISLIKE_WEIGHT at which the average card scores 0.5 (§6.2).
+    like_rate = thirty["globalLikeRate"]
+    suggested_weight = (
+        like_rate / (1 - like_rate) if like_rate is not None and 0 < like_rate < 1 else None
+    )
     release = connection.execute(
         "SELECT value FROM dictionary.meta WHERE key = 'source_release'"
     ).fetchone()
@@ -108,6 +115,7 @@ def make_report(connection, now=None, min_ratings=5):
         "throughDateUtc": today.isoformat(),
         "dictionaryRelease": release[0] if release else None,
         "globalLikeRate": thirty["globalLikeRate"],
+        "suggestedDislikeWeight": suggested_weight,
         "periods": {"7": seven, "30": thirty},
         "ratedCards": rated,
         "lanes": {
@@ -130,9 +138,12 @@ def main():
     parser.add_argument("--word-stats-sql", type=Path, required=True)
     parser.add_argument("--dict-db", type=Path, required=True)
     parser.add_argument("--min-ratings", type=int, default=5)
+    parser.add_argument("--confirm-score", type=float, default=0.55)
     args = parser.parse_args()
     if args.min_ratings < 1:
         parser.error("--min-ratings must be positive")
+    if not 0.5 <= args.confirm_score < 1:
+        parser.error("--confirm-score must be in [0.5, 1)")
 
     connection = sqlite3.connect(":memory:")
     try:
@@ -147,7 +158,10 @@ def main():
             connection.executescript(path.read_text(encoding="utf-8"))
         dictionary_uri = args.dict_db.resolve().as_uri() + "?mode=ro"
         connection.execute("ATTACH DATABASE ? AS dictionary", (dictionary_uri,))
-        print(json.dumps(make_report(connection, min_ratings=args.min_ratings), indent=2))
+        report = make_report(
+            connection, min_ratings=args.min_ratings, confirm_score=args.confirm_score
+        )
+        print(json.dumps(report, indent=2))
     finally:
         connection.close()
 

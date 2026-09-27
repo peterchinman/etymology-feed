@@ -60,17 +60,19 @@ export const wordStats = sqliteTable(
       sql`(${table.likes} + ${table.dislikes})`,
       sql`${table.prior} DESC`,
     ),
-    // Confirmed lane. Partial, so it costs writes only for rows that qualify.
+    // Confirmed lane: at or above average with five looks; the query narrows
+    // to CONFIRM_SCORE. Partial, so it costs writes only for qualifying rows.
     index('idx_word_stats_rec')
       .on(sql`${table.score} DESC`)
       .where(
         sql`${table.likes} + ${table.dislikes} >= 5 AND ${table.score} >= 0.5`,
       ),
-    // Promising lane: at least one like, not outvoted, under five ratings.
+    // Promising lane: at least one like and under five looks. No dislike test;
+    // a like buys the card its five looks (§6.1).
     index('idx_word_stats_promising')
       .on(sql`${table.score} DESC`)
       .where(
-        sql`${table.likes} > 0 AND ${table.likes} >= ${table.dislikes} AND ${table.likes} + ${table.dislikes} < 5`,
+        sql`${table.likes} > 0 AND ${table.likes} + ${table.dislikes} < 5`,
       ),
   ],
 );

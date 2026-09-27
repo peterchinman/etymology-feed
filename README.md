@@ -53,9 +53,12 @@ reload on `localhost:4321`, proxying `/api` and `/auth` to Wrangler. Open
 `GET /api/feed?n=100` returns 100 distinct cards drawn from lanes by what is
 known about each card: confirmed, promising (at least one like), fresh (never
 rated, best heuristic prior first), and wild. Empty lanes hand their slots
-down, so on day one the feed is fresh and wild. After deploying migration
-`0004_lanes` to a database that already has ratings, rescore the rated rows
-once with `UPDATE word_stats SET score = (likes + 1.0) / (likes + dislikes + 2) WHERE likes + dislikes > 0`. The server records served card IDs and syncs queued
+down, so on day one the feed is fresh and wild. A left swipe counts as
+`DISLIKE_WEIGHT` (0.25) of a dislike, because in a swipe feed a left is usually
+just "next". After deploying migrations `0004_lanes` and `0005_weighted_lefts`
+to a database that already has ratings, rescore the rated rows once with
+`UPDATE word_stats SET score = (likes + 1.0) / (likes + 0.25 * dislikes + 2) WHERE likes + dislikes > 0`,
+using the deployed weight. Repeat the same statement whenever the weight changes. The server records served card IDs and syncs queued
 swipes when a connection returns. The Liked screen and first 100 swipes remain
 usable offline after the shell and one batch are fetched. `npm run test:e2e`
 starts an isolated local Wrangler D1 fixture and runs the Playwright offline

@@ -1,5 +1,33 @@
 # Decisions
 
+## 2026-09-27 — Weight a left swipe below a like (§6.1, §6.2)
+
+A left is the default action in a swipe feed: sometimes active dislike, often
+just "next". Treating it as a full negative parked good cards. If the base
+like-rate is 20%, a card liked once in four looks is average, yet the
+lanes-only design parked it forever. Each left now counts as `DISLIKE_WEIGHT`
+of a negative under a flat `Beta(1, 1)` prior on that weighted scale:
+`score = (likes + 1) / (likes + w * dislikes + 2)`. The weight is the odds of
+the base like-rate, `w = p / (1 - p)`, so `likes >= w * dislikes` is exactly
+"like-rate at or above the average card". The default 0.25 assumes 20% until
+the §6.5 report prints the observed rate and the weight it implies; the report
+also gains `--confirm-score`. Looks stay unweighted because a left still proves
+exposure. This replaces `PRIOR_STRENGTH` and `BASE_RATE` with one var.
+
+Lane rules changed accordingly. Promising drops its dislike test: a like buys a
+card five looks, and Thompson ranking inside the lane already shows it less as
+lefts arrive, so two strangers swiping past no longer veto a like. Confirmed
+requires `score >= CONFIRM_SCORE` (0.55) so that confirmed means clearly above
+average rather than exactly average; one like in five looks scores 0.5 and is
+parked, two likes in five looks scores 0.64 and is confirmed. Parked now covers
+lefts with no likes and five looks below the margin; the fresh lane still
+admits only never-seen cards, since one look per card already takes over a year
+at current volumes. Migration `0005_weighted_lefts` rebuilds the promising
+partial index without the dislike clause; the confirmed index keeps its
+`score >= 0.5` predicate and the query narrows to the bound margin, which the
+plan test confirms still uses the index. Rated rows are rescored once with the
+README statement after deploying, and again whenever the weight changes.
+
 ## 2026-09-27 — Feed lanes by information state; flat prior for rated cards (§6)
 
 Replace the recommended/unknown pools and the five-rating gate with lanes

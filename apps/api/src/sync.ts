@@ -40,8 +40,7 @@ export async function syncSwipes(
     status: 'invalid',
     message: 'Invalid swipe.',
   }));
-  const strength = Number(env.PRIOR_STRENGTH);
-  const pseudoLikes = strength * Number(env.BASE_RATE);
+  const dislikeWeight = Number(env.DISLIKE_WEIGHT);
   const now = Date.now();
   const distinct = new Set<string>();
   const parsed: { item: SwipeInput; index: number }[] = [];
@@ -123,20 +122,19 @@ export async function syncSwipes(
       ),
     );
     // PK card_id: one row written. SET expressions see the pre-update row, so
-    // the deltas are added explicitly. Score is the flat-prior posterior mean
-    // (§6.2): (likes + K*base) / (n + K); the heuristic prior orders only the
-    // fresh lane.
+    // the deltas are added explicitly. Score is the weighted-left posterior
+    // mean (§6.2): (likes + 1) / (likes + w * dislikes + 2); the heuristic
+    // prior orders only the fresh lane.
     writes.push(
       env.APP.prepare(
-        'UPDATE word_stats SET likes=likes+?, dislikes=dislikes+?, score=(likes+?+?)/(likes+dislikes+?+?+?), updated_at=? WHERE card_id=?',
+        'UPDATE word_stats SET likes=likes+?, dislikes=dislikes+?, score=(likes+?+1.0)/(likes+?+(dislikes+?)*?+2.0), updated_at=? WHERE card_id=?',
       ).bind(
         likeDelta,
         dislikeDelta,
         likeDelta,
-        pseudoLikes,
         likeDelta,
         dislikeDelta,
-        strength,
+        dislikeWeight,
         now,
         item.cardId,
       ),
@@ -192,15 +190,15 @@ export async function deleteLiked(
     .first<{ verdict: number }>();
   if (old?.verdict !== 1) return false;
   const now = Date.now();
-  const strength = Number(env.PRIOR_STRENGTH);
-  const pseudoLikes = strength * Number(env.BASE_RATE);
+  const dislikeWeight = Number(env.DISLIKE_WEIGHT);
   await env.APP.batch([
     env.APP.prepare(
       'DELETE FROM swipe WHERE user_id=? AND card_id=? AND verdict=1',
     ).bind(userId, cardId),
+    // (likes - 1 + 1) / (likes - 1 + w * dislikes + 2), pre-update values.
     env.APP.prepare(
-      'UPDATE word_stats SET likes=likes-1,score=(likes-1+?)/(likes+dislikes-1+?),updated_at=? WHERE card_id=?',
-    ).bind(pseudoLikes, strength, now, cardId),
+      'UPDATE word_stats SET likes=likes-1,score=likes/(likes+1.0+dislikes*?),updated_at=? WHERE card_id=?',
+    ).bind(dislikeWeight, now, cardId),
   ]);
   return true;
 }
