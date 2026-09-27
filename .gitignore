@@ -6,3 +6,5 @@ dist/
 .dev.vars*
 playwright-report/
 test-results/
+__pycache__/
+data/
