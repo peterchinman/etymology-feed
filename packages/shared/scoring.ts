@@ -10,6 +10,14 @@ export const MAX_PRIOR = 0.8;
 export const DEFAULT_DISLIKE_WEIGHT = 0.25;
 /** Confirmed means clearly above average, not merely at it. */
 export const DEFAULT_CONFIRM_SCORE = 0.55;
+/** Looks before a card may be judged: confirmed at MIN_LOOKS, parked at PARK_LOOKS. */
+export const DEFAULT_MIN_LOOKS = 5;
+/**
+ * Parking is the one irreversible call, because a parked card gets no more
+ * looks, so it waits for three times the evidence that confirming does. A
+ * wrongly confirmed card keeps getting looks and drops back out on its own.
+ */
+export const DEFAULT_PARK_LOOKS = 15;
 
 /**
  * Beta posterior parameters used by Thompson sampling in §6.2: a flat Beta(1, 1)

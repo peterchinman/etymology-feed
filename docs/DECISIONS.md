@@ -1,5 +1,34 @@
 # Decisions
 
+## 2026-09-27 — Park slowly, confirm sooner; second looks after the frontier (§6.1)
+
+The two lane transitions are not symmetric. A wrongly confirmed card keeps
+getting looks and falls back out at a later refresh, because lanes are
+recomputed from the counters every five minutes. A wrongly parked card gets no
+looks, so that error is permanent in practice. The five-look rule treated both
+alike: at a 20% base rate and weight 0.25 it parked a card twice as good as
+average 13% of the time and confirmed an average card 59% of the time. Now
+confirmation still needs `MIN_RATINGS` (5) looks at or above `CONFIRM_SCORE`
+(0.55), but a liked card is parked only after `PARK_LOOKS` (15) looks below
+0.5; cards between the two stay promising, where Thompson ranking already
+shows low-mean cards less. A 40% card is then parked about once in two
+thousand. Posterior confidence bounds were considered and would adapt the
+sample size to the evidence, but they need two more columns and a square root
+in SQL for a modest gain over these asymmetric thresholds; they remain the
+upgrade path if per-lane like-rates show the thresholds mis-set.
+
+The fresh lane is now never-liked cards ordered by fewest looks then best
+prior, capped at `MIN_RATINGS` looks, instead of never-seen cards only. The
+order means never-seen cards still fill the lane until the whole frontier is
+exhausted, so nothing changes for over a year at current volumes and no
+exploration budget is spent on second looks while new cards remain. After
+that, cards passed over once return automatically rather than never; a card
+never liked in five looks is parked. The same unrated index serves the query.
+Migration `0006` rebuilds the promising partial index with the two-threshold
+predicate; the pool builder uses it when the vars match the defaults and
+otherwise scans with a logged warning. The report gains `--park-looks` and a
+never-seen count beside the fresh lane total.
+
 ## 2026-09-27 — Weight a left swipe below a like (§6.1, §6.2)
 
 A left is the default action in a swipe feed: sometimes active dislike, often

@@ -149,11 +149,11 @@ describe('dictionary and persistent feed API', () => {
         'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC LIMIT ?',
       ).bind(5, 0.55, 3000),
       env.APP.prepare(
-        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes > 0 AND likes + dislikes < 5 AND likes + dislikes < ? ORDER BY score DESC LIMIT ?',
-      ).bind(5, 3000),
-      env.APP.prepare(
-        'EXPLAIN QUERY PLAN SELECT card_id FROM word_stats WHERE likes + dislikes = 0 ORDER BY prior DESC LIMIT ?',
+        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes > 0 AND (likes + dislikes < 5 OR score < 0.55) AND (likes + dislikes < 15 OR score >= 0.5) ORDER BY score DESC LIMIT ?',
       ).bind(3000),
+      env.APP.prepare(
+        'EXPLAIN QUERY PLAN SELECT card_id FROM word_stats WHERE likes = 0 AND likes + dislikes < ? ORDER BY likes + dislikes ASC, prior DESC LIMIT ?',
+      ).bind(5, 3000),
     ]);
     const details = plans.map((plan) =>
       (plan.results as { detail: string }[]).map(({ detail }) => detail),
@@ -215,7 +215,13 @@ describe('dictionary and persistent feed API', () => {
 
     let pools = await buildPools(env);
     expect(pools.promising).toContainEqual([liked.id, 1, 0]);
-    expect(laneOf(pools, disliked.id)).toBe('parked');
+    // One left does not seal a card's fate: it waits at the tail of the fresh
+    // lane behind every never-seen card (an earlier test left one other
+    // once-passed card there).
+    expect(laneOf(pools, disliked.id)).toBe('fresh');
+    expect(pools.fresh.indexOf(disliked.id)).toBeGreaterThanOrEqual(
+      pools.fresh.length - 2,
+    );
     expect(laneOf(pools, average.id)).toBe('promising');
     expect(pools.confirmed).toHaveLength(0);
 
@@ -225,7 +231,6 @@ describe('dictionary and persistent feed API', () => {
     expect(cards.find((card) => card.id === liked.id)?.bucket).toBe(
       'promising',
     );
-    expect(cards.map(({ id }) => id)).not.toContain(disliked.id);
 
     // Two strangers swiping past do not veto the like: still promising.
     for (let i = 0; i < 2; i++)
@@ -235,8 +240,8 @@ describe('dictionary and persistent feed API', () => {
     expect(await scoreOf(liked.id)).toBeCloseTo(2 / 3.5);
 
     // Two more likes complete five looks at 3 likes / 2 lefts: clearly above
-    // average, so confirmed. One like in five looks is exactly average and
-    // misses the 0.55 margin: parked.
+    // average, so confirmed. One like in five looks is exactly average, which
+    // is not enough evidence to park: it stays promising.
     for (let i = 0; i < 2; i++)
       await syncSwipes(env, await newUser(), [swipe(liked.id, 1)]);
     for (let i = 0; i < 4; i++)
@@ -245,13 +250,23 @@ describe('dictionary and persistent feed API', () => {
     expect(pools.confirmed).toContainEqual([liked.id, 3, 2]);
     expect(await scoreOf(liked.id)).toBeCloseTo(4 / 5.5);
     expect(await scoreOf(average.id)).toBeCloseTo(0.5);
-    expect(laneOf(pools, average.id)).toBe('parked');
+    expect(pools.promising).toContainEqual([average.id, 1, 4]);
     const third = await newUser();
     const confirmedFeed = await getUserFeed(env, third, 20);
     expect(
       confirmedFeed.cards.find((card) => card.id === liked.id)?.bucket,
     ).toBe('confirmed');
-    expect(confirmedFeed.cards.map(({ id }) => id)).not.toContain(average.id);
+
+    // Parking is the irreversible call, so it waits for fifteen looks below
+    // average: ten more lefts take the card to 1 like / 14 lefts.
+    for (let i = 0; i < 10; i++)
+      await syncSwipes(env, await newUser(), [swipe(average.id, -1)]);
+    pools = await buildPools(env);
+    expect(await scoreOf(average.id)).toBeCloseTo(2 / 6.5);
+    expect(laneOf(pools, average.id)).toBe('parked');
+    const fourth = await newUser();
+    const laterFeed = await getUserFeed(env, fourth, 20);
+    expect(laterFeed.cards.map(({ id }) => id)).not.toContain(average.id);
   });
 
   it('keeps a 100-card fetch inside the read and write budgets', async () => {
