@@ -153,7 +153,9 @@ def main():
     if not 0.5 <= args.confirm_score < 1:
         parser.error("--confirm-score must be in [0.5, 1)")
 
-    connection = sqlite3.connect(":memory:")
+    # ATTACH below uses a read-only file URI. Enable URI handling explicitly;
+    # SQLite builds differ in whether it is enabled by default.
+    connection = sqlite3.connect(":memory:", uri=True)
     try:
         # Data-only table exports avoid copying Better Auth users and sessions.
         connection.executescript(
