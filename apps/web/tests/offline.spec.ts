@@ -412,21 +412,38 @@ test('desktop Settings opens a centered dialog over Feed and Liked', async ({
   await expect(page).toHaveURL('/liked/');
 });
 
-test('the active dock tab underlines its label, not its icon', async ({
+test('mobile dock tabs are centered, evenly spaced, and underline only the label', async ({
   page,
 }) => {
   await page.goto('/');
-  const feed = page.locator('.bottom-nav').getByRole('link', { name: 'Feed' });
+  const dock = page.locator('.bottom-nav');
+  const feed = dock.getByRole('link', { name: 'Feed' });
   await expect(feed).toHaveAttribute('aria-current', 'page');
   await expect(feed).toHaveCSS('text-decoration-line', 'none');
   await expect(feed.locator('.nav-label')).toHaveCSS(
     'text-decoration-line',
     'underline',
   );
-  await expect(feed.locator('.nav-icon')).toHaveCSS(
-    'text-decoration-line',
-    'none',
-  );
+  await expect(feed.locator('svg')).toHaveCount(1);
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const dockBox = await dock.boundingBox();
+    if (!dockBox) throw new Error('Dock has no visible bounds.');
+    const links = await dock.getByRole('link').all();
+    expect(links).toHaveLength(3);
+    for (const [index, link] of links.entries()) {
+      const linkBox = await link.boundingBox();
+      const iconBox = await link.locator('svg, .nav-icon').boundingBox();
+      if (!linkBox || !iconBox)
+        throw new Error('Dock tab has no visible bounds.');
+      const center = linkBox.x + linkBox.width / 2;
+      expect(center).toBeCloseTo(
+        dockBox.x + (dockBox.width * (index + 0.5)) / 3,
+        0,
+      );
+      expect(iconBox.x + iconBox.width / 2).toBeCloseTo(center, 0);
+    }
+  }
 });
 
 test('the themes persist and system mode follows the device', async ({

@@ -830,9 +830,8 @@ a {
     position: fixed;
     z-index: 10;
     inset: auto 0 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-evenly;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     height: calc(var(--dock-height) + env(safe-area-inset-bottom));
     padding-bottom: env(safe-area-inset-bottom);
     background: var(--color-bar);
@@ -843,11 +842,17 @@ a {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: var(--space-1);
+    min-width: 0;
     color: var(--color-bar-muted);
     text-decoration: none;
   }
   .bottom-nav .nav-icon {
+    display: grid;
+    place-items: center;
+    width: var(--icon-size);
+    height: var(--icon-size);
     font-size: var(--icon-size);
     line-height: 1;
   }

@@ -108,7 +108,13 @@ const settingsFonts =
       <main id="main"><slot /></main>
     </div>
     <nav class="bottom-nav label-voice" aria-label="Main navigation">
-      <a href="/" aria-current={page === 'feed' ? 'page' : undefined}><span class="nav-icon" aria-hidden="true">▤</span><span class="nav-label">Feed</span></a>
+      <a href="/" aria-current={page === 'feed' ? 'page' : undefined}>
+        <svg aria-hidden="true" viewBox="0 0 256 256" fill="none">
+          <rect x="40" y="32" width="176" height="192" rx="20" stroke="currentColor" stroke-width="16" />
+          <path d="M76 88h104M76 128h104M76 168h64" stroke="currentColor" stroke-linecap="round" stroke-width="16" />
+        </svg>
+        <span class="nav-label">Feed</span>
+      </a>
       <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}>
         <svg class="heart-icon" aria-hidden="true" viewBox="0 0 256 256">
           <rect width="256" height="256" fill="none" />
