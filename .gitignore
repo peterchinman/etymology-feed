@@ -8,3 +8,5 @@ playwright-report/
 test-results/
 __pycache__/
 data/
+apps/api/.wrangler.production-runtime.json
+apps/api/.wrangler.restore-runtime.json

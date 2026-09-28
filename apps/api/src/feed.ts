@@ -155,23 +155,6 @@ export async function getUserFeed(
       const picked = pickFromLanes(slot, lanes, seen);
       if (picked) chosen.push({ id: picked.item, bucket: picked.lane });
     }
-    // Pool exhaustion relaxes to wild, drawing until the requested count is reached.
-    while (chosen.length < count && seen.size < pools.cardCount) {
-      const position = randomPosition(pools.cardCount);
-      if (positions.has(position)) continue;
-      positions.add(position);
-      const query = await env.DICT.prepare(
-        `SELECT ${CARD_COLUMNS} FROM word WHERE shuffle = ?`,
-      )
-        .bind(position)
-        .all<WordRow>();
-      rowsRead += query.meta.rows_read;
-      const row = query.results[0];
-      if (!row || seen.has(row.id)) continue;
-      seen.add(row.id);
-      wild.set(row.id, row);
-      chosen.push({ id: row.id, bucket: 'wild' });
-    }
     // Individual primary-key lookups cost one row each in D1, whereas the
     // JSON-array IN query measured three rows per card on the fixture.
     const lookups = chosen.filter(({ id }) => !wild.has(id));
@@ -195,6 +178,42 @@ export async function getUserFeed(
         return row ? toCard(row, bucket) : undefined;
       })
       .filter((card): card is Card => !!card);
+    // APP statistics outlive a DICT switch or rollback. Resolve the selected
+    // IDs before filling through: missing cards must not consume batch slots.
+    // Historical IDs can also be absent from this DICT, so seen.size is not a
+    // count of unavailable dictionary rows. Only an actual scan proves that.
+    const delivered = new Set([...previous, ...cards.map(({ id }) => id)]);
+    const scanLimit = Math.min(pools.cardCount, 1000);
+    let scanned = 0;
+    let cursor = cards.length < count ? randomPosition(pools.cardCount) : 1;
+    while (cards.length < count && scanned < scanLimit) {
+      const size = Math.min(
+        100,
+        scanLimit - scanned,
+        pools.cardCount - cursor + 1,
+      );
+      // idx_word_shuffle range: at most size rows read, no writes. This bounded
+      // recovery path runs only on pool exhaustion or stale release IDs.
+      const query = await env.DICT.prepare(
+        `SELECT ${CARD_COLUMNS} FROM word WHERE shuffle >= ? ORDER BY shuffle LIMIT ?`,
+      )
+        .bind(cursor, size)
+        .all<WordRow>();
+      rowsRead += query.meta.rows_read;
+      for (const row of query.results) {
+        if (delivered.has(row.id)) continue;
+        delivered.add(row.id);
+        cards.push(toCard(row, 'wild'));
+        if (cards.length === count) break;
+      }
+      scanned += size;
+      cursor = ((cursor - 1 + size) % pools.cardCount) + 1;
+    }
+    if (cards.length < count && scanned < pools.cardCount) {
+      // Do not report exhaustion to the offline client just because this
+      // request reached its recovery budget. No served history is written.
+      throw new FeedUnavailable('Feed recovery needs a retry.');
+    }
     const nextWords = JSON.stringify(
       [...previous, ...cards.map(({ id }) => id)].slice(-cap),
     );

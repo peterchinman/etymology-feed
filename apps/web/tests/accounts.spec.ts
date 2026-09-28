@@ -19,9 +19,19 @@ async function putCardsOnStack(page: Page, cards: Card[]) {
       tx.onerror = () => reject(tx.error);
     });
     database.close();
+    // Keep the synchronous preview consistent with this IndexedDB fixture.
+    localStorage.setItem(
+      'etymology-stack-preview',
+      JSON.stringify(pair.slice(0, 2)),
+    );
   }, cards);
   await page.reload();
-  await expect(page.getByTestId('top-card')).toBeVisible();
+  await expect(page.getByTestId('top-card').locator('h2')).toHaveText(
+    cards[0].word,
+  );
+  await expect(
+    page.getByRole('button', { name: 'Interesting', exact: true }),
+  ).toBeEnabled();
 }
 
 async function waitForSavedSwipes(page: Page, count: number) {

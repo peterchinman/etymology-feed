@@ -2,14 +2,20 @@ import { env, SELF } from 'cloudflare:test';
 import type { Card } from '@etymology-feed/shared/card';
 import { describe, expect, it } from 'vitest';
 import { getUserFeed, getWildFeed } from '../src/feed';
-import { buildPools } from '../src/pools';
+import { buildPools, poolsKey } from '../src/pools';
 import { deleteLiked, syncSwipes } from '../src/sync';
 
 describe('dictionary and persistent feed API', () => {
   it('loads the 501-card fixture and responds to health checks', async () => {
     const response = await SELF.fetch('http://localhost/healthz');
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ status: 'ok', dictCards: 501 });
+    expect(await response.json()).toEqual({
+      status: 'ok',
+      dictCards: 501,
+      appCommit: 'local',
+      dictRelease: 'local-fixture',
+    });
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
   });
 
   it('serves 100 distinct wild cards within the D1 read budget', async () => {
@@ -183,7 +189,11 @@ describe('dictionary and persistent feed API', () => {
       return user;
     };
     const rater = await newUser();
-    const [liked, disliked, average] = (await getUserFeed(env, rater, 3)).cards;
+    // Other scenarios share APP: choose unrated cards for this scoring exercise.
+    const unrated = await env.APP.prepare(
+      'SELECT card_id AS id FROM word_stats WHERE likes = 0 AND dislikes = 0 ORDER BY card_id LIMIT 3',
+    ).all<{ id: string }>();
+    const [liked, disliked, average] = unrated.results;
     const swipe = (cardId: string, verdict: 1 | -1) => ({
       id: crypto.randomUUID(),
       cardId,
@@ -232,8 +242,9 @@ describe('dictionary and persistent feed API', () => {
     // Another user sees the liked card in a promising slot on their next fetch.
     const reader = await newUser();
     const { cards } = await getUserFeed(env, reader, 20);
-    expect(cards.find((card) => card.id === liked.id)?.bucket).toBe(
-      'promising',
+    // Wild draws happen first and may legitimately pick a rated card.
+    expect(['promising', 'wild']).toContain(
+      cards.find((card) => card.id === liked.id)?.bucket,
     );
 
     // Two strangers swiping past do not veto the like: still promising.
@@ -257,9 +268,9 @@ describe('dictionary and persistent feed API', () => {
     expect(pools.promising).toContainEqual([average.id, 1, 4]);
     const third = await newUser();
     const confirmedFeed = await getUserFeed(env, third, 20);
-    expect(
+    expect(['confirmed', 'wild']).toContain(
       confirmedFeed.cards.find((card) => card.id === liked.id)?.bucket,
-    ).toBe('confirmed');
+    );
 
     // Parking is the irreversible call, so it waits for fifteen looks below
     // average: ten more lefts take the card to 1 like / 14 lefts.
@@ -270,7 +281,8 @@ describe('dictionary and persistent feed API', () => {
     expect(laneOf(pools, average.id)).toBe('parked');
     const fourth = await newUser();
     const laterFeed = await getUserFeed(env, fourth, 20);
-    expect(laterFeed.cards.map(({ id }) => id)).not.toContain(average.id);
+    const parked = laterFeed.cards.find((card) => card.id === average.id);
+    if (parked) expect(parked.bucket).toBe('wild');
   });
 
   it('keeps a 100-card fetch inside the read and write budgets', async () => {
@@ -308,6 +320,13 @@ describe('dictionary and persistent feed API', () => {
       shownAt: Date.now(),
       swipedAt: Date.now() + i,
     }));
+    const firstLiked = swipes[1];
+    const baseline = await env.APP.prepare(
+      'SELECT likes,dislikes FROM word_stats WHERE card_id=?',
+    )
+      .bind(firstLiked.cardId)
+      .first<{ likes: number; dislikes: number }>();
+    if (!baseline) throw new Error('Fixture statistics are missing.');
     const first = await syncSwipes(env, user, swipes);
     expect(first.results.every(({ status }) => status === 'synced')).toBe(true);
     const again = await syncSwipes(env, user, swipes);
@@ -315,7 +334,6 @@ describe('dictionary and persistent feed API', () => {
       true,
     );
     expect(again.rowsWritten).toBe(0);
-    const firstLiked = swipes[1];
     const replacement = {
       ...firstLiked,
       id: crypto.randomUUID(),
@@ -329,7 +347,10 @@ describe('dictionary and persistent feed API', () => {
     )
       .bind(firstLiked.cardId)
       .first<{ likes: number; dislikes: number }>();
-    expect(stat).toMatchObject({ likes: 0, dislikes: 1 });
+    expect(stat).toMatchObject({
+      likes: baseline.likes,
+      dislikes: baseline.dislikes + 1,
+    });
     const stale = await syncSwipes(env, user, [firstLiked]);
     expect(stale.results[0].status).toBe('duplicate');
     expect(stale.rowsWritten).toBe(0);
@@ -345,5 +366,123 @@ describe('dictionary and persistent feed API', () => {
       'duplicate',
     ]);
     expect(first.rowsWritten).toBeLessThanOrEqual(650);
+  });
+
+  it('fills rollback batches from active DICT and preserves ratings on retry', async () => {
+    const id = 'release-retry-card';
+    const insertCard = () =>
+      env.DICT.prepare(
+        `INSERT INTO word SELECT ?, ?, etym_no, ipa, tier, zipf, shape, pos,
+       definition, def_pos, etymology, etym_len, etym_band, has_signal, prior, 502
+       FROM word WHERE id = 'bluff'`,
+      )
+        .bind(id, id)
+        .run();
+    const reader = async () => {
+      const user = crypto.randomUUID();
+      await env.APP.prepare(
+        'INSERT INTO user (id,name,email,updated_at,is_anonymous) VALUES (?,?,?,?,1)',
+      )
+        .bind(user, 'Test', `${user}@test.local`, Date.now())
+        .run();
+      return user;
+    };
+    const seed = () =>
+      env.APP.prepare(
+        'INSERT INTO word_stats VALUES (?,0,0,0.6,0.5,0) ON CONFLICT(card_id) DO NOTHING',
+      )
+        .bind(id)
+        .run();
+    // A new card can receive a like before a post-deploy check fails.
+    await insertCard();
+    await env.DICT.prepare(
+      "UPDATE meta SET value='502' WHERE key='row_count'",
+    ).run();
+    await seed();
+    const rater = await reader();
+    const swipe = {
+      id: crypto.randomUUID(),
+      cardId: id,
+      verdict: 1,
+      shownAt: Date.now(),
+      swipedAt: Date.now(),
+    };
+    expect((await syncSwipes(env, rater, [swipe])).results[0].status).toBe(
+      'synced',
+    );
+    const rating = await env.APP.prepare(
+      'SELECT * FROM word_stats WHERE card_id=?',
+    )
+      .bind(id)
+      .first();
+    // Restore the old DICT, leaving APP statistics and swipes intact.
+    await env.DICT.prepare('DELETE FROM word WHERE id=?').bind(id).run();
+    await env.DICT.prepare(
+      "UPDATE meta SET value='501' WHERE key='row_count'",
+    ).run();
+    const pools = await buildPools(env);
+    const missing = Array.from({ length: 1000 }, (_, i) => `absent-${i}`);
+    // Model a pool dominated by newly seeded IDs, including a rated new card.
+    await env.CACHE.put(
+      poolsKey(env),
+      JSON.stringify({
+        ...pools,
+        confirmed: [],
+        promising: [[id, 1, 0]],
+        fresh: missing,
+      }),
+    );
+    const user = await reader();
+    // Known IDs from another release must not falsely imply DICT exhaustion.
+    const known = Array.from({ length: 600 }, (_, i) => `other-release-${i}`);
+    const first = await getUserFeed(env, user, 100, known);
+    const second = await getUserFeed(env, user, 100);
+    expect(first.cards).toHaveLength(100);
+    expect(second.cards).toHaveLength(100);
+    const delivered = [...first.cards, ...second.cards].map((card) => card.id);
+    expect(new Set(delivered).size).toBe(200);
+    expect(delivered).not.toContain(id);
+    expect(delivered.some((card) => missing.includes(card))).toBe(false);
+    expect(first.rowsRead).toBeLessThanOrEqual(1101);
+    expect(first.rowsWritten).toBe(1);
+    const served = await env.APP.prepare(
+      'SELECT card_ids FROM served WHERE user_id=?',
+    )
+      .bind(user)
+      .first<{ card_ids: string }>();
+    expect(JSON.parse(served?.card_ids ?? '[]')).toEqual([
+      ...known,
+      ...delivered,
+    ]);
+    // Retrying the new release makes the card available without resetting its like.
+    await insertCard();
+    await env.DICT.prepare(
+      "UPDATE meta SET value='502' WHERE key='row_count'",
+    ).run();
+    await seed();
+    await buildPools(env);
+    const alreadyKnown = await env.DICT.prepare(
+      'SELECT id FROM word WHERE id != ? ORDER BY shuffle LIMIT 402',
+    )
+      .bind(id)
+      .all<{ id: string }>();
+    const retried = await getUserFeed(
+      env,
+      await reader(),
+      100,
+      alreadyKnown.results.map((row) => row.id),
+    );
+    expect(retried.cards).toHaveLength(100);
+    expect(retried.cards.map((card) => card.id)).toContain(id);
+    expect(
+      await env.APP.prepare('SELECT * FROM word_stats WHERE card_id=?')
+        .bind(id)
+        .first(),
+    ).toEqual(rating);
+    expect(
+      await env.APP.prepare('SELECT verdict FROM swipe WHERE id=?')
+        .bind(swipe.id)
+        .first(),
+    ).toEqual({ verdict: 1 });
   });
 });

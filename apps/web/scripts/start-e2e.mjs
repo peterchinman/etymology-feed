@@ -196,6 +196,10 @@ const server = spawn(
     persist,
     '--var',
     `MOCK_OAUTH_ISSUER:${issuer}`,
+    '--var',
+    'BETTER_AUTH_SECRET:e2e-only-secret-at-least-thirty-two-characters',
+    '--var',
+    `BETTER_AUTH_URL:http://127.0.0.1:${port}`,
   ],
   {
     cwd: api,

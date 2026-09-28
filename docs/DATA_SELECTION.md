@@ -83,8 +83,8 @@ python3 database/derive_etymology.py --source /path/to/rebuilt/dictionary.db --o
 ```
 
 `database/SOURCE.json` pins the full source repository, release label, and
-SHA-256. Its current `published: false` state describes the reviewed local source,
-not an available GitHub release. The builder validates that hash and opens the
+SHA-256. The reviewed source is now published as `dictionary-2026-09-28`.
+The builder validates that hash and opens the
 input read-only. Use `--source-manifest` to select a different explicit pin.
 The input must contain source-entry links; the published old release cannot
 replace the rebuilt local source. The local `data/feed-owned-preview/` rebuild

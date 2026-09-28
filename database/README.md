@@ -5,9 +5,8 @@ sense-matched feed cards. RWG owns the full-source ingestion and schema;
 no RWG checkout or Python imports are required here. Python 3.11+ is sufficient.
 
 `SOURCE.json` pins the full source's repository, release, SHA-256, and publication
-state. The current pin is the reviewed local source (`published: false`), not a
-published release. The old `dictionary-2026-09-20b` asset lacks source-entry links.
-A compatible full source must be published in RWG before production release.
+state. The current pin is the published `dictionary-2026-09-28` release.
+The old `dictionary-2026-09-20b` asset lacks source-entry links.
 
 From this repository's root:
 
@@ -24,10 +23,10 @@ is `data/source/dictionary.db`. Use `--output-dir` for a different output folder
 use `--source-manifest` to choose a different explicit source pin. Threshold
 flags remain `--story-min-length` and `--pointer-max-length`.
 
-Once RWG publishes a compatible source, download its **dictionary.db** asset to
-`data/source/`, update SOURCE.json with that release, its verified SHA-256, and
-`published: true`, and build/check here. Changing a pin is a reviewed code change.
-Publish the three derived artifacts on this repo's own feed release, with the
+Download the pinned **dictionary.db** asset to
+`data/source/` and build/check here. Changing a source pin is a reviewed code change.
+Use `scripts/production.py prepare` and `verify` to add and validate the seed and
+manifest, then publish all five assets on this repo's own feed release, with the
 source provenance preserved in the database metadata and report. A feed-only
 filter change can reuse the same source release; it needs no RWG code change.
 

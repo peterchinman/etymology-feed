@@ -163,6 +163,63 @@ test('Feed restores the saved top card without a loading message', async ({
   await expect(top).toHaveText(next);
 });
 
+test('a cached Feed preview cannot be swiped before the saved stack loads', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const top = page.getByTestId('top-card').locator('h2');
+  const like = page.getByRole('button', { name: 'Interesting', exact: true });
+  await expect(like).toBeEnabled();
+  const savedWord = await top.innerText();
+  await page.addInitScript(() => {
+    const preview = JSON.parse(
+      localStorage.getItem('etymology-stack-preview') ?? '[]',
+    );
+    preview[0] = { ...preview[0], id: 'stale-preview', word: 'Stale preview' };
+    localStorage.setItem('etymology-stack-preview', JSON.stringify(preview));
+    const pending: (() => void)[] = [];
+    let released = false;
+    const state = window as typeof window & { releaseStackRead: () => void };
+    state.releaseStackRead = () => {
+      released = true;
+      for (const resolve of pending) resolve();
+    };
+    const get = IDBObjectStore.prototype.get;
+    IDBObjectStore.prototype.get = function (query) {
+      const request = get.call(this, query);
+      if (this.name === 'stack' && !released) {
+        request.addEventListener(
+          'success',
+          (event) => {
+            if (released) return;
+            event.stopImmediatePropagation();
+            pending.push(() => request.dispatchEvent(new Event('success')));
+          },
+          { once: true },
+        );
+      }
+      return request;
+    };
+  });
+  await page.reload();
+  await expect(top).toHaveText('Stale preview');
+  await expect(like).toBeDisabled();
+  await page.keyboard.press('ArrowRight');
+  await expect(top).toHaveText('Stale preview');
+  await page.evaluate(() => {
+    (
+      window as typeof window & { releaseStackRead: () => void }
+    ).releaseStackRead();
+  });
+  await expect(top).toHaveText(savedWord);
+  await expect(like).toBeEnabled();
+  await expect(
+    page.getByText('The swipe could not be saved. Please try again.'),
+  ).toHaveCount(0);
+  await page.goto('/liked/');
+  await expect(page.locator('.liked-item')).toHaveCount(0);
+});
+
 test('Feed and Liked navigate without reloading the shared header', async ({
   page,
 }) => {
@@ -578,15 +635,25 @@ function topCardDrift(page: Page): Promise<number> {
 
 /** A single finger on the touchscreen, driven through the browser's real
  * touch pipeline so touch-action and native scrolling take part. */
-async function finger(page: Page) {
+async function finger(page: Page, fixedTiming = false) {
   const cdp = await page.context().newCDPSession(page);
   let at = { x: 0, y: 0 };
+  let timestamp = Date.now() / 1000;
   const send = (
     type: 'touchStart' | 'touchMove' | 'touchEnd',
     points: { x: number; y: number }[],
-  ) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+    elapsed = 8,
+  ) => {
+    timestamp += elapsed / 1000;
+    return cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: points,
+      ...(fixedTiming ? { timestamp } : {}),
+    });
+  };
   return {
     async down(x: number, y: number) {
+      timestamp = Math.max(timestamp, Date.now() / 1000);
       at = { x, y };
       await send('touchStart', [at]);
     },
@@ -597,7 +664,7 @@ async function finger(page: Page) {
           x: from.x + ((x - from.x) * step) / steps,
           y: from.y + ((y - from.y) * step) / steps,
         };
-        await send('touchMove', [at]);
+        await send('touchMove', [at], wait || 8);
         await page.waitForTimeout(wait);
       }
     },
@@ -704,7 +771,9 @@ test('the exit speed follows the hand: a slow drag eases away, a flick leaves fa
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   await recordAnimations(page);
-  const touch = await finger(page);
+  // Keep gesture velocity independent of CDP round-trip latency on CI runners.
+  // Events still travel through Chrome's native touch pipeline.
+  const touch = await finger(page, true);
   await touch.down(x, y);
   await touch.move(x + box.width * 0.45, y, { steps: 10, wait: 60 });
   await touch.up();
@@ -792,18 +861,31 @@ test('holding or double-tapping the text selects a word and holds the card still
   const card = page.getByTestId('top-card');
   await expect(card).toBeVisible();
   const first = await card.locator('h2').innerText();
-  const text = await card.locator('.etymology').boundingBox();
-  if (!text) throw new Error('Etymology has no visible bounds.');
-  // Just inside the first word of the etymology.
-  const x = text.x + 12;
-  const y = text.y + 12;
+  // Hit an actual glyph, independent of the runner's fonts and line metrics.
+  const { x, y } = await card.locator('.etymology').evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const offset = node.textContent?.search(/\p{L}/u) ?? -1;
+      if (offset < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(node, offset + 1);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    }
+    throw new Error('Etymology has no selectable text.');
+  });
   const selected = () => page.evaluate(() => getSelection()?.toString() ?? '');
   const touch = await finger(page);
 
-  await touch.hold(x, y);
-  await expect.poll(selected).toMatch(/^\S+$/);
-  await touch.tap(x + 150, y + 150);
-  await expect.poll(selected).toBe('');
+  // Desktop Linux Chrome does not implement native touch long-press selection.
+  // The macOS CI job covers it; app-provided double tap runs on both platforms.
+  if (process.platform === 'darwin') {
+    await touch.hold(x, y);
+    await expect.poll(selected).toMatch(/^\S+$/);
+    await touch.tap(x + 150, y + 150);
+    await expect.poll(selected).toBe('');
+  }
 
   await touch.tap(x, y);
   await page.waitForTimeout(90);

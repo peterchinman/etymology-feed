@@ -1,5 +1,17 @@
 # Decisions
 
+## 2026-09-27 — Start M5 with CI and launch prerequisites
+
+Peter has purchased `etymologyfeed.com`; use `https://etymologyfeed.com` as the
+production origin. The existing Cloudflare login works, while public DNS still
+uses Porkbun nameservers. Track DNS, OAuth, CI credentials, source publication,
+the D1 bootstrap budget, and backup/restore work in `RUNBOOK.md`.
+
+Add app CI now, using local D1/KV and mock OAuth. The browser harness supplies
+its own test-only auth secret and origin so a fresh runner does not require a
+developer's `.dev.vars`. Production deployment remains pending those setup
+dependencies. M5 is incomplete until its remote restore drill passes.
+
 ## 2026-09-27 — Start production from one APP migration
 
 No production APP data needs an upgrade before the first deployment.
@@ -438,3 +450,60 @@ RWG retains a separate source-entry-link regression without feed selection logic
 The move leaves classifier v4 and the 100,537-card baseline unchanged. Raw source
 publication and feed artifact publication now have separate release steps.
 Future editorial changes require only an Etymology Feed PR.
+
+
+## 2026-09-28 — Production bootstrap and private recovery (§3.4, M5)
+
+The owner chose Workers Paid to complete the initial import in one session.
+Production has separate APP, immutable DICT, CACHE, and a private R2 bucket;
+the scratch resources remain development targets. The reviewed source is now
+published in RWG as dictionary-2026-09-28, without changing RWG's website pin.
+
+Deployment reads the desired DICT binding from private R2 state, and app/release/
+backup workflows share a concurrency group. Cache keys include the dictionary
+release. CI covers Linux and macOS; native touch-selection coverage uses macOS.
+The repository token passed a read-only check from GitHub Actions.
+
+The first private backup restored every row correctly into isolated resources,
+and guarded HTTP checks verified feed, session, and like operations. Temporary
+resources were removed. RUNBOOK records the evidence and the limitation that
+this snapshot preceded real user data. Public deployment, real OAuth checks,
+and initial feed artifact publication remain pending PR review. Automatic
+releases currently refuse removed card IDs until retired membership is modeled.
+
+
+## 2026-09-28 — Preserve shared ratings through dictionary rollback (M5)
+
+A failed dictionary release can leave new statistics in APP, and the candidate
+Worker may already have accepted ratings. Keep those rows. Feed batches now
+resolve their selected IDs against the active immutable DICT before filling
+missing slots from its shuffle index. Cached candidates and served history from
+other releases cannot imply dictionary exhaustion. Recovery scans are bounded
+at 1,000 extra rows; normal complete-pool requests retain their existing cost.
+
+The release coordinator also restores the previous pointer after ambiguous
+pointer-write failures and gives every retry a unique DICT name. Local tests
+inject failures at seed, pointer, deployment, and smoke-check boundaries, then
+retry without resetting either old ratings or ratings received on the candidate.
+The production smoke check now requires a full, distinct 100-card feed.
+
+
+## 2026-09-28 — Final launch review (M5)
+
+Require dictionary releases to pass the same app checks on the exact main SHA
+that they deploy, and abort if main advances before the release starts. Health
+reports the deployed app commit and dictionary release; smoke checks verify both,
+with bounded retries for first-domain propagation and a full distinct feed.
+
+Restore tools validate the guarded entrypoint, protection of every asset,
+resource IDs (not just equality of config objects), and backup dictionary before
+any import. Runtime tests cover rejected and authorized requests. Backups capture
+actual deployed version metadata separately from the backup runner's checkout,
+and whitelist nonsecret fields. Artifact checks also reject gaps in the shuffle
+index or mismatched SQL/SQLite metadata. These are launch correctness changes;
+no public deployment occurs before the reviewed merge.
+
+The merged UI's synchronous card preview stays display-only until IndexedDB
+confirms the saved stack. A delayed-storage browser regression verifies that a
+stale preview cannot receive a swipe. Account fixtures update both preview and
+saved cards, then wait for the intended card to become interactive.

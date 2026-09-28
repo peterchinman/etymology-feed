@@ -9,7 +9,7 @@ import {
   getWord,
   getWordEtymologies,
 } from './feed';
-import { buildPools, POOLS_KEY } from './pools';
+import { buildPools, poolsKey } from './pools';
 import { deleteLiked, syncInput, syncSwipes } from './sync';
 
 type Variables = {
@@ -107,10 +107,16 @@ const routes = app
       c.env.APP.prepare('SELECT id FROM user WHERE id = ?')
         .bind('__health__')
         .first(),
-      c.env.CACHE.get(POOLS_KEY),
+      c.env.CACHE.get(poolsKey(c.env)),
     ]);
     if (!dict) throw new FeedUnavailable('The dictionary is not loaded.');
-    return c.json({ status: 'ok', dictCards: Number(dict.value) });
+    c.header('Cache-Control', 'no-store');
+    return c.json({
+      status: 'ok',
+      dictCards: Number(dict.value),
+      appCommit: c.env.APP_COMMIT,
+      dictRelease: c.env.DICT_RELEASE,
+    });
   })
   .get(
     '/api/feed',

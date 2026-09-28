@@ -63,8 +63,9 @@ class ReportStatsTest(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
             )
+            self.assertEqual(output.returncode, 0, output.stderr)
             report = json.loads(output.stdout)
 
         self.assertEqual(report["dictionaryRelease"], "fixture-release")

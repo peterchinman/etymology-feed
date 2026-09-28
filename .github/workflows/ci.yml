@@ -1,0 +1,64 @@
+name: App checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact commit to check for a deployment
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-checks-${{ github.workflow }}-${{ inputs.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck:shared
+      - run: npm run typecheck:api
+      - run: npm run typecheck:web
+      - run: npm run test:shared
+      - run: npm run test:dictionary
+      - run: npm run test:report -w @etymology-feed/api
+      - run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+      - run: node --test scripts/*.test.mjs
+      - run: npm run build:web
+      - run: npm run test:api
+      - name: Install the browser used by the offline and account tests
+        run: npx --no-install playwright install --with-deps chrome
+      - name: Test offline use and account reconciliation with local D1
+        run: npx --no-install playwright test --config apps/web/playwright.config.ts
+      - name: Validate Worker packaging without deploying
+        working-directory: apps/api
+        run: npx --no-install wrangler deploy --dry-run
+      - name: Validate production Worker packaging
+        working-directory: apps/api
+        run: npx --no-install wrangler deploy --config wrangler.production.json --dry-run

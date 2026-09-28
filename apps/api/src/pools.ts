@@ -18,6 +18,10 @@ type StatRow = { card_id: string; likes: number; dislikes: number };
 
 export const POOLS_KEY = 'pools:v3';
 
+export function poolsKey(env: CloudflareBindings): string {
+  return `${POOLS_KEY}:${env.DICT_RELEASE}`;
+}
+
 export async function buildPools(
   env: CloudflareBindings,
 ): Promise<Pools & { rowsRead: number }> {
@@ -83,7 +87,9 @@ export async function buildPools(
     promising: toCandidates(promising.results),
     fresh: fresh.results.map(({ card_id }) => card_id),
   };
-  await env.CACHE.put(POOLS_KEY, JSON.stringify(pools));
+  await env.CACHE.put(poolsKey(env), JSON.stringify(pools), {
+    expirationTtl: 86400,
+  });
   const rowsRead =
     confirmed.meta.rows_read + promising.meta.rows_read + fresh.meta.rows_read;
   console.log(
@@ -99,7 +105,7 @@ export async function buildPools(
 }
 
 export async function getPools(env: CloudflareBindings): Promise<Pools> {
-  const cached = await env.CACHE.get<Pools>(POOLS_KEY, 'json');
+  const cached = await env.CACHE.get<Pools>(poolsKey(env), 'json');
   return cached ?? buildPools(env);
 }
 
