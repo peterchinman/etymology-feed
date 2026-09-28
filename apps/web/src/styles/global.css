@@ -880,7 +880,9 @@ a {
     flex: 1;
     height: auto;
   }
-  .liked-page,
+  .liked-page {
+    padding-top: calc(var(--space-4) + env(safe-area-inset-top));
+  }
   .settings-screen {
     padding-top: calc(var(--space-5) + env(safe-area-inset-top));
   }
