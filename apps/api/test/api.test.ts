@@ -9,7 +9,13 @@ describe('dictionary and persistent feed API', () => {
   it('loads the 501-card fixture and responds to health checks', async () => {
     const response = await SELF.fetch('http://localhost/healthz');
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ status: 'ok', dictCards: 501 });
+    expect(await response.json()).toEqual({
+      status: 'ok',
+      dictCards: 501,
+      appCommit: 'local',
+      dictRelease: 'local-fixture',
+    });
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
   });
 
   it('serves 100 distinct wild cards within the D1 read budget', async () => {

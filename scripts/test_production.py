@@ -45,6 +45,25 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'Checksum mismatch'):
             verify(self.path)
 
+    def test_rejects_gapped_shuffle_even_with_valid_checksums(self):
+        with sqlite3.connect(self.path / 'etymology.db') as db:
+            db.execute("UPDATE word SET shuffle=99 WHERE shuffle=2")
+            (self.path / 'etymology.sql').write_text('\n'.join(db.iterdump()))
+        prepare(self.path)
+        with self.assertRaisesRegex(ValueError, 'complete integer permutation'):
+            verify(self.path)
+
+    def test_rejects_sqlite_metadata_different_from_sql(self):
+        with sqlite3.connect(self.path / 'etymology.db') as db:
+            db.execute("INSERT INTO meta VALUES('extra','mismatch')")
+        prepare(self.path)
+        # Match the SQL manifest to prove the separate SQLite check catches drift.
+        manifest = json.loads((self.path / 'manifest.json').read_text())
+        del manifest['source']['extra']
+        (self.path / 'manifest.json').write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(ValueError, 'metadata differ'):
+            verify(self.path)
+
     def test_unpublished_source_cannot_be_prepared(self):
         db = sqlite3.connect(self.path / 'etymology.db')
         db.execute("UPDATE meta SET value='false' WHERE key='source_published'")
@@ -62,6 +81,24 @@ class ReleaseTests(unittest.TestCase):
             db.execute("DELETE FROM word WHERE id='bluff::second'")
         with self.assertRaisesRegex(ValueError, 'removes 1 cards'):
             check_membership(previous, candidate)
+
+
+class BackupProvenanceTests(unittest.TestCase):
+    def test_records_active_versions_and_only_nonsecret_bindings(self):
+        deployments = [{"id": "old", "created_on": "2026-01-01", "versions": []},
+                       {"id": "active", "created_on": "2026-02-01", "versions": [{"version_id": "v2", "percentage": 100}]}]
+        version = {"resources": {"bindings": [
+            {"type": "plain_text", "name": "APP_COMMIT", "text": "deployed-sha"},
+            {"type": "plain_text", "name": "DICT_RELEASE", "text": "feed-live"},
+            {"type": "d1", "name": "DICT", "id": "dict-id"},
+            {"type": "secret_text", "name": "GOOGLE_CLIENT_SECRET", "text": "must-not-be-recorded"},
+        ]}}
+        with patch.object(production, 'wrangler', side_effect=[json.dumps(deployments), json.dumps(version)]):
+            snapshot = production.deployed_versions()
+        self.assertEqual(snapshot['deployment_id'], 'active')
+        self.assertEqual(snapshot['versions'][0]['app_commit'], 'deployed-sha')
+        self.assertEqual(snapshot['versions'][0]['databases'], {'DICT': 'dict-id'})
+        self.assertNotIn('must-not-be-recorded', json.dumps(snapshot))
 
 
 class ReleaseRecoveryTests(unittest.TestCase):
@@ -118,7 +155,9 @@ class ReleaseRecoveryTests(unittest.TestCase):
 
                 def run(*args, **kwargs):
                     nonlocal failed
-                    if args[:3] == ("gh", "release", "download"):
+                    if args == ("git", "rev-parse", "HEAD"):
+                        return "f" * 40
+                    elif args[:3] == ("gh", "release", "download"):
                         directory = Path(args[args.index("--dir") + 1])
                         shutil.copytree(assets[args[3]], directory, dirs_exist_ok=True)
                     elif args[:2] == ("node", "scripts/smoke-production.mjs"):

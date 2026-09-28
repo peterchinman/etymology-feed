@@ -486,3 +486,19 @@ pointer-write failures and gives every retry a unique DICT name. Local tests
 inject failures at seed, pointer, deployment, and smoke-check boundaries, then
 retry without resetting either old ratings or ratings received on the candidate.
 The production smoke check now requires a full, distinct 100-card feed.
+
+
+## 2026-09-28 — Final launch review (M5)
+
+Require dictionary releases to pass the same app checks on the exact main SHA
+that they deploy, and abort if main advances before the release starts. Health
+reports the deployed app commit and dictionary release; smoke checks verify both,
+with bounded retries for first-domain propagation and a full distinct feed.
+
+Restore tools validate the guarded entrypoint, protection of every asset,
+resource IDs (not just equality of config objects), and backup dictionary before
+any import. Runtime tests cover rejected and authorized requests. Backups capture
+actual deployed version metadata separately from the backup runner's checkout,
+and whitelist nonsecret fields. Artifact checks also reject gaps in the shuffle
+index or mismatched SQL/SQLite metadata. These are launch correctness changes;
+no public deployment occurs before the reviewed merge.

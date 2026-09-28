@@ -10,8 +10,27 @@ on:
 permissions:
   contents: read
 jobs:
+  resolve:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      startsWith(github.event.release.tag_name, 'feed-')
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.main.outputs.commit }}
+    steps:
+      - id: main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+  checks:
+    needs: resolve
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.resolve.outputs.commit }}
   release:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'feed-')
+    needs: [resolve, checks]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
@@ -27,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.resolve.outputs.commit }}
           fetch-depth: 0
       - name: Require release code to have been merged
         run: |
@@ -43,4 +62,10 @@ jobs:
       - run: npm ci
       - run: npm run build:web
       - name: Validate, import, seed, and switch the dictionary
-        run: python3 scripts/production.py release "$FEED_TAG"
+        run: |
+          current=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [ "$current" != "$(git rev-parse HEAD)" ]; then
+            echo 'Main advanced while checks ran; rerun this release against the new main.'
+            exit 1
+          fi
+          python3 scripts/production.py release "$FEED_TAG"

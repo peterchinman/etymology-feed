@@ -6,12 +6,17 @@ on:
     branches: [main]
   workflow_dispatch:
   workflow_call:
+    inputs:
+      ref:
+        description: Exact commit to check for a deployment
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: app-checks-${{ github.workflow }}-${{ github.ref }}
+  group: app-checks-${{ github.workflow }}-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,6 +31,8 @@ jobs:
       WRANGLER_SEND_METRICS: 'false'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -42,6 +49,7 @@ jobs:
       - run: npm run test:dictionary
       - run: npm run test:report -w @etymology-feed/api
       - run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+      - run: node --test scripts/*.test.mjs
       - run: npm run build:web
       - run: npm run test:api
       - name: Install the browser used by the offline and account tests

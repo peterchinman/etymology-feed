@@ -27,18 +27,41 @@ def table_rows(sql):
     return rows
 
 
+def validate_target(current, target, config, manifest):
+    if not target['name'].startswith('etymology-feed-restore-') or target.get('route') or target.get('routes') or target.get('triggers', {}).get('crons'):
+        raise ValueError('Expected an isolated restore Worker without routes or cron')
+    if target.get('account_id') != current['account_id']:
+        raise ValueError('Restore must use the intended Cloudflare account')
+    main = (Path(config).parent / target.get('main', '')).resolve()
+    assets = target.get('assets', {})
+    if main != ROOT / 'apps/api/src/restore.ts' or assets.get('binding') != 'ASSETS' or assets.get('run_worker_first') is not True:
+        raise ValueError('Restore must use the access-gated entrypoint for every request and asset')
+    variables = target.get('vars', {})
+    if 'BETTER_AUTH_URL' in variables or any(key.startswith(('GOOGLE_', 'GITHUB_', 'MOCK_OAUTH_')) for key in variables):
+        raise ValueError('Restore must not enable real or mock OAuth providers')
+    if sorted(v['binding'] for v in target['d1_databases']) != ['APP', 'DICT'] or [v['binding'] for v in target['kv_namespaces']] != ['CACHE']:
+        raise ValueError('Restore requires exactly one APP, DICT, and CACHE binding')
+    protected_ids = {v['database_id'] for v in current['d1_databases']}
+    protected_ids.add(manifest['app']['database_id'])
+    protected_ids.add(manifest['dictionary']['database_id'])
+    test_app = next(v['database_id'] for v in target['d1_databases'] if v['binding'] == 'APP')
+    current_cache = {v['id'] for v in current['kv_namespaces']}
+    target_cache = {v['id'] for v in target['kv_namespaces']}
+    if test_app in protected_ids or current_cache & target_cache or not target_cache:
+        raise ValueError('Restore must isolate APP and CACHE')
+    dictionary = next(v['database_id'] for v in target['d1_databases'] if v['binding'] == 'DICT')
+    if dictionary != manifest['dictionary']['database_id'] or variables.get('DICT_RELEASE') != manifest['dictionary']['release']:
+        raise ValueError('Restore DICT must match the backup manifest')
+    return test_app
+
+
 def drill(directory, config):
     start = time.monotonic()
     directory, config = Path(directory), Path(config).resolve()
     current = json.loads(CONFIG.read_text())
     target = json.loads(config.read_text())
-    if not target['name'].startswith('etymology-feed-restore-') or target.get('routes') or target.get('triggers', {}).get('crons'):
-        raise ValueError('Expected an isolated restore Worker without routes or cron')
-    prod_app = next(v['database_id'] for v in current['d1_databases'] if v['binding'] == 'APP')
-    test_app = next(v['database_id'] for v in target['d1_databases'] if v['binding'] == 'APP')
-    if prod_app == test_app or current['kv_namespaces'] == target['kv_namespaces']:
-        raise ValueError('Restore must isolate APP and CACHE')
     manifest = json.loads((directory / 'manifest.json').read_text())
+    test_app = validate_target(current, target, config, manifest)
     if digest(directory / 'app.sql.gz') != manifest['sha256']:
         raise ValueError('Backup checksum mismatch')
     sql = directory / 'app.sql'

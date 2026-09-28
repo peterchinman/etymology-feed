@@ -64,6 +64,10 @@ code with the five assets prepared in `data/production-release/`.
 
 ## App deployment
 
+Both app and dictionary releases test the exact commit that will be deployed.
+Dictionary release jobs resolve main once, run the full checks on that SHA, and
+refuse the switch if main advances before the mutation step.
+
 A push to main runs the local fixture tests, browser tests, and packaging checks
 on Linux and macOS, then deploys. A stale main run is skipped. All production
 mutations share the `etymology-production` Actions concurrency group.
@@ -84,7 +88,10 @@ python3 scripts/production.py deploy
 
 This resolves current DICT, applies APP migrations, deploys the Worker and custom
 domain, then tests HTTPS, health, the static shell, both paired Bluffs, and a full
-100-card feed. The feed check creates one anonymous session/served record and
+100-card feed. `/healthz` reports `appCommit` and `dictRelease` with `no-store`;
+the smoke check must observe the expected values before accepting the deployment.
+It retries briefly for DNS/certificate/edge propagation, with timeouts on every
+request. The feed check creates one anonymous session/served record and
 does not submit ratings.
 Check real sign-in for both providers, anonymous-to-account reconciliation,
 cross-device likes, account deletion, and offline reconnection after launch.
@@ -107,7 +114,8 @@ kaikki.org CC BY-SA 4.0 attribution. The release tag must point to code merged
 into main. Do not publish the initial tag before the production PR is merged.
 
 The release workflow checks provenance, hashes, SQL/SQLite equality, seed contents,
-and membership against the previous release. It imports a new immutable DICT,
+and membership against the previous release. It also checks matching SQLite/SQL
+metadata and a complete integer shuffle permutation. It imports a new immutable DICT,
 seeds missing statistics without resetting ratings, updates the R2 pointer,
 and deploys. The previous DICT is retained. A pointer-write or deployment failure
 attempts to restore the previous pointer and deployment; it does not undo APP
@@ -143,8 +151,10 @@ python3 scripts/production.py backup
 Exports can briefly block APP requests. The script captures Wrangler's signed
 export URL instead of logging it, verifies SQLite integrity and foreign keys,
 compresses the export, and uploads `app/<UTC timestamp>.sql.gz` plus `.json` to
-R2. The manifest records checksums, counts, APP/DICT identities, code commit,
-and migration hashes. The private `app/` prefix has a 90-day lifecycle policy;
+R2. The manifest records checksums, counts, APP/DICT identities, actual deployed
+Worker version IDs and app commit, plus the backup script commit and its migration
+hashes. It records desired dictionary state separately from the deployed binding;
+`dictionary_source` flags the fallback if an older Worker lacks release metadata. The private `app/` prefix has a 90-day lifecycle policy;
 `production/dictionary.json` is outside that prefix. Never publish APP backups as
 release assets or GitHub artifacts.
 
@@ -200,7 +210,9 @@ To repeat:
    python3 scripts/restore-drill.py data/restore-drill --config apps/api/.wrangler.restore-runtime.json
    ```
 
-   The script verifies checksums, refuses a nonempty APP, compares restored rows,
+   The script first requires the guarded entrypoint, protection for all assets,
+   the intended account, unique isolated APP/CACHE bindings, and the manifest
+   dictionary. It then verifies checksums, refuses a nonempty APP, compares restored rows,
    installs fresh secrets, deploys the guarded Worker, and records HTTP results.
 
 5. Record the result, then delete only the named temporary Worker, D1, and KV

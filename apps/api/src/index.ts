@@ -110,7 +110,13 @@ const routes = app
       c.env.CACHE.get(poolsKey(c.env)),
     ]);
     if (!dict) throw new FeedUnavailable('The dictionary is not loaded.');
-    return c.json({ status: 'ok', dictCards: Number(dict.value) });
+    c.header('Cache-Control', 'no-store');
+    return c.json({
+      status: 'ok',
+      dictCards: Number(dict.value),
+      appCommit: c.env.APP_COMMIT,
+      dictRelease: c.env.DICT_RELEASE,
+    });
   })
   .get(
     '/api/feed',

@@ -8,7 +8,7 @@ import re
 import sqlite3
 import subprocess
 import tempfile
-from uuid import uuid4
+from uuid import UUID, uuid4
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,6 +78,11 @@ def verify(directory):
     if count != manifest["row_count"] or meta != manifest["source"] or meta.get("source_published") != "true":
         raise ValueError("Release provenance/count mismatch")
     local = sqlite3.connect(f"{(directory / 'etymology.db').resolve().as_uri()}?mode=ro", uri=True)
+    if dict(local.execute("SELECT key,value FROM meta")) != meta:
+        raise ValueError("SQL and SQLite metadata differ")
+    layout = db.execute("SELECT count(DISTINCT id),count(DISTINCT shuffle),min(shuffle),max(shuffle),sum(typeof(shuffle) != 'integer') FROM word").fetchone()
+    if count < 1 or layout != (count, count, 1, count, 0):
+        raise ValueError("Dictionary shuffle must be a complete integer permutation")
     if db.execute("SELECT * FROM word ORDER BY id").fetchall() != local.execute("SELECT * FROM word ORDER BY id").fetchall():
         raise ValueError("SQL and SQLite cards differ")
     local.close()
@@ -101,9 +106,12 @@ def render():
         path = Path(tmp) / "dictionary.json"
         wrangler("r2", "object", "get", STATE, "--remote", "--file", path, config=CONFIG)
         state = json.loads(path.read_text())
-    if not re.fullmatch(r"[0-9a-f-]{36}", state["database_id"]):
+    if str(UUID(state["database_id"])) != state["database_id"]:
         raise ValueError("Invalid production dictionary ID")
     cfg = json.loads(CONFIG.read_text())
+    app_id = next(item["database_id"] for item in cfg["d1_databases"] if item["binding"] == "APP")
+    if state["database_id"] == app_id or not re.fullmatch(r"feed-[a-zA-Z0-9.-]+", state["release"]):
+        raise ValueError("Production dictionary state targets APP or has an invalid release")
     cfg["d1_databases"][0] = {"binding": "DICT", "database_id": state["database_id"],
                               "database_name": state["database_name"]}
     cfg["vars"]["DICT_RELEASE"] = state["release"]
@@ -128,10 +136,13 @@ def check_membership(previous_db, next_db):
 
 
 def deploy():
-    render()
+    cfg, state = render()
+    commit = run("git", "rev-parse", "HEAD", capture=True).strip()
+    cfg["vars"]["APP_COMMIT"] = commit
+    RUNTIME.write_text(json.dumps(cfg, indent=2) + "\n")
     wrangler("d1", "migrations", "apply", "APP", "--remote")
     wrangler("deploy")
-    run("node", "scripts/smoke-production.mjs", "https://etymologyfeed.com")
+    run("node", "scripts/smoke-production.mjs", "https://etymologyfeed.com", commit, state["release"])
 
 
 def release(tag):
@@ -187,8 +198,33 @@ def release(tag):
         print(f"Dictionary switched to {tag}; previous DICT retained: {previous['database_id']}")
 
 
+def deployed_versions():
+    """Record deployed code/bindings, not the checkout running the backup job."""
+    deployments = json.loads(wrangler("deployments", "list", "--json", capture=True))
+    if not deployments:
+        raise ValueError("No Worker deployment found for backup provenance")
+    active = max(deployments, key=lambda item: item["created_on"])
+    versions = []
+    for selection in active["versions"]:
+        version = json.loads(wrangler("versions", "view", selection["version_id"], "--json", capture=True))
+        bindings = version["resources"]["bindings"]
+        # Whitelist nonsecret values; never include all bindings or API metadata.
+        text_vars = {b["name"]: b["text"] for b in bindings if b["type"] == "plain_text" and b["name"] in ("APP_COMMIT", "DICT_RELEASE")}
+        databases = {b["name"]: b["id"] for b in bindings if b["type"] == "d1" and b["name"] in ("APP", "DICT")}
+        versions.append({**selection, "app_commit": text_vars.get("APP_COMMIT"),
+                         "dictionary_release": text_vars.get("DICT_RELEASE"), "databases": databases})
+    return {"deployment_id": active["id"], "created_on": active["created_on"], "versions": versions}
+
+
 def backup():
     cfg, state = render()
+    deployed = deployed_versions()
+    active = max(deployed["versions"], key=lambda version: version["percentage"])
+    dictionary = state
+    dictionary_source = "desired-state-unconfirmed"
+    if active["databases"].get("DICT") and active["dictionary_release"]:
+        dictionary = {"database_id": active["databases"]["DICT"], "release": active["dictionary_release"]}
+        dictionary_source = "deployed-worker"
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)
@@ -205,9 +241,11 @@ def backup():
         compressed = directory / "app.sql.gz"
         compressed.write_bytes(gzip.compress(sql.read_bytes(), mtime=0))
         key = f"app/{stamp}"
-        record = {"created_at": stamp, "app": cfg["d1_databases"][1], "dictionary": state,
-                  "commit": run("git", "rev-parse", "HEAD", capture=True).strip(),
-                  "migrations_sha256": {p.name: digest(p) for p in (ROOT / "apps/api/drizzle").glob("*.sql")},
+        record = {"created_at": stamp, "app": cfg["d1_databases"][1], "dictionary": dictionary,
+                  "dictionary_source": dictionary_source, "desired_dictionary": state,
+                  "deployment": deployed,
+                  "backup_script_commit": run("git", "rev-parse", "HEAD", capture=True).strip(),
+                  "backup_script_migrations_sha256": {p.name: digest(p) for p in (ROOT / "apps/api/drizzle").glob("*.sql")},
                   "sha256": digest(compressed), "sql_sha256": digest(sql), "table_counts": counts}
         manifest = directory / "manifest.json"
         manifest.write_text(json.dumps(record, indent=2) + "\n")
