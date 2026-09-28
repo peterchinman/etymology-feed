@@ -66,16 +66,16 @@ export default function AccountControls(props: {
         <Show
           when={props.variant === 'settings'}
           fallback={
-            <a class="account-badge label-voice" href="/settings/#account">
-              <Show when={!current().user.isAnonymous} fallback="Sign in">
+            <Show when={!current().user.isAnonymous}>
+              <a class="account-badge label-voice" href="/settings/#account">
                 <Show
                   when={current().user.image}
                   fallback={current().user.name.slice(0, 1).toUpperCase()}
                 >
                   {(image) => <img src={image()} alt="" />}
                 </Show>
-              </Show>
-            </a>
+              </a>
+            </Show>
           }
         >
           <section class="account-section" id="account" aria-label="Account">
