@@ -799,7 +799,7 @@ a {
 @media (min-width: 48.0625rem) {
   .feed-page {
     --card-max: 44rem;
-    --control-gap: var(--space-5);
+    --control-gap: var(--space-7);
     padding-top: var(--space-5);
   }
   .feed-page .deck-area {
