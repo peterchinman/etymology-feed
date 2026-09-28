@@ -1,5 +1,10 @@
 # Etymology Feed
 
+Production preparation targets **etymologyfeed.com**. See the
+[M5 runbook](docs/RUNBOOK.md) for setup requirements and the release, deployment,
+and restore sequence. App CI uses local fixtures and mock OAuth without Cloudflare
+credentials; deployment and the remote restore drill remain pending.
+
 M4 adds optional Google and GitHub accounts to the anonymous, offline-first
 Astro/Solid app. Signing in merges anonymous swipes and served history into the
 account; Liked then reconciles from the server across devices. The

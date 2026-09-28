@@ -1,5 +1,17 @@
 # Decisions
 
+## 2026-09-27 — Start M5 with CI and launch prerequisites
+
+Peter has purchased `etymologyfeed.com`; use `https://etymologyfeed.com` as the
+production origin. The existing Cloudflare login works, while public DNS still
+uses Porkbun nameservers. Track DNS, OAuth, CI credentials, source publication,
+the D1 bootstrap budget, and backup/restore work in `RUNBOOK.md`.
+
+Add app CI now, using local D1/KV and mock OAuth. The browser harness supplies
+its own test-only auth secret and origin so a fresh runner does not require a
+developer's `.dev.vars`. Production deployment remains pending those setup
+dependencies. M5 is incomplete until its remote restore drill passes.
+
 ## 2026-09-27 — Start production from one APP migration
 
 No production APP data needs an upgrade before the first deployment.

@@ -464,7 +464,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 
 Settled in this revision: all-TypeScript on Cloudflare; offline-first with a 150-card local stack; selection by etymology text (§4.1) with all tiers and shapes kept; no retirement rule; definition hidden behind a toggle; server-side `served` record per user; Google + GitHub OAuth.
 
-Still to decide, not blocking: product name and domain; whether anonymous users get a "sign in to save" nudge after N likes (suggest: after 10, once). The §4.1 thresholds are expected to move once §6.5 has data; that's a scheduled review, not an open question.
+Product name and domain are settled: **Etymology Feed**, **etymologyfeed.com** (purchased). M5 setup and outstanding account requirements are tracked in [RUNBOOK.md](RUNBOOK.md). Whether anonymous users get a "sign in to save" nudge after N likes (suggest: after 10, once) remains nonblocking. The §4.1 thresholds are expected to move once §6.5 has data; that's a scheduled review, not an open question.
 
 ---
 
