@@ -3,7 +3,8 @@
 Production preparation targets **etymologyfeed.com**. See the
 [M5 runbook](docs/RUNBOOK.md) for setup requirements and the release, deployment,
 and restore sequence. App CI uses local fixtures and mock OAuth without Cloudflare
-credentials; deployment and the remote restore drill remain pending.
+credentials; the private remote restore drill has passed. Initial public deployment
+and real-provider sign-in checks remain pending.
 
 M4 adds optional Google and GitHub accounts to the anonymous, offline-first
 Astro/Solid app. Signing in merges anonymous swipes and served history into the
@@ -13,8 +14,7 @@ full dictionary source is built by
 **This repo owns the feed data pipeline** in [`database/`](database/README.md):
 selection, display cleanup, card IDs, priority, tests, and derived database exports.
 `database/SOURCE.json` pins the full source's repository, release label, and
-SHA-256. The current pin describes the reviewed local source; `published: false`
-records that it is not yet an available GitHub release. The old published
+SHA-256. The current source is published as `dictionary-2026-09-28`. The old published
 `dictionary-2026-09-20b` source lacks the required sense-to-etymology links.
 
 Classifier v4 retains **100,537 cards across 95,841 headwords** after three
@@ -37,7 +37,7 @@ Outputs default to `data/dictionary/`. The builder checks the source checksum
 before creating output and opens the full dictionary read-only. RWG publishes
 only the full source; this repo will publish its derived database and SQL in a
 separate feed release, then import that SQL into a new DICT database. Both
-source publication and production deployment remain pending. Wiktionary text
+feed artifact publication and production deployment remain pending. Wiktionary text
 is from kaikki.org and licensed CC BY-SA 4.0.
 
 To enable real sign-in, put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
@@ -107,11 +107,11 @@ sqlite3 data/dictionary/etymology.db "SELECT round(prior,2), count(*) FROM word 
 ```
 
 Use the feed release's `etymology.db` as `--dict-db`, then export only the two APP tables needed for analysis. From
-`apps/api/`:
+`apps/api/` after running `python3 scripts/production.py render` from the repo root:
 
 ```sh
-npx wrangler d1 export APP --remote --table=swipe --no-schema --output=/tmp/ef-swipes.sql
-npx wrangler d1 export APP --remote --table=word_stats --no-schema --output=/tmp/ef-word-stats.sql
+npx wrangler d1 export APP --config .wrangler.production-runtime.json --remote --table=swipe --no-schema --output=/tmp/ef-swipes.sql
+npx wrangler d1 export APP --config .wrangler.production-runtime.json --remote --table=word_stats --no-schema --output=/tmp/ef-word-stats.sql
 python3 scripts/report_stats.py --swipes-sql /tmp/ef-swipes.sql --word-stats-sql /tmp/ef-word-stats.sql --dict-db ../../data/dictionary/etymology.db > /tmp/ef-report.json
 ```
 

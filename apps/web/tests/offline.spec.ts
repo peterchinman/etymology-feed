@@ -300,15 +300,25 @@ function topCardDrift(page: Page): Promise<number> {
 
 /** A single finger on the touchscreen, driven through the browser's real
  * touch pipeline so touch-action and native scrolling take part. */
-async function finger(page: Page) {
+async function finger(page: Page, fixedTiming = false) {
   const cdp = await page.context().newCDPSession(page);
   let at = { x: 0, y: 0 };
+  let timestamp = Date.now() / 1000;
   const send = (
     type: 'touchStart' | 'touchMove' | 'touchEnd',
     points: { x: number; y: number }[],
-  ) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+    elapsed = 8,
+  ) => {
+    timestamp += elapsed / 1000;
+    return cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: points,
+      ...(fixedTiming ? { timestamp } : {}),
+    });
+  };
   return {
     async down(x: number, y: number) {
+      timestamp = Math.max(timestamp, Date.now() / 1000);
       at = { x, y };
       await send('touchStart', [at]);
     },
@@ -319,7 +329,7 @@ async function finger(page: Page) {
           x: from.x + ((x - from.x) * step) / steps,
           y: from.y + ((y - from.y) * step) / steps,
         };
-        await send('touchMove', [at]);
+        await send('touchMove', [at], wait || 8);
         await page.waitForTimeout(wait);
       }
     },
@@ -426,7 +436,9 @@ test('the exit speed follows the hand: a slow drag eases away, a flick leaves fa
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
   await recordAnimations(page);
-  const touch = await finger(page);
+  // Keep gesture velocity independent of CDP round-trip latency on CI runners.
+  // Events still travel through Chrome's native touch pipeline.
+  const touch = await finger(page, true);
   await touch.down(x, y);
   await touch.move(x + box.width * 0.45, y, { steps: 10, wait: 60 });
   await touch.up();

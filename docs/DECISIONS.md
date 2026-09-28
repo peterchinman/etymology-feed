@@ -450,3 +450,23 @@ RWG retains a separate source-entry-link regression without feed selection logic
 The move leaves classifier v4 and the 100,537-card baseline unchanged. Raw source
 publication and feed artifact publication now have separate release steps.
 Future editorial changes require only an Etymology Feed PR.
+
+
+## 2026-09-28 — Production bootstrap and private recovery (§3.4, M5)
+
+The owner chose Workers Paid to complete the initial import in one session.
+Production has separate APP, immutable DICT, CACHE, and a private R2 bucket;
+the scratch resources remain development targets. The reviewed source is now
+published in RWG as dictionary-2026-09-28, without changing RWG's website pin.
+
+Deployment reads the desired DICT binding from private R2 state, and app/release/
+backup workflows share a concurrency group. Cache keys include the dictionary
+release. CI covers Linux and macOS; native touch-selection coverage uses macOS.
+The repository token passed a read-only check from GitHub Actions.
+
+The first private backup restored every row correctly into isolated resources,
+and guarded HTTP checks verified feed, session, and like operations. Temporary
+resources were removed. RUNBOOK records the evidence and the limitation that
+this snapshot preceded real user data. Public deployment, real OAuth checks,
+and initial feed artifact publication remain pending PR review. Automatic
+releases currently refuse removed card IDs until retired membership is modeled.

@@ -7,7 +7,7 @@ Author: Peter Chinman. Drafted 2026-09-25; revision 3 (all-TypeScript on Cloudfl
 
 ## 0. Handoff prompt (paste this to the coding agent)
 
-> You are implementing the project described in `docs/SPEC.md`. Read the whole spec before writing code. Work milestone by milestone (§10), in order, and stop at the end of each milestone for review. Each milestone has acceptance criteria; do not mark it done until they pass. Follow the conventions in §11. Where the spec says "decide" or "open", pick the recommended option and note the choice in `docs/DECISIONS.md`. Do not add dependencies, services, or features that the spec does not call for without asking. Everything runs on Cloudflare's free plan; treat the free-plan limits in §3.4 as hard budgets and note in the PR any query whose rows-read cost you could not keep small. The full dictionary source is pinned by this repo's `database/SOURCE.json` (RWG repository, release, and SHA-256); never vendor it into git. This repo owns the feed derivation and publishes its derived artifacts separately. Selection thresholds in §4 were chosen from measurements in §2; do not change them without new measurements, and instrument them as §6.5 requires so they can be revisited with data.
+> You are implementing the project described in `docs/SPEC.md`. Read the whole spec before writing code. Work milestone by milestone (§10), in order, and stop at the end of each milestone for review. Each milestone has acceptance criteria; do not mark it done until they pass. Follow the conventions in §11. Where the spec says "decide" or "open", pick the recommended option and note the choice in `docs/DECISIONS.md`. Do not add dependencies, services, or features that the spec does not call for without asking. The owner authorized Workers Paid for M5 bootstrap; retain §3.4 as efficiency targets and verify runtime compatibility before any downgrade. Note in the PR any query whose rows-read cost you could not keep small. The full dictionary source is pinned by this repo's `database/SOURCE.json` (RWG repository, release, and SHA-256); never vendor it into git. This repo owns the feed derivation and publishes its derived artifacts separately. Selection thresholds in §4 were chosen from measurements in §2; do not change them without new measurements, and instrument them as §6.5 requires so they can be revisited with data.
 
 ---
 
@@ -95,7 +95,7 @@ Versions to pin at project start (check `npm view` on day one): astro 7.x, @astr
 1. **Share the full source artifact.** RWG owns ingestion, frequency enrichment, the full source schema, and `dictionary.db` releases. This repo pins that artifact in `database/SOURCE.json` and owns `database/derive_etymology.py`, feed selection/cleanup, card IDs, ranking, tests, and its own derived-artifact releases. RWG retains its own `database/RELEASE`; changing feed selection does not require an RWG code or release change.
 2. **Optionally share the runtime (Milestone 6).** Port `get_words.php` to a Hono route backed by a third D1 holding the full dictionary (430 MB; the ~3M-row import needs the $5 Workers Paid plan). RWG's frontend then calls the Worker and the droplet's PHP retires.
 
-### 3.4 Cost and free-plan budgets (hard limits for the agent)
+### 3.4 Cost and free-plan budgets (efficiency targets)
 
 | Resource | Free plan | This app's cost per action | Headroom |
 |---|---|---|---|
@@ -106,7 +106,7 @@ Versions to pin at project start (check `npm view` on day one): astro 7.x, @astr
 | KV reads | 100k / day | 1 per feed fetch | fine |
 | KV writes | 1k / day | cron every 5 min = 288 | fine |
 
-At roughly 2,000 daily active users making eight swipes each, the D1 write cap bites; the fix is Workers Paid at **$5/month** (50M writes/month). Until then **$0/month**. The 650-row cost is measured on a 100-swipe batch with 50 likes and 50 dislikes, and includes index maintenance; actual daily headroom is lower after auth, cron, and feed writes. Design rules: every D1 query hits an index; no `ORDER BY random()`, no table scans in hot paths; D1 allows only **100 bound parameters** per statement, so `IN (…)` lists are passed as one JSON-array parameter and expanded with `json_each(?)` (the same trick `get_words.php` uses).
+At roughly 2,000 daily active users making eight swipes each, the D1 write cap bites; the fix is Workers Paid at **$5/month** (50M writes/month). The owner selected Paid for the initial M5 import; a return to Free requires measured CPU, per-request query, and account-wide quota checks. The 650-row cost is measured on a 100-swipe batch with 50 likes and 50 dislikes, and includes index maintenance; actual daily headroom is lower after auth, cron, and feed writes. Design rules: every D1 query hits an index; no `ORDER BY random()`, no table scans in hot paths; D1 allows only **100 bound parameters** per statement, so `IN (…)` lists are passed as one JSON-array parameter and expanded with `json_each(?)` (the same trick `get_words.php` uses).
 
 ---
 
