@@ -1,0 +1,24 @@
+name: Dictionary selection tests
+
+on:
+  pull_request:
+    paths:
+      - 'database/**'
+      - '.github/workflows/dictionary-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'database/**'
+      - '.github/workflows/dictionary-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  dictionary-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test selection, sense pairing, cleanup, and SQL export
+        run: python3 -m unittest discover -s database -p 'test_*.py' -v

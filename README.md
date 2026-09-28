@@ -3,26 +3,37 @@
 M4 adds optional Google and GitHub accounts to the anonymous, offline-first
 Astro/Solid app. Signing in merges anonymous swipes and served history into the
 account; Liked then reconciles from the server across devices. The
-dictionary comes from the `dictionary-2026-09-20b` release of
-[`random-word-generator-site`](https://github.com/peterchinman/random-word-generator-site/releases/tag/dictionary-2026-09-20b).
-The full release assets are never committed here. `apps/api/fixtures/etymology-500.sql`
-contains 498 shuffle positions from the locally rebuilt preview plus both
-sense-matched **bluff** cards and **béarnaise sauce** for local D1 tests. The
-full rebuilt preview in `data/multi-etymology-preview/` has **155,032 cards
-across 148,180 headwords**. Its source `dictionary.db` (444 MB), 47 MB SQL,
-58 MB derived SQLite file, and report are ignored by git. The published
-release still contains 147,954 one-card headwords.
-Wiktionary text is from kaikki.org and licensed CC BY-SA 4.0.
-
-The app and APP migration now use per-etymology card IDs. The upstream source
-builder change is in
+full dictionary source is built by
 [`random-word-generator-site`](https://github.com/peterchinman/random-word-generator-site).
-The local preview was rebuilt from the original 883,995-word Wiktionary
-extract; publish its rebuilt `dictionary.db`, `etymology.db`, and
-`etymology.sql` under a new release tag. The
-published `dictionary-2026-09-20b` assets still use the old one-card schema;
-the 501-card fixture is for local validation only. Bind the updated API to a
-new `DICT` database imported from the rebuilt SQL when releasing it.
+**This repo owns the feed data pipeline** in [`database/`](database/README.md):
+selection, display cleanup, card IDs, priority, tests, and derived database exports.
+`database/SOURCE.json` pins the full source's repository, release label, and
+SHA-256. The current pin describes the reviewed local source; `published: false`
+records that it is not yet an available GitHub release. The old published
+`dictionary-2026-09-20b` source lacks the required sense-to-etymology links.
+
+Classifier v4 retains **100,537 cards across 95,841 headwords** after three
+accepted editorial rounds. The local baseline is in `data/production-baseline/`;
+a rebuild using this repo's pipeline is in `data/feed-owned-preview/`. Full data
+artifacts are gitignored. `apps/api/fixtures/etymology-500.sql` remains a historical
+501-card integration fixture, including both Bluffs. Both Bluff origins and the
+laughter sense of haha survive the reviewed filters. See
+[the accepted rules and release handoff](docs/DATA_SELECTION.md).
+
+Run `npm run test:dictionary` to check the pipeline without any external data or
+RWG checkout. To build from the existing local source:
+
+```sh
+python3 database/derive_etymology.py --source data/multi-etymology-preview/dictionary.db
+python3 database/derive_etymology.py --source data/multi-etymology-preview/dictionary.db --check
+```
+
+Outputs default to `data/dictionary/`. The builder checks the source checksum
+before creating output and opens the full dictionary read-only. RWG publishes
+only the full source; this repo will publish its derived database and SQL in a
+separate feed release, then import that SQL into a new DICT database. Both
+source publication and production deployment remain pending. Wiktionary text
+is from kaikki.org and licensed CC BY-SA 4.0.
 
 To enable real sign-in, put `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
 `GITHUB_CLIENT_ID`, and `GITHUB_CLIENT_SECRET` in the ignored
@@ -83,22 +94,20 @@ usable offline after the shell and one batch are fetched. `npm run test:e2e`
 starts an isolated local Wrangler D1 fixture and runs the Playwright offline
 checks in installed Chrome.
 
-For free local queries against the full dictionary, download the release's
-SQLite file into the gitignored `data/` directory:
+For free local queries against the feed dictionary, use the generated SQLite
+artifact (no deployed reads):
 
 ```sh
-gh release download dictionary-2026-09-20b -R peterchinman/random-word-generator-site -p etymology.db -p etymology-report.txt -D data
-sqlite3 data/etymology.db "SELECT round(prior,2), count(*) FROM word GROUP BY 1 ORDER BY 1 DESC"
+sqlite3 data/dictionary/etymology.db "SELECT round(prior,2), count(*) FROM word GROUP BY 1 ORDER BY 1 DESC"
 ```
 
-After the new multi-etymology release is published, use its `etymology.db`
-as `--dict-db`, then export only the two APP tables needed for analysis. From
+Use the feed release's `etymology.db` as `--dict-db`, then export only the two APP tables needed for analysis. From
 `apps/api/`:
 
 ```sh
 npx wrangler d1 export APP --remote --table=swipe --no-schema --output=/tmp/ef-swipes.sql
 npx wrangler d1 export APP --remote --table=word_stats --no-schema --output=/tmp/ef-word-stats.sql
-python3 scripts/report_stats.py --swipes-sql /tmp/ef-swipes.sql --word-stats-sql /tmp/ef-word-stats.sql --dict-db ../../data/etymology.db > /tmp/ef-report.json
+python3 scripts/report_stats.py --swipes-sql /tmp/ef-swipes.sql --word-stats-sql /tmp/ef-word-stats.sql --dict-db ../../data/dictionary/etymology.db > /tmp/ef-report.json
 ```
 
 The script uses only Python's standard library. The report covers the last

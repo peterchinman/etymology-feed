@@ -330,3 +330,111 @@ stays. §3(a)(2) lets attribution take any reasonable form for the medium, so
 the heading itself need not be the link. The license and modification notices
 remain in Settings. This supersedes the heading link chosen on 2026-09-26 for
 the Feed card; the Liked list still links its headings.
+
+## 2026-09-27 — Adopt the reviewed provenance-only exclusion rule (§4.1)
+
+The editorial exclusion audit was accepted after the user found no further
+false positives in the review sample. The full laughter etymology of **haha**
+is an explicit positive regression: onomatopoeia explains an origin without
+needing a quoted source meaning. Evaluate each etymology independently.
+
+Classifier v2 excludes only fully parsed provenance with no explanation or
+quoted meaning: language/form lists, borrowing and inheritance chains,
+spelling variants, unglossed doublets/comparisons, and equivalent formulas.
+Unrecognized syntax is retained under the existing eligibility rules. This is
+not a blanket requirement for quotation marks or a length cutoff. All 30
+supplied negative examples are regression fixtures in the upstream builder.
+
+Display cleanup removes exact PIE root sidebars and bounded etymology trees,
+while preserving surrounding prose and inline root explanations. The builder
+rechecks eligibility and computes length bands and fresh priority from cleaned
+text. Original source text and the original primary selection determine IDs;
+no surviving card inherits the ID of a removed sibling. Raw dictionary text
+and sense links are preserved.
+
+The local rebuild in ignored `data/production-preview/` contains **111,396
+cards**: the reviewed rule excludes 43,617 of the 155,032 baseline cards, and
+19 more fail the existing eligibility gate after cleanup. The latter include
+the malformed `necrovore`, which contains only “From” after its tree is removed;
+its raw source remains available for later repair. The original audit and
+400-card review set are preserved. Both Bluffs and the explanatory haha sense
+survive. Classifier version and cleanup/exclusion counts are recorded in the
+release metadata and report. No production release or deploy was performed.
+
+Implementation is in the RWG source builder (`database/derive_etymology.py`,
+`etymology_patterns.py`, `etymology_rules.py`, and `test_etymology*.py`), currently
+in the local `/private/tmp/ef-rwg-work` checkout. Before M5, publish the rebuilt
+source and derived assets under a new release tag and update the app's release
+pin. The app fixture remains a historical integration fixture rather than a
+representative sample of the new selection.
+
+## 2026-09-27 — Adopt both second-round editorial filters (§4.1)
+
+The user accepted the ordinary-provenance expansion and the separately reviewed
+proper-noun rule. Classifier v3 adds learned borrowings, partial/full calques,
+language/form fragments, bare references, singular-of pointers, romanizations,
+surname variants, dated formulas, tribal-origin clauses, and noun/verb origin
+statements. All clauses must be recognized; explanatory prose remains eligible.
+
+For proper-noun-only cards, a quoted source meaning inside a lexical
+parenthetical no longer rescues an otherwise bare origin. Both `def_pos` and
+all paired POS must be proper nouns. Common-noun and mixed-POS cards retain
+their gloss protection. This is per etymology, not per headword or capitalization.
+The user accepted the audit after it explicitly highlighted potentially
+interesting names such as Sahara, Mjollnir, and Columbiad. The scope therefore
+includes such source-only name histories, not just surnames or place names.
+
+The approved delta from the 111,396-card v2 preview is **8,848 exclusions**:
+5,657 ordinary provenance entries and 3,191 glossed proper-noun origins. The
+new local build is `data/production-preview-v3/`; v2 and both rounds of review
+remain available unchanged. Release metadata records classifier version 3 and
+separate exclusion counts. No schema migration or production deployment is
+needed for this local data-selection change.
+
+The source implementation adds `database/etymology_selection.py` in the RWG
+checkout. The 19 new examples and positive cases are portable test fixtures;
+the build test checks identical quoted origins with proper-only, common, and
+mixed senses, plus stable IDs, definition pairing, cleanup, and SQL roundtrip.
+
+## 2026-09-27 — Freeze the reviewed selection baseline (§4.1)
+
+The user accepted the third exclusion audit and ended the editorial sampling
+rounds. Classifier v4 recognizes qualified source attributions (ultimately,
+possibly, via/through), language-led chains, romanizations, spelling/surname
+variants, cf./More at references, formula alternatives, and Tibetan syllable
+separators. These extend the accepted provenance grammar; the proper-noun-only
+POS guard and explanatory-prose protections remain.
+
+The final delta is **2,011 cards**: 1,572 plain provenance entries and 439
+proper-name entries. The frozen local baseline has **100,537 cards**, down
+54,495 (35.15%) from the original 155,032-card preview. All 62 supplied negative
+texts are regression fixtures. Both Bluffs, the laughter and garden senses of
+haha, and explanatory place-name stories remain. Source text and sense links
+remain intact in the raw dictionary, and surviving card IDs are unchanged.
+
+Stop prelaunch heuristic tuning here. The accepted rules, measurements,
+verification, and remaining release work are recorded in `docs/DATA_SELECTION.md`.
+This closes the editorial selection exercise; publishing the release and M5
+production deployment remain separate work.
+
+
+## 2026-09-27 — Own the feed data pipeline in Etymology Feed (§3.3, §4)
+
+Supersede the earlier decision to derive and publish feed artifacts inside RWG.
+This repo now owns `database/derive_etymology.py`, editorial rules, display
+cleanup, stable card identity, priority, regression fixtures/tests, and feed
+artifact releases. RWG continues owning full-source extraction, frequency
+scoring, the source schema, and `dictionary.db` releases. No third repository
+is needed to establish this boundary.
+
+The consumer-owned `database/SOURCE.json` records the source repository, release
+label, publication state, and SHA-256. Validate the checksum before producing
+output and read the source database read-only. Until the compatible source is
+published, the manifest explicitly identifies the reviewed local source as
+unpublished; the older published dictionary lacks entry links and is unsuitable.
+Tests create small source-contract fixtures with SQL and do not import RWG code.
+RWG retains a separate source-entry-link regression without feed selection logic.
+
+The move leaves classifier v4 and the 100,537-card baseline unchanged. Raw source
+publication and feed artifact publication now have separate release steps.
+Future editorial changes require only an Etymology Feed PR.

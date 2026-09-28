@@ -7,7 +7,7 @@ Author: Peter Chinman. Drafted 2026-09-25; revision 3 (all-TypeScript on Cloudfl
 
 ## 0. Handoff prompt (paste this to the coding agent)
 
-> You are implementing the project described in `docs/SPEC.md`. Read the whole spec before writing code. Work milestone by milestone (§10), in order, and stop at the end of each milestone for review. Each milestone has acceptance criteria; do not mark it done until they pass. Follow the conventions in §11. Where the spec says "decide" or "open", pick the recommended option and note the choice in `docs/DECISIONS.md`. Do not add dependencies, services, or features that the spec does not call for without asking. Everything runs on Cloudflare's free plan; treat the free-plan limits in §3.4 as hard budgets and note in the PR any query whose rows-read cost you could not keep small. The dictionary source is the GitHub release named in `database/RELEASE` of `github.com/peterchinman/random-word-generator-site`; never vendor it into git. Selection thresholds in §4 were chosen from measurements in §2; do not change them without new measurements, and instrument them as §6.5 requires so they can be revisited with data.
+> You are implementing the project described in `docs/SPEC.md`. Read the whole spec before writing code. Work milestone by milestone (§10), in order, and stop at the end of each milestone for review. Each milestone has acceptance criteria; do not mark it done until they pass. Follow the conventions in §11. Where the spec says "decide" or "open", pick the recommended option and note the choice in `docs/DECISIONS.md`. Do not add dependencies, services, or features that the spec does not call for without asking. Everything runs on Cloudflare's free plan; treat the free-plan limits in §3.4 as hard budgets and note in the PR any query whose rows-read cost you could not keep small. The full dictionary source is pinned by this repo's `database/SOURCE.json` (RWG repository, release, and SHA-256); never vendor it into git. This repo owns the feed derivation and publishes its derived artifacts separately. Selection thresholds in §4 were chosen from measurements in §2; do not change them without new measurements, and instrument them as §6.5 requires so they can be revisited with data.
 
 ---
 
@@ -92,7 +92,7 @@ Versions to pin at project start (check `npm view` on day one): astro 7.x, @astr
 
 ### 3.3 "Should RWG be able to read from it?"
 
-1. **Share the data artifact.** The derive script (§4) lives in the RWG repo's `database/` and publishes `etymology.sql`, `etymology.db` and a report as additional assets on the same GitHub release as `dictionary.db`. Both sites pin `database/RELEASE`.
+1. **Share the full source artifact.** RWG owns ingestion, frequency enrichment, the full source schema, and `dictionary.db` releases. This repo pins that artifact in `database/SOURCE.json` and owns `database/derive_etymology.py`, feed selection/cleanup, card IDs, ranking, tests, and its own derived-artifact releases. RWG retains its own `database/RELEASE`; changing feed selection does not require an RWG code or release change.
 2. **Optionally share the runtime (Milestone 6).** Port `get_words.php` to a Hono route backed by a third D1 holding the full dictionary (430 MB; the ~3M-row import needs the $5 Workers Paid plan). RWG's frontend then calls the Worker and the droplet's PHP retires.
 
 ### 3.4 Cost and free-plan budgets (hard limits for the agent)
@@ -112,7 +112,7 @@ At roughly 2,000 daily active users making eight swipes each, the D1 write cap b
 
 ## 4. Data pipeline: deriving the dictionary
 
-Add `database/derive_etymology.py` to the RWG repo (stdlib only, like `build.py`). Input `dictionary.db`; outputs `etymology.db` (local dev / inspection), `etymology.sql` (D1 import: `CREATE TABLE` + multi-row `INSERT`s, ≤ 100 rows per statement), and `etymology-report.txt`. Publish all three on the release tag.
+This repo owns `database/derive_etymology.py` (Python standard library only). Input: the full `dictionary.db` pinned by `database/SOURCE.json`. Validate its SHA-256 before writing output and open it read-only. Record the source repository, release, SHA-256, and publication state in derived metadata. Outputs default to ignored `data/dictionary/`: `etymology.db` (local inspection), `etymology.sql` (D1 import: ≤ 100 rows per statement), and `etymology-report.txt`. Publish these on an Etymology Feed release, separately from the RWG source release. The current full source is local and explicitly marked unpublished until a compatible upstream release exists.
 
 ### 4.1 Selection rule (from §2.1; thresholds are script arguments and are recorded in `meta`)
 
@@ -124,7 +124,13 @@ For each source word, classify **every distinct etymology section** separately. 
 
 `signal` = mentions a source language or period (a list of ~150 names in the script: Latin, Ancient Greek, Old English, Middle English, Old Norse, Old French, Proto-*, Sanskrit, Arabic, Hebrew, Teochew, Nahuatl, …) **or** contains a quoted gloss (`“…”` or `"…"`).
 
-**Keep** if `class == story AND (len >= 80 OR signal)` and a paired definition exists. The full local rebuild selected **155,032 cards across 148,180 headwords**. No filter on tier or word shape.
+Before applying the length/signal gate or calculating priority, strip exact `PIE word` root sidebars and bounded `Etymology tree` blocks. Preserve surrounding prose and inline roots; leave malformed/unbounded blocks for review. Retain the original source text for card identity. The legacy primary is chosen before cleanup/filtering so removing it cannot transfer its ID to a different etymology.
+
+**Keep** if `class == story AND (len >= 80 OR signal)`, a paired definition exists, and the cleaned text is not **provenance-only**. This additional rule rejects only texts fully parsed as source languages/forms, borrowing/inheritance chains, spelling variants, unglossed comparisons/doublets, and equivalent formulas, without any explanatory content or quoted source meaning. The reviewed extensions cover learned borrowings, (partial) calques, bare language/form entries and references, singular-of pointers, romanizations, surname variants, dated formulas, tribal-origin clauses, and noun/verb origin statements. Qualified origins (ultimately, possibly, via/through), additional spelling variants, formula alternatives, cf./More at references, and Tibetan source forms are also recognized. Neither length nor the number of languages rescues such a text. Unknown syntax and explanations without quoted meanings (for example, onomatopoeia in *haha*) remain eligible under the existing gate. No filter on tier or word shape.
+
+**Proper-noun exception:** If both the paired definition's POS and every paired POS are `proper noun`, quoted source meanings inside lexical parentheticals do not rescue an otherwise provenance-only entry. This uses each etymology's sense metadata, never capitalization or other origins of the same headword. Mixed proper/common-noun cards remain eligible. Narrative quotations and explanatory prose are preserved; removing glosses is an internal classification step, not a display edit. The user reviewed and accepted this rule separately, including the tradeoff for meaningful name origins.
+
+After three accepted editorial rounds, **classifier v4** freezes a local baseline of **100,537 cards** in `data/production-baseline/`, down from 155,032 before review. All 62 supplied negative texts are regression cases. The builder records separate exclusion/cleanup counts, computes eligibility and priority from cleaned text, and preserves source-based IDs and paired senses. See [DATA_SELECTION.md](DATA_SELECTION.md) for the accepted rules, measured reductions, verification, and release handoff. Further heuristic tuning is deferred until there is new review or usage evidence.
 
 Keep words of every tier (common … unattested) and every shape. Record the shape so the card and the analytics can use it.
 
@@ -403,8 +409,8 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 
 ## 10. Milestones (each ends with a review)
 
-**M0 — Data pipeline** (in the RWG repo)
-- `database/derive_etymology.py` with the §4.1 classifier, `prior`, `shape`, `etym_band`; outputs `etymology.db`, `etymology.sql`, report; `--check`; assets on the release; README section.
+**M0 — Data pipeline** (feed derivation in this repo; full source in RWG)
+- `database/derive_etymology.py` with the §4.1 classifier, `prior`, `shape`, `etym_band`; outputs `etymology.db`, `etymology.sql`, report; `--check`; assets on a feed release; source pinned by `database/SOURCE.json`; README section.
 - ✅ Pool between 130k and 170k; the report's 25 `morph` samples contain no stories and its 25 `story`-under-40 samples contain no plain "X + -y" morphology (fix the regex until true); `.sql` imports into a local D1 with matching row count.
 
 **M1 — Worker skeleton, read-only feed**
@@ -424,7 +430,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 - ✅ E2E with a mocked OIDC provider: anonymous swipes (some made offline) → sign in → all likes appear under the account and none repeat; sign in on a second device → union of both.
 
 **M5 — Production**
-- Production Worker, D1s, KV, secrets; custom domain; GitHub Actions: on push → test, build, `wrangler deploy`; on `database/RELEASE` change → create `dict-<tag>`, import, update `database_id`, seed missing `word_stats`, deploy; weekly `wrangler d1 export` of `APP` to R2. Restore drill: import the export into a fresh D1 and point a preview Worker at it.
+- Production Worker, D1s, KV, secrets; custom domain; GitHub Actions: on push → test, build, `wrangler deploy`; on a feed dictionary release → create `dict-<tag>`, import, update `database_id`, seed missing `word_stats`, deploy; weekly `wrangler d1 export` of `APP` to R2. Restore drill: import the export into a fresh D1 and point a preview Worker at it.
 - ✅ Restore drill documented and passing; `docs/RUNBOOK.md` covers release, restore, rotating secrets, and running the local stats report.
 
 **M6 — Optional: RWG reads from the Worker**
