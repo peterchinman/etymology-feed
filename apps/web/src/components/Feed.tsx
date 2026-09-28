@@ -1,4 +1,4 @@
-import type { Card } from '@etymology-feed/shared/card';
+import { type Card, isFeedEligible } from '@etymology-feed/shared/card';
 import {
   batch,
   createMemo,
@@ -12,6 +12,7 @@ import { fetchCards } from '../lib/api';
 import {
   appendCards,
   applyTheme,
+  FEED_SETTINGS_CHANGED,
   getSettings,
   getStack,
   getStackPreview,
@@ -111,7 +112,11 @@ function settle(
 }
 
 export default function Feed() {
-  const [stack, setStack] = createSignal<Card[]>([]);
+  const [storedStack, setStack] = createSignal<Card[]>([]);
+  const [includeProperNouns, setIncludeProperNouns] = createSignal(false);
+  const stack = createMemo(() =>
+    storedStack().filter((card) => isFeedEligible(card, includeProperNouns())),
+  );
   const [departing, setDeparting] = createSignal<Departing[]>([]);
   const [dragging, setDragging] = createSignal(false);
   /** The verdict a release would commit right now, shown on its button. */
@@ -173,7 +178,12 @@ export default function Feed() {
         const known = new Set([...stack().map((card) => card.id), ...inFlight]);
         const next = reconcile(stack(), await appendCards(cards));
         setStack(next);
-        if (next.every((card) => known.has(card.id))) misses++;
+        if (
+          next
+            .filter((card) => isFeedEligible(card, includeProperNouns()))
+            .every((card) => known.has(card.id))
+        )
+          misses++;
         else misses = 0;
         if (misses >= 2) {
           exhaustedUntil = Date.now() + 5 * 60_000;
@@ -292,7 +302,7 @@ export default function Feed() {
     queue.push({ card, verdict: direction, shownAt, entry });
     batch(() => {
       if (element) setDeparting((current) => [...current, entry]);
-      setStack((current) => current.slice(1));
+      setStack((current) => current.filter((item) => item.id !== card.id));
       setDefinitionOpen(false);
       setDragging(false);
     });
@@ -580,6 +590,7 @@ export default function Feed() {
           getSettings(),
         ]);
         setStack(reconcile(stack(), cards));
+        setIncludeProperNouns(settings.includeProperNouns);
         applyTheme(settings.theme, settings.colorMode);
         setReady(true);
         void drainSync();
@@ -597,6 +608,25 @@ export default function Feed() {
       void fillStack(true);
     };
     const onOffline = () => setOnline(false);
+    const onFeedSettings = async () => {
+      setReady(false);
+      gesture = null;
+      setDragging(false);
+      resetDrag();
+      await saveChain;
+      try {
+        const settings = await getSettings();
+        setIncludeProperNouns(settings.includeProperNouns);
+        setDefinitionOpen(false);
+        exhaustedUntil = 0;
+        await restoreStack();
+        void fillStack(true);
+      } catch {
+        setError('Could not load your feed setting. Please reload.');
+      } finally {
+        setReady(true);
+      }
+    };
     const onVisible = () => {
       if (document.visibilityState === 'visible') void drainSync();
       if (document.visibilityState === 'visible' && stack().length < 60)
@@ -604,6 +634,7 @@ export default function Feed() {
     };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
+    window.addEventListener(FEED_SETTINGS_CHANGED, onFeedSettings);
     deck?.addEventListener('touchstart', touchBegan, { passive: true });
     deck?.addEventListener('touchend', touchEnded, { passive: false });
     window.addEventListener('keydown', keyDown);
@@ -614,6 +645,7 @@ export default function Feed() {
       if (undoTimer) clearTimeout(undoTimer);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
+      window.removeEventListener(FEED_SETTINGS_CHANGED, onFeedSettings);
       window.removeEventListener('keydown', keyDown);
       document.removeEventListener('visibilitychange', onVisible);
     });

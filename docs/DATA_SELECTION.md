@@ -4,7 +4,15 @@ Editorial review is complete for prelaunch. Three rounds of 400 retained cards,
 followed by exclusion audits, established classifier **v4**: **100,537 cards
 across 95,841 headwords**. The full local build lives in the ignored
 `data/production-baseline/` directory. Raw source data and all previous review
-sets remain available. Release publication and production deployment are pending.
+sets remain available. The initial release is published and production is live;
+see [RUNBOOK.md](RUNBOOK.md) for launch evidence.
+
+**Feed preference:** Settings offers **Include proper nouns**, off by default.
+The API excludes cards whose paired definition is `proper noun` unless explicitly
+enabled. This hides 21,314 cards in the v4 release, leaving 79,223 eligible by
+default. It does not change the dictionary selection baseline or remove data:
+turning it on restores eligibility, and existing likes remain available. Mixed
+POS cards follow their displayed definition; capitalization is not a filter.
 
 ## Selection rules
 

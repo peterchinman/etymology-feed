@@ -5,6 +5,15 @@ import { getUserFeed, getWildFeed } from '../src/feed';
 import { buildPools, poolsKey } from '../src/pools';
 import { deleteLiked, syncSwipes } from '../src/sync';
 
+// These scoring/rollback regressions exercise the full dictionary. Preference
+// filtering and its additional scan budget are covered in proper-nouns.test.ts.
+const getUnfilteredFeed = (
+  bindings: CloudflareBindings,
+  userId: string,
+  count: number,
+  known: string[] = [],
+) => getUserFeed(bindings, userId, count, known, true);
+
 describe('dictionary and persistent feed API', () => {
   it('loads the 501-card fixture and responds to health checks', async () => {
     const response = await SELF.fetch('http://localhost/healthz');
@@ -19,7 +28,9 @@ describe('dictionary and persistent feed API', () => {
   });
 
   it('serves 100 distinct wild cards within the D1 read budget', async () => {
-    const response = await SELF.fetch('http://localhost/api/feed?n=100');
+    const response = await SELF.fetch(
+      'http://localhost/api/feed?n=100&includeProperNouns=true',
+    );
     expect(response.status).toBe(200);
     const { cards } = (await response.json()) as { cards: Card[] };
     expect(cards).toHaveLength(100);
@@ -29,10 +40,10 @@ describe('dictionary and persistent feed API', () => {
     expect(cards.filter((card) => card.bucket === 'fresh')).toHaveLength(90);
     expect(cards.filter((card) => card.bucket === 'wild')).toHaveLength(10);
 
-    const direct = await getWildFeed({ dict: env.DICT }, 100);
+    const direct = await getWildFeed({ dict: env.DICT }, 100, undefined, true);
     expect(direct.rowsRead).toBeLessThanOrEqual(101);
 
-    const wrapped = await getWildFeed({ dict: env.DICT }, 100, 450);
+    const wrapped = await getWildFeed({ dict: env.DICT }, 100, 450, true);
     expect(wrapped.cards).toHaveLength(100);
     expect(new Set(wrapped.cards.map((card) => card.id)).size).toBe(100);
     expect(wrapped.rowsRead).toBeLessThanOrEqual(101);
@@ -88,7 +99,7 @@ describe('dictionary and persistent feed API', () => {
     )
       .bind(feedUser, 'Test', `${feedUser}@test.local`, Date.now())
       .run();
-    const feed = await getUserFeed(
+    const feed = await getUnfilteredFeed(
       env,
       feedUser,
       2,
@@ -138,7 +149,8 @@ describe('dictionary and persistent feed API', () => {
     expect(await response.json()).toEqual({
       error: {
         code: 'invalid_query',
-        message: 'n must be an integer from 1 to 100.',
+        message:
+          'n must be an integer from 1 to 100; includeProperNouns must be true or false.',
       },
     });
   });
@@ -241,7 +253,7 @@ describe('dictionary and persistent feed API', () => {
 
     // Another user sees the liked card in a promising slot on their next fetch.
     const reader = await newUser();
-    const { cards } = await getUserFeed(env, reader, 20);
+    const { cards } = await getUnfilteredFeed(env, reader, 20);
     // Wild draws happen first and may legitimately pick a rated card.
     expect(['promising', 'wild']).toContain(
       cards.find((card) => card.id === liked.id)?.bucket,
@@ -267,7 +279,7 @@ describe('dictionary and persistent feed API', () => {
     expect(await scoreOf(average.id)).toBeCloseTo(0.5);
     expect(pools.promising).toContainEqual([average.id, 1, 4]);
     const third = await newUser();
-    const confirmedFeed = await getUserFeed(env, third, 20);
+    const confirmedFeed = await getUnfilteredFeed(env, third, 20);
     expect(['confirmed', 'wild']).toContain(
       confirmedFeed.cards.find((card) => card.id === liked.id)?.bucket,
     );
@@ -280,7 +292,7 @@ describe('dictionary and persistent feed API', () => {
     expect(await scoreOf(average.id)).toBeCloseTo(2 / 6.5);
     expect(laneOf(pools, average.id)).toBe('parked');
     const fourth = await newUser();
-    const laterFeed = await getUserFeed(env, fourth, 20);
+    const laterFeed = await getUnfilteredFeed(env, fourth, 20);
     const parked = laterFeed.cards.find((card) => card.id === average.id);
     if (parked) expect(parked.bucket).toBe('wild');
   });
@@ -293,11 +305,11 @@ describe('dictionary and persistent feed API', () => {
     )
       .bind(user, 'Test', `${user}@test.local`, Date.now())
       .run();
-    const result = await getUserFeed(env, user, 100);
+    const result = await getUnfilteredFeed(env, user, 100);
     expect(result.cards).toHaveLength(100);
     expect(result.rowsRead).toBeLessThanOrEqual(101);
     expect(result.rowsWritten).toBe(1);
-    const repeated = await getUserFeed(env, user, 100);
+    const repeated = await getUnfilteredFeed(env, user, 100);
     expect(repeated.cards).toHaveLength(100);
     expect(
       new Set([...result.cards, ...repeated.cards].map(({ id }) => id)).size,
@@ -311,7 +323,7 @@ describe('dictionary and persistent feed API', () => {
     )
       .bind(user, 'Test', `${user}@test.local`, Date.now())
       .run();
-    const cards = (await getUserFeed(env, user, 100)).cards;
+    const cards = (await getUnfilteredFeed(env, user, 100)).cards;
     const swipes = cards.map((card, i) => ({
       id: crypto.randomUUID(),
       cardId: card.id,
@@ -435,8 +447,8 @@ describe('dictionary and persistent feed API', () => {
     const user = await reader();
     // Known IDs from another release must not falsely imply DICT exhaustion.
     const known = Array.from({ length: 600 }, (_, i) => `other-release-${i}`);
-    const first = await getUserFeed(env, user, 100, known);
-    const second = await getUserFeed(env, user, 100);
+    const first = await getUnfilteredFeed(env, user, 100, known);
+    const second = await getUnfilteredFeed(env, user, 100);
     expect(first.cards).toHaveLength(100);
     expect(second.cards).toHaveLength(100);
     const delivered = [...first.cards, ...second.cards].map((card) => card.id);
@@ -466,7 +478,7 @@ describe('dictionary and persistent feed API', () => {
     )
       .bind(id)
       .all<{ id: string }>();
-    const retried = await getUserFeed(
+    const retried = await getUnfilteredFeed(
       env,
       await reader(),
       100,

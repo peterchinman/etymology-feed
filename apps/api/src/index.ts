@@ -22,6 +22,7 @@ const app = new Hono<{ Bindings: CloudflareBindings; Variables: Variables }>();
 const feedQuery = z.object({
   n: z.coerce.number().int().min(1).max(100).default(100),
   known: z.string().optional(),
+  includeProperNouns: z.enum(['true', 'false']).default('false'),
 });
 const likesQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(200),
@@ -126,7 +127,8 @@ const routes = app
           {
             error: {
               code: 'invalid_query',
-              message: 'n must be an integer from 1 to 100.',
+              message:
+                'n must be an integer from 1 to 100; includeProperNouns must be true or false.',
             },
           },
           400,
@@ -138,7 +140,7 @@ const routes = app
           { error: { code: 'rate_limited', message: 'Try again shortly.' } },
           429,
         );
-      const { n, known } = c.req.valid('query');
+      const { n, known, includeProperNouns } = c.req.valid('query');
       let seed: string[] = [];
       if (known) {
         try {
@@ -163,7 +165,13 @@ const routes = app
           );
         }
       }
-      const result = await getUserFeed(c.env, c.get('userId'), n, seed);
+      const result = await getUserFeed(
+        c.env,
+        c.get('userId'),
+        n,
+        seed,
+        includeProperNouns === 'true',
+      );
       console.log(
         JSON.stringify({
           event: 'feed_fetch',
