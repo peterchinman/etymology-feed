@@ -2,7 +2,7 @@ from pathlib import Path
 import sqlite3
 import tempfile
 import unittest
-from production import prepare, verify
+from production import check_membership, prepare, verify
 
 
 class ReleaseTests(unittest.TestCase):
@@ -47,6 +47,16 @@ class ReleaseTests(unittest.TestCase):
         db.close()
         with self.assertRaisesRegex(ValueError, 'Publish'):
             prepare(self.path)
+
+    def test_removing_cards_requires_pool_membership_review(self):
+        previous = self.path / 'etymology.db'
+        candidate = self.path / 'candidate.db'
+        candidate.write_bytes(previous.read_bytes())
+        check_membership(previous, candidate)
+        with sqlite3.connect(candidate) as db:
+            db.execute("DELETE FROM word WHERE id='bluff::second'")
+        with self.assertRaisesRegex(ValueError, 'removes 1 cards'):
+            check_membership(previous, candidate)
 
 
 if __name__ == '__main__':

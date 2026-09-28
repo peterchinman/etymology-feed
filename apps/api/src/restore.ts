@@ -1,3 +1,4 @@
+import type { SubtleCrypto as WorkerSubtleCrypto } from '@cloudflare/workers-types';
 import worker from './index';
 
 // Used only by the isolated restore drill, never by the production entrypoint.
@@ -15,7 +16,7 @@ export default {
     if (
       !expected.length ||
       supplied.length !== expected.length ||
-      !crypto.subtle.timingSafeEqual(supplied, expected)
+      !(crypto.subtle as WorkerSubtleCrypto).timingSafeEqual(supplied, expected)
     ) {
       return new Response('Not found', { status: 404 });
     }

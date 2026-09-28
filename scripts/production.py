@@ -117,6 +117,15 @@ def save_state(state):
         wrangler("r2", "object", "put", STATE, "--remote", "--file", path, config=CONFIG)
 
 
+def check_membership(previous_db, next_db):
+    def ids(path):
+        with sqlite3.connect(f"{Path(path).resolve().as_uri()}?mode=ro", uri=True) as db:
+            return {row[0] for row in db.execute("SELECT id FROM word")}
+    removed = ids(previous_db) - ids(next_db)
+    if removed:
+        raise ValueError(f"Release removes {len(removed)} cards. Review APP pool membership before switching; no production data changed.")
+
+
 def deploy():
     render()
     wrangler("d1", "migrations", "apply", "APP", "--remote")
@@ -138,6 +147,15 @@ def release(tag):
             print("Dictionary already selected; retrying deployment")
             deploy()
             return
+        # APP keeps historical ratings. Until retired-card membership is modeled
+        # explicitly, never let an automatic release leave missing IDs in pools.
+        old_directory = directory / "previous"
+        run("gh", "release", "download", previous["release"], "--repo", "peterchinman/etymology-feed",
+            "--dir", old_directory, "--pattern", "etymology.db", "--pattern", "manifest.json")
+        old_manifest = json.loads((old_directory / "manifest.json").read_text())
+        if digest(old_directory / "etymology.db") != old_manifest["sha256"]["etymology.db"]:
+            raise ValueError("Previous dictionary checksum mismatch")
+        check_membership(old_directory / "etymology.db", directory / "etymology.db")
         suffix = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         name = f"etymology-feed-dict-{suffix}"
         created = wrangler("d1", "create", name, "--location", "enam", "--update-config=false", capture=True)
