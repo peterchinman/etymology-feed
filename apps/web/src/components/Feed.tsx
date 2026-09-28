@@ -744,6 +744,25 @@ export default function Feed() {
                   <p class="etymology reading-voice">{card.etymology}</p>
                 </div>
                 <div class="card-bottom">
+                  <Show when={card.likeCount !== undefined}>
+                    <span class="card-like-count caption-voice">
+                      <svg aria-hidden="true" viewBox="0 0 256 256">
+                        <path
+                          d="M128,224l89.36-90.64a50,50,0,1,0-70.72-70.72L128,80,109.36,62.64a50,50,0,0,0-70.72,70.72Z"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="16"
+                        />
+                      </svg>
+                      <span class="sr-only">Liked by </span>
+                      <span>{card.likeCount?.toLocaleString()}</span>
+                      <span class="sr-only">
+                        {card.likeCount === 1 ? ' user' : ' users'}
+                      </span>
+                    </span>
+                  </Show>
                   <a
                     class="entry-link caption-voice"
                     href={`https://en.wiktionary.org/wiki/${encodeURIComponent(card.word)}${card.etymNo ? `#Etymology_${card.etymNo}` : ''}`}

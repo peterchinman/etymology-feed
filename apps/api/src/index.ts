@@ -9,6 +9,7 @@ import {
   getWord,
   getWordEtymologies,
 } from './feed';
+import { withLikeCounts } from './likes';
 import { buildPools, poolsKey } from './pools';
 import { deleteLiked, syncInput, syncSwipes } from './sync';
 
@@ -234,8 +235,9 @@ const routes = app
         { error: { code: 'card_not_found', message: 'Card not found.' } },
         404,
       );
-    c.header('Cache-Control', 'public, max-age=86400');
-    return c.json(card);
+    const counted = await withLikeCounts(c.env.APP, [card]);
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json(counted.cards[0]);
   })
   .get('/api/words/:word/etymologies', async (c) => {
     const cards = await getWordEtymologies(
@@ -247,8 +249,9 @@ const routes = app
         { error: { code: 'word_not_found', message: 'Word not found.' } },
         404,
       );
-    c.header('Cache-Control', 'public, max-age=86400');
-    return c.json({ cards });
+    const counted = await withLikeCounts(c.env.APP, cards);
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json({ cards: counted.cards });
   })
   .get('/api/words/:word', async (c) => {
     // Legacy links resolve to the primary card, whose ID remains the headword.
@@ -258,8 +261,9 @@ const routes = app
         { error: { code: 'word_not_found', message: 'Word not found.' } },
         404,
       );
-    c.header('Cache-Control', 'public, max-age=86400');
-    return c.json(card);
+    const counted = await withLikeCounts(c.env.APP, [card]);
+    c.header('Cache-Control', 'public, max-age=60');
+    return c.json(counted.cards[0]);
   });
 
 app.notFound((c) =>

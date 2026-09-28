@@ -44,7 +44,7 @@ describe('dictionary and persistent feed API', () => {
       `http://localhost/api/cards/${encodeURIComponent(cards[0].id)}`,
     );
     expect(response.status).toBe(200);
-    expect(response.headers.get('Cache-Control')).toBe('public, max-age=86400');
+    expect(response.headers.get('Cache-Control')).toBe('public, max-age=60');
     const card = (await response.json()) as Card;
     expect(card.id).toBe(cards[0].id);
     expect(card.definition.length).toBeGreaterThan(0);
@@ -295,7 +295,8 @@ describe('dictionary and persistent feed API', () => {
       .run();
     const result = await getUserFeed(env, user, 100);
     expect(result.cards).toHaveLength(100);
-    expect(result.rowsRead).toBeLessThanOrEqual(101);
+    // Dictionary + current like totals: one indexed read per card in each DB.
+    expect(result.rowsRead).toBeLessThanOrEqual(201);
     expect(result.rowsWritten).toBe(1);
     const repeated = await getUserFeed(env, user, 100);
     expect(repeated.cards).toHaveLength(100);
@@ -443,7 +444,7 @@ describe('dictionary and persistent feed API', () => {
     expect(new Set(delivered).size).toBe(200);
     expect(delivered).not.toContain(id);
     expect(delivered.some((card) => missing.includes(card))).toBe(false);
-    expect(first.rowsRead).toBeLessThanOrEqual(1101);
+    expect(first.rowsRead).toBeLessThanOrEqual(1201);
     expect(first.rowsWritten).toBe(1);
     const served = await env.APP.prepare(
       'SELECT card_ids FROM served WHERE user_id=?',
