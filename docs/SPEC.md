@@ -7,7 +7,7 @@ Author: Peter Chinman. Drafted 2026-09-25; revision 3 (all-TypeScript on Cloudfl
 
 ## 0. Handoff prompt (paste this to the coding agent)
 
-> You are implementing the project described in `docs/SPEC.md`. Read the whole spec before writing code. Work milestone by milestone (§10), in order, and stop at the end of each milestone for review. Each milestone has acceptance criteria; do not mark it done until they pass. Follow the conventions in §11. Where the spec says "decide" or "open", pick the recommended option and note the choice in `docs/DECISIONS.md`. Do not add dependencies, services, or features that the spec does not call for without asking. Everything runs on Cloudflare's free plan; treat the free-plan limits in §3.4 as hard budgets and note in the PR any query whose rows-read cost you could not keep small. The dictionary source is the GitHub release named in `database/RELEASE` of `github.com/peterchinman/random-word-generator-site`; never vendor it into git. Selection thresholds in §4 were chosen from measurements in §2; do not change them without new measurements, and instrument them as §6.5 requires so they can be revisited with data.
+> You are implementing the project described in `docs/SPEC.md`. Read the whole spec before writing code. Work milestone by milestone (§10), in order, and stop at the end of each milestone for review. Each milestone has acceptance criteria; do not mark it done until they pass. Follow the conventions in §11. Where the spec says "decide" or "open", pick the recommended option and note the choice in `docs/DECISIONS.md`. Do not add dependencies, services, or features that the spec does not call for without asking. Everything runs on Cloudflare's free plan; treat the free-plan limits in §3.4 as hard budgets and note in the PR any query whose rows-read cost you could not keep small. The full dictionary source is pinned by this repo's `database/SOURCE.json` (RWG repository, release, and SHA-256); never vendor it into git. This repo owns the feed derivation and publishes its derived artifacts separately. Selection thresholds in §4 were chosen from measurements in §2; do not change them without new measurements, and instrument them as §6.5 requires so they can be revisited with data.
 
 ---
 
@@ -92,7 +92,7 @@ Versions to pin at project start (check `npm view` on day one): astro 7.x, @astr
 
 ### 3.3 "Should RWG be able to read from it?"
 
-1. **Share the data artifact.** The derive script (§4) lives in the RWG repo's `database/` and publishes `etymology.sql`, `etymology.db` and a report as additional assets on the same GitHub release as `dictionary.db`. Both sites pin `database/RELEASE`.
+1. **Share the full source artifact.** RWG owns ingestion, frequency enrichment, the full source schema, and `dictionary.db` releases. This repo pins that artifact in `database/SOURCE.json` and owns `database/derive_etymology.py`, feed selection/cleanup, card IDs, ranking, tests, and its own derived-artifact releases. RWG retains its own `database/RELEASE`; changing feed selection does not require an RWG code or release change.
 2. **Optionally share the runtime (Milestone 6).** Port `get_words.php` to a Hono route backed by a third D1 holding the full dictionary (430 MB; the ~3M-row import needs the $5 Workers Paid plan). RWG's frontend then calls the Worker and the droplet's PHP retires.
 
 ### 3.4 Cost and free-plan budgets (hard limits for the agent)
@@ -112,7 +112,7 @@ At roughly 2,000 daily active users making eight swipes each, the D1 write cap b
 
 ## 4. Data pipeline: deriving the dictionary
 
-Add `database/derive_etymology.py` to the RWG repo (stdlib only, like `build.py`). Input `dictionary.db`; outputs `etymology.db` (local dev / inspection), `etymology.sql` (D1 import: `CREATE TABLE` + multi-row `INSERT`s, ≤ 100 rows per statement), and `etymology-report.txt`. Publish all three on the release tag.
+This repo owns `database/derive_etymology.py` (Python standard library only). Input: the full `dictionary.db` pinned by `database/SOURCE.json`. Validate its SHA-256 before writing output and open it read-only. Record the source repository, release, SHA-256, and publication state in derived metadata. Outputs default to ignored `data/dictionary/`: `etymology.db` (local inspection), `etymology.sql` (D1 import: ≤ 100 rows per statement), and `etymology-report.txt`. Publish these on an Etymology Feed release, separately from the RWG source release. The current full source is local and explicitly marked unpublished until a compatible upstream release exists.
 
 ### 4.1 Selection rule (from §2.1; thresholds are script arguments and are recorded in `meta`)
 
@@ -409,8 +409,8 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 
 ## 10. Milestones (each ends with a review)
 
-**M0 — Data pipeline** (in the RWG repo)
-- `database/derive_etymology.py` with the §4.1 classifier, `prior`, `shape`, `etym_band`; outputs `etymology.db`, `etymology.sql`, report; `--check`; assets on the release; README section.
+**M0 — Data pipeline** (feed derivation in this repo; full source in RWG)
+- `database/derive_etymology.py` with the §4.1 classifier, `prior`, `shape`, `etym_band`; outputs `etymology.db`, `etymology.sql`, report; `--check`; assets on a feed release; source pinned by `database/SOURCE.json`; README section.
 - ✅ Pool between 130k and 170k; the report's 25 `morph` samples contain no stories and its 25 `story`-under-40 samples contain no plain "X + -y" morphology (fix the regex until true); `.sql` imports into a local D1 with matching row count.
 
 **M1 — Worker skeleton, read-only feed**
@@ -430,7 +430,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 - ✅ E2E with a mocked OIDC provider: anonymous swipes (some made offline) → sign in → all likes appear under the account and none repeat; sign in on a second device → union of both.
 
 **M5 — Production**
-- Production Worker, D1s, KV, secrets; custom domain; GitHub Actions: on push → test, build, `wrangler deploy`; on `database/RELEASE` change → create `dict-<tag>`, import, update `database_id`, seed missing `word_stats`, deploy; weekly `wrangler d1 export` of `APP` to R2. Restore drill: import the export into a fresh D1 and point a preview Worker at it.
+- Production Worker, D1s, KV, secrets; custom domain; GitHub Actions: on push → test, build, `wrangler deploy`; on a feed dictionary release → create `dict-<tag>`, import, update `database_id`, seed missing `word_stats`, deploy; weekly `wrangler d1 export` of `APP` to R2. Restore drill: import the export into a fresh D1 and point a preview Worker at it.
 - ✅ Restore drill documented and passing; `docs/RUNBOOK.md` covers release, restore, rotating secrets, and running the local stats report.
 
 **M6 — Optional: RWG reads from the Worker**

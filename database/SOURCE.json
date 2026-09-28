@@ -1,0 +1,7 @@
+{
+  "repository": "peterchinman/random-word-generator-site",
+  "release": "local-multi-etymology-preview",
+  "published": false,
+  "sha256": "9f2d9567a2b1fcf8a00b0b09c0b878c385edff41156ff67a1ba9a1aa6aec7637",
+  "note": "Reviewed full dictionary with source-entry links; awaiting a published RWG release. This pin names the full source, not the feed artifact."
+}

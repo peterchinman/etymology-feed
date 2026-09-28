@@ -1,0 +1,179 @@
+[
+  {
+    "supplied_text": "Ultimately of German origin.",
+    "cards": [
+      {
+        "id": "Fetterolf",
+        "word": "Fetterolf",
+        "etym_no": null,
+        "etymology": "Ultimately of German origin.",
+        "pos": "[\"proper noun\"]",
+        "def_pos": "proper noun"
+      },
+      {
+        "id": "Reffner",
+        "word": "Reffner",
+        "etym_no": null,
+        "etymology": "Ultimately of German origin.",
+        "pos": "[\"proper noun\"]",
+        "def_pos": "proper noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "From Mexican Spanish pulque, possibly from Nahuatl.",
+    "cards": [
+      {
+        "id": "pulque",
+        "word": "pulque",
+        "etym_no": null,
+        "etymology": "From Mexican Spanish pulque, possibly from Nahuatl.",
+        "pos": "[\"noun\"]",
+        "def_pos": "noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "Romanization of Korean 이두 (idu).",
+    "cards": [
+      {
+        "id": "idu",
+        "word": "idu",
+        "etym_no": null,
+        "etymology": "Romanization of Korean 이두 (idu).",
+        "pos": "[\"noun\"]",
+        "def_pos": "noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "French asine, from Latin asina.",
+    "cards": [
+      {
+        "id": "asine",
+        "word": "asine",
+        "etym_no": null,
+        "etymology": "French asine, from Latin asina.",
+        "pos": "[\"noun\"]",
+        "def_pos": "noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "From Tibetan སྨན་གླིང (sman gling).",
+    "cards": [
+      {
+        "id": "Mainling",
+        "word": "Mainling",
+        "etym_no": null,
+        "etymology": "From Tibetan སྨན་གླིང (sman gling).",
+        "pos": "[\"proper noun\"]",
+        "def_pos": "proper noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "From fore- + shine. Possibly cognate with German Vorschein.",
+    "cards": [
+      {
+        "id": "foreshine",
+        "word": "foreshine",
+        "etym_no": null,
+        "etymology": "From fore- + shine. Possibly cognate with German Vorschein.",
+        "pos": "[\"noun\", \"verb\"]",
+        "def_pos": "noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "Ultimately from Arabic قُرْبَان (qurbān), probably through Malay korban. Doublet of corban and Qurbana.",
+    "cards": [
+      {
+        "id": "e:55db555c231eba4a905751ab9a28c5a58c4df4cd7a3ab7640c9d0bd132dba011",
+        "word": "korban",
+        "etym_no": 1,
+        "etymology": "Ultimately from Arabic قُرْبَان (qurbān), probably through Malay korban. Doublet of corban and Qurbana.",
+        "pos": "[\"noun\"]",
+        "def_pos": "noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "From over- + Anglo-Norman plus, Middle French plus.",
+    "cards": [
+      {
+        "id": "overplus",
+        "word": "overplus",
+        "etym_no": null,
+        "etymology": "From over- + Anglo-Norman plus, Middle French plus.",
+        "pos": "[\"noun\"]",
+        "def_pos": "noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "From the French surname, variant of Primeau.",
+    "cards": [
+      {
+        "id": "Primeaux",
+        "word": "Primeaux",
+        "etym_no": null,
+        "etymology": "From the French surname, variant of Primeau.",
+        "pos": "[\"proper noun\"]",
+        "def_pos": "proper noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "Via Latin Tyrrhēnia from Ancient Greek Τυρρηνῐ́ᾱ (Turrhēnĭ́ā).",
+    "cards": [
+      {
+        "id": "Tyrrhenia",
+        "word": "Tyrrhenia",
+        "etym_no": null,
+        "etymology": "Via Latin Tyrrhēnia from Ancient Greek Τυρρηνῐ́ᾱ (Turrhēnĭ́ā).",
+        "pos": "[\"proper noun\"]",
+        "def_pos": "proper noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "From Middle English -ar, -are, variant of Middle English -ere, from Old English -ere. More at -er.",
+    "cards": [
+      {
+        "id": "e:4d96f782a26aa9bba717eb9e466cc06f48ad349e5e64ee7ba16ed79e01c676b7",
+        "word": "-ar",
+        "etym_no": 3,
+        "etymology": "From Middle English -ar, -are, variant of Middle English -ere, from Old English -ere. More at -er.",
+        "pos": "[\"suffix\"]",
+        "def_pos": "suffix"
+      }
+    ]
+  },
+  {
+    "supplied_text": "From pagan + -ity; cf. Latin paganitas.",
+    "cards": [
+      {
+        "id": "paganity",
+        "word": "paganity",
+        "etym_no": null,
+        "etymology": "From pagan + -ity; cf. Latin paganitas.",
+        "pos": "[\"noun\"]",
+        "def_pos": "noun"
+      }
+    ]
+  },
+  {
+    "supplied_text": "Americanized spelling of German Scholle.",
+    "cards": [
+      {
+        "id": "Sholly",
+        "word": "Sholly",
+        "etym_no": null,
+        "etymology": "Americanized spelling of German Scholle.",
+        "pos": "[\"proper noun\"]",
+        "def_pos": "proper noun"
+      }
+    ]
+  }
+]

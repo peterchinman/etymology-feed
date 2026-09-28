@@ -416,3 +416,25 @@ Stop prelaunch heuristic tuning here. The accepted rules, measurements,
 verification, and remaining release work are recorded in `docs/DATA_SELECTION.md`.
 This closes the editorial selection exercise; publishing the release and M5
 production deployment remain separate work.
+
+
+## 2026-09-27 — Own the feed data pipeline in Etymology Feed (§3.3, §4)
+
+Supersede the earlier decision to derive and publish feed artifacts inside RWG.
+This repo now owns `database/derive_etymology.py`, editorial rules, display
+cleanup, stable card identity, priority, regression fixtures/tests, and feed
+artifact releases. RWG continues owning full-source extraction, frequency
+scoring, the source schema, and `dictionary.db` releases. No third repository
+is needed to establish this boundary.
+
+The consumer-owned `database/SOURCE.json` records the source repository, release
+label, publication state, and SHA-256. Validate the checksum before producing
+output and read the source database read-only. Until the compatible source is
+published, the manifest explicitly identifies the reviewed local source as
+unpublished; the older published dictionary lacks entry links and is unsuitable.
+Tests create small source-contract fixtures with SQL and do not import RWG code.
+RWG retains a separate source-entry-link regression without feed selection logic.
+
+The move leaves classifier v4 and the 100,537-card baseline unchanged. Raw source
+publication and feed artifact publication now have separate release steps.
+Future editorial changes require only an Etymology Feed PR.

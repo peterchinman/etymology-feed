@@ -57,16 +57,16 @@ and fails eligibility; its original text remains available for source repair.
 
 ## Validation and implementation
 
-The RWG repository owns `database/derive_etymology.py`, `etymology_patterns.py`,
+This repository owns `database/derive_etymology.py`, `etymology_patterns.py`,
 `etymology_rules.py`, and `etymology_selection.py`. The release metadata records
 classifier v4, thresholds, counts by exclusion reason, and cleaned-text bands.
 `database/etymology-selection-audit.json` records this baseline and source hash.
 The 62 supplied negative texts and positive sense fixtures are checked into
-that repository; the full data artifacts are not.
+this repository; the full data artifacts are not.
 
-Seventeen portable tests cover examples from all three rounds, explanations
+Twenty portable tests cover examples from all three rounds, explanations
 without glosses, proper/common/mixed POS, sense pairing, stable IDs, cleanup,
-and SQL export. A dedicated CI workflow runs them on dictionary changes.
+SQL export, and checksum pinning. No test imports RWG code or requires an RWG checkout. A dedicated CI workflow runs them on dictionary changes.
 The full local rebuild also passes integrity/source-membership checks and a
 complete SQL roundtrip. Its surviving cards exactly match v3 minus the approved
 2,011 exclusions; all surviving fields except shuffle position are unchanged.
@@ -74,7 +74,7 @@ Both Bluffs, the laughter and garden senses of haha, and explanatory place-name
 histories are retained. Local verification is in
 `data/production-baseline/verification.json` and `verify.py`.
 
-In the RWG checkout, reproduce the builder/tests with:
+In this checkout, reproduce the builder/tests with:
 
 ```sh
 python3 -m unittest discover -s database -p 'test_*.py' -v
@@ -82,20 +82,29 @@ python3 database/derive_etymology.py --source /path/to/rebuilt/dictionary.db --o
 python3 database/derive_etymology.py --source /path/to/rebuilt/dictionary.db --output-dir /path/to/output --check
 ```
 
-The input must contain source-entry links; the published one-card release
-cannot replace the rebuilt local source.
+`database/SOURCE.json` pins the full source repository, release label, and
+SHA-256. Its current `published: false` state describes the reviewed local source,
+not an available GitHub release. The builder validates that hash and opens the
+input read-only. Use `--source-manifest` to select a different explicit pin.
+The input must contain source-entry links; the published old release cannot
+replace the rebuilt local source. The local `data/feed-owned-preview/` rebuild
+from this repo has exactly the same card rows as the frozen baseline; metadata
+additionally records the source repository, checksum, and publication state.
 
 ## Release handoff
 
-1. Merge the reviewed source-builder and app documentation changes.
-2. Choose a new dictionary release tag, set upstream `database/RELEASE`, and
-   regenerate source/derived artifacts with that tag. The local baseline is
-   labelled `local-multi-etymology-preview`, not a published release.
-3. Publish the rebuilt `dictionary.db`, `etymology.db`, `etymology.sql`, and
-   report; verify checksums and pin the app to the new release.
-4. In M5, import into a fresh DICT database and seed APP stats using retained
-   card IDs. The existing app fixture is historical integration data, not the
-   production dictionary or a representative sample of this baseline.
+1. Merge the feed-pipeline move here and the RWG cleanup PR. The application
+   owns all editorial selection from this point onward.
+2. In RWG, publish the rebuilt full `dictionary.db` with entry links under a new
+   source release tag. RWG retains ingestion, frequency enrichment, its full
+   schema, and its website's independent release pin.
+3. Update this repo's `database/SOURCE.json` to that published source and verified
+   checksum, then rebuild/check the feed. Publish `etymology.db`, `etymology.sql`,
+   and the report as a separate **Etymology Feed** release. Editorial filter
+   changes need only this repo and can reuse the same pinned full source.
+4. In M5, import the feed release into a fresh DICT database and seed APP stats
+   using retained card IDs. The existing app fixture remains historical
+   integration data, not the production dictionary or a representative sample.
 
 Selection review is closed for now. Revisit heuristics when new editorial or
 usage evidence justifies a change; do not hold production preparation on

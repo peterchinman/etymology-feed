@@ -1,0 +1,42 @@
+[
+  {
+    "id": "Zhabei",
+    "word": "Zhabei",
+    "etym_no": null,
+    "etymology": "The atonal Hanyu Pinyin romanization of the Mandarin 閘北 /闸北 (Zháběi, literally “area north of the sluices”), named after its position relative to two canal sluices constructed during the middle of the Qing dynasty.",
+    "pos": "[\"proper noun\"]",
+    "def_pos": "proper noun"
+  },
+  {
+    "id": "bluff",
+    "word": "bluff",
+    "etym_no": 1,
+    "etymology": "Probably from Dutch bluffen (“to brag”), from Middle Dutch bluffen (“to make something swell; to bluff”); or from the Dutch noun bluf (“bragging”). Related to German verblüffen (“to stump, perplex”).",
+    "pos": "[\"noun\", \"verb\"]",
+    "def_pos": "noun"
+  },
+  {
+    "id": "e:3cd0e649c06dd2fd9a5784b92fc1f448e153c6c1f98119f68789db3b573b12cf",
+    "word": "bluff",
+    "etym_no": 2,
+    "etymology": "Related to Middle Low German blaff (“smooth”).",
+    "pos": "[\"noun\", \"adjective\"]",
+    "def_pos": "noun"
+  },
+  {
+    "id": "e:8b6e81225af0b1960cb2af39d598284683f25f94faa288d7899b4da6b49f59fd",
+    "word": "haha",
+    "etym_no": 1,
+    "etymology": "From Middle English haha, ha ha, from Old English ha ha (interjection), ultimately onomatopoeic. Compare Old Frisian haha (interjection), Middle Low German hahā, hahahā (interjection), Middle High German hahā, haha (interjection), all expressions of joy or of laughter.",
+    "pos": "[\"verb\", \"interjection\"]",
+    "def_pos": "verb"
+  },
+  {
+    "id": "haha",
+    "word": "haha",
+    "etym_no": 2,
+    "etymology": "Borrowed from French haha. The French term attested 1686 in toponyms in New France (present-day Quebec); compare modern Saint-Louis-du-Ha! Ha!. Usual etymology is that an expression of surprise – “ha ha” or “ah! ah!” is exclaimed on encountering such a boundary. In France this is traditionally attributed to the reaction of Louis, Grand Dauphin to encountering such a feature in the gardens of the Château de Meudon. The English term attested 1712, in translation by John James of French La theorie et la pratique du jardinage (1709) by Dezallier d'Argenville:\nGrills of iron are very necessary ornaments in the lines of walks, to extend the view, and to show the country to advantage. At present we frequently make thoroughviews, called Ah, Ah, which are openings in the walls, without grills, to the very level of the walks, with a large and deep ditch at the foot of them, lined on both sides to sustain the earth, and prevent the getting over; which surprises the eye upon coming near it, and makes one laugh, Ha! Ha! from where it takes its name. This sort of opening is haha, on some occasions, to be preferred, for that it does not at all interrupt the prospect, as the bars of a grill do.",
+    "pos": "[\"noun\"]",
+    "def_pos": "noun"
+  }
+]

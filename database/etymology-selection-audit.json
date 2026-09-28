@@ -1,0 +1,53 @@
+{
+  "status": "accepted preproduction baseline; release not yet published",
+  "review_date": "2026-09-27",
+  "classifier_version": "4",
+  "source_description": "Locally rebuilt 883,995-word source dictionary with entry-to-etymology links",
+  "source_dictionary_sha256": "9f2d9567a2b1fcf8a00b0b09c0b878c385edff41156ff67a1ba9a1aa6aec7637",
+  "original_cards": 155032,
+  "final_cards": 100537,
+  "final_headwords": 95841,
+  "excluded_cards": 54495,
+  "supplied_negative_texts": 62,
+  "portable_tests": 20,
+  "selection_counts": {
+    "display_cleaned": 429,
+    "expanded_bare_provenance": 7229,
+    "ineligible_after_cleanup": 19,
+    "proper_noun_glossed_provenance": 3630,
+    "provenance_only": 38089,
+    "provenance_plus_morphology": 5528
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "retained_sample": 400,
+      "provenance_exclusions": 43617,
+      "cleanup_eligibility_exclusions": 19,
+      "remaining": 111396
+    },
+    {
+      "round": 2,
+      "retained_sample": 400,
+      "ordinary_exclusions": 5657,
+      "proper_noun_exclusions": 3191,
+      "remaining": 102548
+    },
+    {
+      "round": 3,
+      "retained_sample": 400,
+      "ordinary_exclusions": 1572,
+      "proper_noun_exclusions": 439,
+      "remaining": 100537
+    }
+  ],
+  "validation": {
+    "matches_approved_exclusions_exactly": true,
+    "all_surviving_fields_except_shuffle_unchanged": true,
+    "full_sql_import_matches_sqlite": true,
+    "both_bluffs_and_haha_senses_retained": true,
+    "explanatory_place_name_retained": true
+  },
+  "note": "Review samples mix random and deliberate coverage; acceptance does not imply zero false positives throughout the corpus. Raw source and sense links are preserved.",
+  "pipeline_repository": "peterchinman/etymology-feed"
+}
