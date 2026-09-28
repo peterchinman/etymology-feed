@@ -514,11 +514,20 @@ test('holding or double-tapping the text selects a word and holds the card still
   const card = page.getByTestId('top-card');
   await expect(card).toBeVisible();
   const first = await card.locator('h2').innerText();
-  const text = await card.locator('.etymology').boundingBox();
-  if (!text) throw new Error('Etymology has no visible bounds.');
-  // Just inside the first word of the etymology.
-  const x = text.x + 12;
-  const y = text.y + 12;
+  // Hit an actual glyph, independent of the runner's fonts and line metrics.
+  const { x, y } = await card.locator('.etymology').evaluate((element) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const offset = node.textContent?.search(/\p{L}/u) ?? -1;
+      if (offset < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(node, offset + 1);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    }
+    throw new Error('Etymology has no selectable text.');
+  });
   const selected = () => page.evaluate(() => getSelection()?.toString() ?? '');
   const touch = await finger(page);
 
