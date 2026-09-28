@@ -12,6 +12,14 @@ full rebuilt preview in `data/multi-etymology-preview/` has **155,032 cards
 across 148,180 headwords**. Its source `dictionary.db` (444 MB), 47 MB SQL,
 58 MB derived SQLite file, and report are ignored by git. The published
 release still contains 147,954 one-card headwords.
+The accepted pre-production filter has a separate local rebuild in
+`data/production-baseline/`: **100,537 cards** after three accepted editorial rounds,
+excluding bare provenance and proper-noun-only origin chains even with quoted
+source meanings, and cleaning marked etymology trees/root sidebars. Both Bluffs
+and the laughter sense of **haha** remain. See [the selection rule](docs/SPEC.md#41-selection-rule-from-21-thresholds-are-script-arguments-and-are-recorded-in-meta)
+and [the frozen baseline and release handoff](docs/DATA_SELECTION.md).
+The original preview and review annotations are preserved; release publication
+is still pending.
 Wiktionary text is from kaikki.org and licensed CC BY-SA 4.0.
 
 The app and APP migration now use per-etymology card IDs. The upstream source
