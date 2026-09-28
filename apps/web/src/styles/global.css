@@ -562,6 +562,8 @@ a {
   color: inherit;
 }
 .deck-controls {
+  position: relative;
+  z-index: 4;
   max-width: var(--controls-max);
   margin: var(--control-gap) auto 0;
   display: flex;
