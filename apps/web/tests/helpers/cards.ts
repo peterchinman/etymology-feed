@@ -1,7 +1,11 @@
 import type { Card } from '@etymology-feed/shared/card';
 import { expect, type Page } from '@playwright/test';
 
-export async function putCardsOnStack(page: Page, cards: Card[]) {
+export async function putCardsOnStack(
+  page: Page,
+  cards: Card[],
+  firstVisible = cards[0],
+) {
   await page.evaluate(async (pair) => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('etymology-feed');
@@ -27,7 +31,7 @@ export async function putCardsOnStack(page: Page, cards: Card[]) {
   }, cards);
   await page.reload();
   await expect(page.getByTestId('top-card').locator('h2')).toHaveText(
-    cards[0].word,
+    firstVisible.word,
   );
   await expect(
     page.getByRole('button', { name: 'Interesting', exact: true }),

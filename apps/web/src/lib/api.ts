@@ -2,7 +2,7 @@ import type { Card } from '@etymology-feed/shared/card';
 import { hc } from 'hono/client';
 import type { AppType } from '../../../api/src/index';
 import { ensureAnonymousSession } from './auth';
-import { getServed } from './local';
+import { getServed, getSettings } from './local';
 
 let pendingKnown: string[] | undefined;
 
@@ -26,10 +26,15 @@ export async function fetchCards(): Promise<Card[]> {
   if (newSession && pendingKnown === undefined)
     pendingKnown = (await getServed()).slice(-30_000);
   const client = hc<AppType>(window.location.origin);
+  const { includeProperNouns } = await getSettings();
   const knownChunk = takeKnownChunk();
   const known = knownChunk.length ? JSON.stringify(knownChunk) : undefined;
   const response = await client.api.feed.$get({
-    query: { n: '100', ...(known ? { known } : {}) },
+    query: {
+      n: '100',
+      includeProperNouns: String(includeProperNouns) as 'true' | 'false',
+      ...(known ? { known } : {}),
+    },
   });
   if (!response.ok) {
     pendingKnown?.unshift(...knownChunk);

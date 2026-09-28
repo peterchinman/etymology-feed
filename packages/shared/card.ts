@@ -14,3 +14,11 @@ export type Card = {
   etymBand: string;
   bucket?: Bucket;
 };
+
+/** Eligibility follows the displayed sense, not casing or other headword senses. */
+export function isFeedEligible(
+  card: Pick<Card, 'defPos'>,
+  includeProperNouns = false,
+): boolean {
+  return includeProperNouns || card.defPos !== 'proper noun';
+}

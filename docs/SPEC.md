@@ -277,6 +277,15 @@ Cron Trigger `*/5 * * * *` runs three indexed queries, one per pooled lane, each
 
 `GET /api/feed?n=100` (n ≤ 100; the client asks for large batches because it works offline, §7.4):
 
+`includeProperNouns=true|false` defaults to `false`. Eligibility uses the paired
+definition's POS (`def_pos`), not capitalization or another proper-noun sense.
+Filter every lane, including wild draws and recovery. A filtered candidate cannot
+consume a batch slot or enter served history. Replacement cards come from the
+bounded shuffle-index recovery scan and carry the `wild` bucket. The 101-row
+estimate applies to complete unfiltered batches; filtered batches require extra
+indexed reads, including up to 1,000 recovery rows. Keep the existing retry response
+when the scan budget cannot prove exhaustion or fill a batch.
+
 1. Read `served.card_ids` for the user (1 row).
 2. Fill slots per 20-card block with **6 confirmed / 6 promising / 6 fresh / 2 wild**, spread evenly by largest remainder, repeated `n/20` times. `confirmed`, `promising`: top Thompson draws; `fresh`: random from the first 1,000 of the lane (jitter so concurrent users don't all get the same card); `wild`: uniform via `shuffle`. Skip anything in `served`. **Fill-through**: a slot whose lane is exhausted takes from the lanes below it, then the lanes above, so an empty confirmed lane hands its slots to promising, then fresh; when every lane is exhausted, relax to `wild`. The card's `bucket` records the lane it actually came from, not the slot, so per-lane like-rates in §6.5 are honest.
 3. Fetch the cards from `DICT` by primary-key `id` lookups (n rows read).
@@ -329,7 +338,11 @@ Better Auth `socialProviders: { google, github }`, both in Milestone 4. Routes a
 - `stack` — cards not yet swiped, in serve order. Target ≥ **150** buffered; fetch `n=100` whenever online and `stack.length < 60`, and on app start.
 - `served` — set of every card ID this device has ever received (mirror of the server record; sent as `known=` on the first fetch after a cookie loss so the server can rebuild its record).
 - `swipes` — every swipe `{id, cardId, word, verdict, bucket, shownAt, swipedAt, synced}`; also the source for the Liked screen (verdict = 1).
-- `settings` — theme and color mode.
+- `settings` — theme, color mode, and **Include proper nouns** (off by default).
+  The proper-noun preference is saved per device, applies immediately from the
+  desktop dialog, and persists across reloads and mobile navigation. Hide rather
+  than delete unswiped proper-noun cards so toggling on can restore them offline.
+  Preserve existing likes and ratings. The dictionary keeps these cards for opt-in.
 
 **Sync:**
 - Each swipe is written locally first, then the queue drains: `POST /api/sync` with up to 500 unsynced swipes, on `online` events, app start, visibility change, and after every 10 local swipes. Success marks them `synced`. Failures retry with backoff; nothing blocks the UI.
@@ -395,7 +408,8 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 - `feed` store: `stack: Card[]` (mirrors IndexedDB), `pendingUndo?: Card`, fetching/online flags. Prefetch rule in §7.4.
 - `swipes` store: IndexedDB-backed, sync queue (§7.4).
 - `session` store: Better Auth's `useSession()`.
-- `settings` store: theme and color mode (applied in `<head>` before paint).
+- `settings` store: theme and color mode (applied in `<head>` before paint), plus
+  `includeProperNouns` (boolean, missing means false).
 - PWA: `manifest.webmanifest` (standalone display, icons), service worker per §7.4.
 
 ### 9.4 Build & dev

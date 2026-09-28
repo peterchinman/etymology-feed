@@ -1,4 +1,4 @@
-import type { Card } from '@etymology-feed/shared/card';
+import { type Card, isFeedEligible } from '@etymology-feed/shared/card';
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
 import {
   DEFAULT_THEME,
@@ -136,8 +136,8 @@ export async function appendCards(cards: Card[]): Promise<Card[]> {
 export type PendingSwipe = { card: Card; verdict: Verdict; shownAt: number };
 
 /**
- * Record swipes, oldest first, in one transaction. They must match the front
- * of the stored stack in order; a burst of quick swipes costs one write.
+ * Record swipes in display order. Hidden proper nouns stay in the stored stack
+ * so enabling them again works offline; a burst costs one write.
  */
 export async function saveSwipes(
   pending: readonly PendingSwipe[],
@@ -157,12 +157,23 @@ export async function saveSwipes(
   }));
   const tx = db.transaction(['stack', 'swipes'], 'readwrite');
   const stack = (await tx.objectStore('stack').get('cards')) ?? [];
-  pending.forEach(({ card }, index) => {
+  let index = 0;
+  const consumed = new Set<string>();
+  for (const { card } of pending) {
+    while (
+      stack[index] &&
+      stack[index].id !== card.id &&
+      stack[index].word !== card.id &&
+      !isFeedEligible(stack[index])
+    )
+      index++;
     if (stack[index]?.id !== card.id && stack[index]?.word !== card.id) {
       throw new Error('The card stack changed before the swipe was saved.');
     }
-  });
-  const nextStack = stack.slice(pending.length);
+    consumed.add(stack[index].id ?? stack[index].word);
+    index++;
+  }
+  const nextStack = stack.filter((card) => !consumed.has(card.id ?? card.word));
   tx.objectStore('stack').put(nextStack, 'cards');
   for (const swipe of swipes) tx.objectStore('swipes').put(swipe);
   await tx.done;
@@ -281,11 +292,13 @@ function mirror(key: string, value: string) {
 export async function getSettings(): Promise<{
   theme: Theme;
   colorMode: ColorMode;
+  includeProperNouns: boolean;
 }> {
   const db = await getDatabase();
-  const [storedTheme, storedMode] = await Promise.all([
+  const [storedTheme, storedMode, includeProperNouns] = await Promise.all([
     db.get('settings', 'theme'),
     db.get('settings', 'colorMode'),
+    db.get('settings', 'includeProperNouns'),
   ]);
   let mirroredTheme: string | null = null;
   let mirroredMode: string | null = null;
@@ -320,7 +333,14 @@ export async function getSettings(): Promise<{
     await db.put('settings', theme, 'theme');
   if (isColorMode(mirroredMode) && storedMode !== colorMode)
     await db.put('settings', colorMode, 'colorMode');
-  return { theme, colorMode };
+  return { theme, colorMode, includeProperNouns: includeProperNouns === true };
+}
+
+export const FEED_SETTINGS_CHANGED = 'etymology:feed-settings-changed';
+
+export async function setIncludeProperNouns(value: boolean): Promise<void> {
+  await (await getDatabase()).put('settings', value, 'includeProperNouns');
+  window.dispatchEvent(new Event(FEED_SETTINGS_CHANGED));
 }
 
 export function applyTheme(theme: Theme, mode: ColorMode): boolean {

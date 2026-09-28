@@ -1,4 +1,4 @@
-import type { Card } from '@etymology-feed/shared/card';
+import { type Card, isFeedEligible } from '@etymology-feed/shared/card';
 import {
   type Bucket,
   interleave,
@@ -28,6 +28,10 @@ const CARD_COLUMNS =
   'id, word, etym_no, ipa, tier, shape, pos, definition, def_pos, etymology, etym_band, shuffle';
 
 export class FeedUnavailable extends Error {}
+
+function eligibleRow(row: WordRow, includeProperNouns: boolean): boolean {
+  return isFeedEligible({ defPos: row.def_pos }, includeProperNouns);
+}
 
 export function toCard(row: WordRow, bucket?: Card['bucket']): Card {
   return {
@@ -78,6 +82,7 @@ export async function getUserFeed(
   userId: string,
   count: number,
   known: string[] = [],
+  includeProperNouns = false,
 ): Promise<{ cards: Card[]; rowsRead: number; rowsWritten: number }> {
   const pools = await getPools(env);
   if (pools.cardCount < count)
@@ -127,7 +132,8 @@ export async function getUserFeed(
           .all<WordRow>();
         rowsRead += query.meta.rows_read;
         const row = query.results[0];
-        if (!row || seen.has(row.id)) continue;
+        if (!row || !eligibleRow(row, includeProperNouns) || seen.has(row.id))
+          continue;
         seen.add(row.id);
         wild.set(row.id, row);
         found = true;
@@ -175,11 +181,13 @@ export async function getUserFeed(
     const cards = chosen
       .map(({ id, bucket }) => {
         const row = byWord.get(id);
-        return row ? toCard(row, bucket) : undefined;
+        return row && eligibleRow(row, includeProperNouns)
+          ? toCard(row, bucket)
+          : undefined;
       })
       .filter((card): card is Card => !!card);
     // APP statistics outlive a DICT switch or rollback. Resolve the selected
-    // IDs before filling through: missing cards must not consume batch slots.
+    // IDs before filling through: missing or ineligible cards cannot consume slots.
     // Historical IDs can also be absent from this DICT, so seen.size is not a
     // count of unavailable dictionary rows. Only an actual scan proves that.
     const delivered = new Set([...previous, ...cards.map(({ id }) => id)]);
@@ -201,7 +209,8 @@ export async function getUserFeed(
         .all<WordRow>();
       rowsRead += query.meta.rows_read;
       for (const row of query.results) {
-        if (delivered.has(row.id)) continue;
+        if (!eligibleRow(row, includeProperNouns) || delivered.has(row.id))
+          continue;
         delivered.add(row.id);
         cards.push(toCard(row, 'wild'));
         if (cards.length === count) break;
@@ -248,6 +257,7 @@ export async function getWildFeed(
   { dict }: Bindings,
   count: number,
   startOverride?: number,
+  includeProperNouns = false,
 ): Promise<{
   cards: Card[];
   rowsRead: number;
@@ -267,43 +277,38 @@ export async function getWildFeed(
     );
   }
 
-  // A uniformly random start in the release's permutation gives every word
-  // exactly count/maximum inclusion probability. LIMIT keeps D1 at one row read
-  // per card; the JSON-array IN form measured 3 rows read per card in D1.
   const start = startOverride ?? randomPosition(maximum);
   if (!Number.isSafeInteger(start) || start < 1 || start > maximum) {
     throw new RangeError('Invalid shuffle start.');
   }
-  const firstCount = Math.min(count, maximum - start + 1);
-  // idx_word_shuffle range scan: firstCount rows read, 0 written.
-  const first = await dict
-    .prepare(
-      `SELECT ${CARD_COLUMNS} FROM word WHERE shuffle >= ? ORDER BY shuffle LIMIT ?`,
-    )
-    .bind(start, firstCount)
-    .all<WordRow>();
-  const wrapCount = count - firstCount;
-  // idx_word_shuffle range scan: wrapCount rows read, 0 written; only needed at the end of the permutation.
-  const wrapped =
-    wrapCount > 0
-      ? await dict
-          .prepare(
-            `SELECT ${CARD_COLUMNS} FROM word WHERE shuffle < ? ORDER BY shuffle LIMIT ?`,
-          )
-          .bind(start, wrapCount)
-          .all<WordRow>()
-      : null;
-  const rows = [...first.results, ...(wrapped?.results ?? [])];
-  if (rows.length !== count) {
-    throw new FeedUnavailable('The dictionary shuffle index is incomplete.');
+  const cards: Card[] = [];
+  let rowsRead = meta.meta.rows_read;
+  let scanned = 0;
+  let cursor = start;
+  const limit = Math.min(maximum, 1000);
+  while (cards.length < count && scanned < limit) {
+    const size = Math.min(
+      count - cards.length,
+      maximum - cursor + 1,
+      limit - scanned,
+    );
+    const page = await dict
+      .prepare(
+        `SELECT ${CARD_COLUMNS} FROM word WHERE shuffle >= ? ORDER BY shuffle LIMIT ?`,
+      )
+      .bind(cursor, size)
+      .all<WordRow>();
+    rowsRead += page.meta.rows_read;
+    for (const row of page.results)
+      if (eligibleRow(row, includeProperNouns)) cards.push(toCard(row, 'wild'));
+    scanned += size;
+    cursor = ((cursor - 1 + size) % maximum) + 1;
   }
-  return {
-    cards: rows.map((row) => toCard(row, 'wild')),
-    rowsRead:
-      meta.meta.rows_read +
-      first.meta.rows_read +
-      (wrapped?.meta.rows_read ?? 0),
-  };
+  if (cards.length !== count)
+    throw new FeedUnavailable(
+      'Not enough eligible cards within the feed scan budget.',
+    );
+  return { cards, rowsRead };
 }
 
 export async function getWord(
