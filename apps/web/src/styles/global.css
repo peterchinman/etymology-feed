@@ -282,8 +282,7 @@ a {
 .settings-panel-heading .display-voice {
   --voice-display-size: var(--type-display-compact);
 }
-.settings-panel-heading button,
-.banner-dismiss {
+.settings-panel-heading button {
   border: 0;
   background: transparent;
   color: var(--color-muted);
@@ -664,34 +663,24 @@ a {
   justify-content: space-between;
   align-items: center;
   gap: var(--space-4);
+  font-family: var(--font-caption);
+  font-size: var(--type-body);
+  font-weight: var(--weight-caption);
+  line-height: var(--leading-body);
   background: var(--color-panel);
   color: var(--color-panel-ink);
   border: var(--stroke-panel) solid var(--color-line);
   border-radius: var(--radius-panel);
   padding: var(--space-4) var(--space-5);
 }
-.banner-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex: none;
-}
 .banner-signin {
+  flex: none;
   border: var(--stroke-control) solid currentColor;
   border-radius: var(--radius-control);
   padding: var(--space-2) var(--space-3);
   background: transparent;
   color: inherit;
   text-decoration: none;
-}
-.banner-dismiss {
-  padding: var(--space-2);
-  font-size: var(--icon-size);
-  line-height: 1;
-}
-.anon-banner .banner-dismiss {
-  color: inherit;
-  opacity: 0.7;
 }
 .offline-note {
   color: var(--color-accent);
@@ -902,7 +891,20 @@ a {
     grid-template-columns: 1fr;
   }
   .anon-banner {
+    flex-direction: column;
     align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    border-radius: var(--radius-control);
+  }
+  .banner-signin {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--field-height);
+    padding: 0;
+    border: 0;
+    text-decoration: underline;
+    text-underline-offset: var(--space-1);
   }
 }
 
@@ -922,9 +924,6 @@ a {
   .card-bottom {
     align-items: flex-start;
     flex-direction: column;
-    gap: var(--space-1);
-  }
-  .banner-actions {
     gap: var(--space-1);
   }
 }

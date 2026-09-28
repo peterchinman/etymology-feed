@@ -16,7 +16,6 @@ export default function Liked() {
   const [query, setQuery] = createSignal('');
   const [open, setOpen] = createSignal<string | null>(null);
   const [online, setOnline] = createSignal(true);
-  const [banner, setBanner] = createSignal(true);
   const [accountLoaded, setAccountLoaded] = createSignal(false);
   const [registered, setRegistered] = createSignal(false);
   const [copied, setCopied] = createSignal(false);
@@ -58,9 +57,6 @@ export default function Liked() {
 
   onMount(() => {
     setOnline(navigator.onLine);
-    setBanner(
-      sessionStorage.getItem('etymology-anon-banner-dismissed') !== '1',
-    );
     void getSwipes()
       .then((saved) => {
         setSwipes(saved);
@@ -103,28 +99,15 @@ export default function Liked() {
   return (
     <section class="liked-page page-wrap">
       <h1 class="sr-only">Liked</h1>
-      <Show when={accountLoaded() && !registered() && banner()}>
-        <aside class="anon-banner body-voice">
+      <Show when={accountLoaded() && !registered()}>
+        <aside class="anon-banner">
           <div>
-            <strong>You're not signed in.</strong> Your list is saved only on
-            this device.
+            <strong>You're not signed in.</strong> Your likes stay on this
+            device.
           </div>
-          <div class="banner-actions">
-            <a class="banner-signin label-voice" href="/settings/#account">
-              Sign in
-            </a>
-            <button
-              type="button"
-              class="banner-dismiss"
-              aria-label="Dismiss sign-in reminder"
-              onClick={() => {
-                sessionStorage.setItem('etymology-anon-banner-dismissed', '1');
-                setBanner(false);
-              }}
-            >
-              ×
-            </button>
-          </div>
+          <a class="banner-signin label-voice" href="/settings/#account">
+            Sign in
+          </a>
         </aside>
       </Show>
       <Show when={!online()}>
