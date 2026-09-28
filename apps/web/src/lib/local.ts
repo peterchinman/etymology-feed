@@ -35,9 +35,47 @@ interface FeedDB extends DBSchema {
 }
 
 let database: Promise<IDBPDatabase<FeedDB>> | undefined;
+const STACK_PREVIEW_KEY = 'etymology-stack-preview';
+
 function normalizeCard(card: Card): Card {
   return { ...card, id: card.id ?? card.word, etymNo: card.etymNo ?? null };
 }
+
+function cacheStackPreview(cards: readonly Card[]): void {
+  try {
+    if (cards.length) {
+      localStorage.setItem(
+        STACK_PREVIEW_KEY,
+        JSON.stringify(cards.slice(0, 2)),
+      );
+    } else {
+      localStorage.removeItem(STACK_PREVIEW_KEY);
+    }
+  } catch {
+    // IndexedDB remains the source of truth when localStorage is unavailable.
+  }
+}
+
+export function getStackPreview(): Card[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(STACK_PREVIEW_KEY) ?? '[]');
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .slice(0, 2)
+      .filter(
+        (card): card is Card =>
+          card &&
+          typeof card.word === 'string' &&
+          typeof card.definition === 'string' &&
+          typeof card.defPos === 'string' &&
+          typeof card.etymology === 'string',
+      )
+      .map(normalizeCard);
+  } catch {
+    return [];
+  }
+}
+
 function normalizeSwipe(swipe: LocalSwipe): LocalSwipe {
   return {
     ...swipe,
@@ -60,9 +98,11 @@ function getDatabase(): Promise<IDBPDatabase<FeedDB>> {
 }
 
 export async function getStack(): Promise<Card[]> {
-  return ((await (await getDatabase()).get('stack', 'cards')) ?? []).map(
+  const cards = ((await (await getDatabase()).get('stack', 'cards')) ?? []).map(
     normalizeCard,
   );
+  cacheStackPreview(cards);
+  return cards;
 }
 
 export async function getServed(): Promise<string[]> {
@@ -89,6 +129,7 @@ export async function appendCards(cards: Card[]): Promise<Card[]> {
   tx.objectStore('stack').put(nextStack, 'cards');
   tx.objectStore('served').put(nextServed, 'words');
   await tx.done;
+  cacheStackPreview(nextStack);
   return nextStack;
 }
 
@@ -121,9 +162,11 @@ export async function saveSwipes(
       throw new Error('The card stack changed before the swipe was saved.');
     }
   });
-  tx.objectStore('stack').put(stack.slice(pending.length), 'cards');
+  const nextStack = stack.slice(pending.length);
+  tx.objectStore('stack').put(nextStack, 'cards');
   for (const swipe of swipes) tx.objectStore('swipes').put(swipe);
   await tx.done;
+  cacheStackPreview(nextStack);
   return swipes;
 }
 
@@ -135,6 +178,7 @@ export async function undoSwipe(swipe: LocalSwipe): Promise<Card[]> {
   tx.objectStore('stack').put(nextStack, 'cards');
   tx.objectStore('swipes').delete(swipe.id);
   await tx.done;
+  cacheStackPreview(nextStack);
   return nextStack;
 }
 
@@ -215,10 +259,15 @@ export async function clearAccountData(): Promise<void> {
   tx.objectStore('served').clear();
   tx.objectStore('swipes').clear();
   await tx.done;
+  cacheStackPreview([]);
 }
 
 function isMode(value: unknown): value is Exclude<ColorMode, 'system'> {
   return value === 'light' || value === 'dark';
+}
+
+function isColorMode(value: unknown): value is ColorMode {
+  return value === 'system' || isMode(value);
 }
 
 function mirror(key: string, value: string) {
@@ -230,13 +279,11 @@ function mirror(key: string, value: string) {
 }
 
 export async function getSettings(): Promise<{
-  showDefinitions: boolean;
   theme: Theme;
   colorMode: ColorMode;
 }> {
   const db = await getDatabase();
-  const [showDefinitions, storedTheme, storedMode] = await Promise.all([
-    db.get('settings', 'showDefinitions'),
+  const [storedTheme, storedMode] = await Promise.all([
     db.get('settings', 'theme'),
     db.get('settings', 'colorMode'),
   ]);
@@ -260,9 +307,9 @@ export async function getSettings(): Promise<{
     : isMode(storedTheme)
       ? storedTheme
       : null;
-  const colorMode: ColorMode = isMode(mirroredMode)
+  const colorMode: ColorMode = isColorMode(mirroredMode)
     ? mirroredMode
-    : isMode(storedMode)
+    : isColorMode(storedMode)
       ? storedMode
       : (legacyMode ?? 'system');
   if (legacyMode && colorMode === legacyMode) {
@@ -271,13 +318,9 @@ export async function getSettings(): Promise<{
   }
   if (isTheme(mirroredTheme) && storedTheme !== theme)
     await db.put('settings', theme, 'theme');
-  if (isMode(mirroredMode) && storedMode !== colorMode)
+  if (isColorMode(mirroredMode) && storedMode !== colorMode)
     await db.put('settings', colorMode, 'colorMode');
-  return { showDefinitions: showDefinitions === true, theme, colorMode };
-}
-
-export async function setShowDefinitions(value: boolean): Promise<void> {
-  await (await getDatabase()).put('settings', value, 'showDefinitions');
+  return { theme, colorMode };
 }
 
 export function applyTheme(theme: Theme, mode: ColorMode): boolean {
@@ -304,7 +347,7 @@ function currentTheme(): Theme {
 
 function currentMode(): ColorMode {
   const mode = document.documentElement.dataset.colorMode;
-  return isMode(mode) ? mode : 'system';
+  return isColorMode(mode) ? mode : 'system';
 }
 
 export async function setTheme(value: Theme): Promise<void> {
@@ -313,9 +356,7 @@ export async function setTheme(value: Theme): Promise<void> {
   await (await getDatabase()).put('settings', value, 'theme');
 }
 
-export async function setColorMode(
-  value: Exclude<ColorMode, 'system'>,
-): Promise<void> {
+export async function setColorMode(value: ColorMode): Promise<void> {
   applyTheme(currentTheme(), value);
   mirror('etymology-color-mode', value);
   await (await getDatabase()).put('settings', value, 'colorMode');

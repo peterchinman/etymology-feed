@@ -329,7 +329,7 @@ Better Auth `socialProviders: { google, github }`, both in Milestone 4. Routes a
 - `stack` — cards not yet swiped, in serve order. Target ≥ **150** buffered; fetch `n=100` whenever online and `stack.length < 60`, and on app start.
 - `served` — set of every card ID this device has ever received (mirror of the server record; sent as `known=` on the first fetch after a cookie loss so the server can rebuild its record).
 - `swipes` — every swipe `{id, cardId, word, verdict, bucket, shownAt, swipedAt, synced}`; also the source for the Liked screen (verdict = 1).
-- `settings` — show-definitions default, theme.
+- `settings` — theme and color mode.
 
 **Sync:**
 - Each swipe is written locally first, then the queue drains: `POST /api/sync` with up to 500 unsynced swipes, on `online` events, app start, visibility change, and after every 10 local swipes. Success marks them `synced`. Failures retry with backoff; nothing blocks the UI.
@@ -376,7 +376,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 
 ### 9.1 Routes & layout
 
-- `/` — **Feed**. Full-height card stack from the local `stack`; top card interactive, next one peeks behind it. Card shows: **word** (large), **IPA** (muted), **etymology** (scrollable if long), a "Wiktionary · CC BY-SA" line, and a **"Show definition"** button that reveals the definition with its part-of-speech tag in place (animated expand; the card grows or the etymology scroll region shrinks). A "Always show definitions" switch in a small settings sheet persists to `settings`. Buttons under the card on all sizes: ✕ and ♥, plus an "undo" affordance for 5 s after a swipe (undo re-shows the card and deletes the swipe locally and, if synced, on the server).
+- `/` — **Feed**. Full-height card stack from the local `stack`; top card interactive, next one peeks behind it. Card shows the word, a two-line definition preview on desktop or three-line preview on mobile, and the etymology. Longer definitions have an inline "See more" control that expands only the current card. Buttons under the card on all sizes: ✕ and ♥.
 - `/liked/` — **Liked**. Reverse-chronological liked cards from local `swipes`, tap to expand (definition shown expanded here), swipe-to-remove on mobile / ✕ on desktop, client-side search, copy-all as text. Anonymous banner (§7.1); unsynced count when offline.
 - `/about/` — static: what it is, data/privacy, credits.
 - Navigation: **mobile (< 768 px)** — bottom dock, two items (Feed / Liked), safe-area aware (`env(safe-area-inset-bottom)`). **Desktop** — top bar with the same two items plus sign-in / avatar. Same component; CSS decides placement. Both carry the offline dot.
@@ -395,7 +395,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 - `feed` store: `stack: Card[]` (mirrors IndexedDB), `pendingUndo?: Card`, fetching/online flags. Prefetch rule in §7.4.
 - `swipes` store: IndexedDB-backed, sync queue (§7.4).
 - `session` store: Better Auth's `useSession()`.
-- `settings` store: show-definitions default, theme (reuse RWG's `theme.js` approach: applied in `<head>` before paint).
+- `settings` store: theme and color mode (applied in `<head>` before paint).
 - PWA: `manifest.webmanifest` (standalone display, icons), service worker per §7.4.
 
 ### 9.4 Build & dev
