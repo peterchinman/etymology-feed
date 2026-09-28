@@ -171,23 +171,29 @@ test('a cached Feed preview cannot be swiped before the saved stack loads', asyn
   const like = page.getByRole('button', { name: 'Interesting', exact: true });
   await expect(like).toBeEnabled();
   const savedWord = await top.innerText();
-  await page.evaluate(() => {
+  await page.addInitScript(() => {
     const preview = JSON.parse(
       localStorage.getItem('etymology-stack-preview') ?? '[]',
     );
     preview[0] = { ...preview[0], id: 'stale-preview', word: 'Stale preview' };
     localStorage.setItem('etymology-stack-preview', JSON.stringify(preview));
-  });
-  await page.addInitScript(() => {
+    const pending: (() => void)[] = [];
+    let released = false;
+    const state = window as typeof window & { releaseStackRead: () => void };
+    state.releaseStackRead = () => {
+      released = true;
+      for (const resolve of pending) resolve();
+    };
     const get = IDBObjectStore.prototype.get;
     IDBObjectStore.prototype.get = function (query) {
       const request = get.call(this, query);
-      if (this.name === 'stack') {
+      if (this.name === 'stack' && !released) {
         request.addEventListener(
           'success',
           (event) => {
+            if (released) return;
             event.stopImmediatePropagation();
-            setTimeout(() => request.dispatchEvent(new Event('success')), 1500);
+            pending.push(() => request.dispatchEvent(new Event('success')));
           },
           { once: true },
         );
@@ -200,6 +206,11 @@ test('a cached Feed preview cannot be swiped before the saved stack loads', asyn
   await expect(like).toBeDisabled();
   await page.keyboard.press('ArrowRight');
   await expect(top).toHaveText('Stale preview');
+  await page.evaluate(() => {
+    (
+      window as typeof window & { releaseStackRead: () => void }
+    ).releaseStackRead();
+  });
   await expect(top).toHaveText(savedWord);
   await expect(like).toBeEnabled();
   await expect(
