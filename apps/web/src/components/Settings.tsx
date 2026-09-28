@@ -1,10 +1,9 @@
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createSignal, For, onMount, Show } from 'solid-js';
 import {
   applyTheme,
   type ColorMode,
   getSettings,
   setColorMode,
-  setShowDefinitions,
   setTheme,
 } from '../lib/local';
 import { DEFAULT_THEME, THEMES, type Theme } from '../lib/themes';
@@ -15,26 +14,35 @@ type Props = {
   variant: 'panel' | 'page';
   /** Close the panel; the page variant has no close button. */
   onClose?: () => void;
-  /** Tell the feed underneath that the definition default changed. */
-  onShowDefinitions?: (value: boolean) => void;
 };
 
-export default function Settings(props: Props) {
-  const [showDefinitions, setShowDefinitionsState] = createSignal(false);
-  const [theme, setThemeState] = createSignal<Theme>(DEFAULT_THEME);
-  const [colorMode, setColorModeState] = createSignal<ColorMode>('system');
-  const [dark, setDark] = createSignal(false);
-  const [error, setError] = createSignal('');
+const COLOR_MODES: { id: ColorMode; name: string }[] = [
+  { id: 'light', name: 'Light' },
+  { id: 'dark', name: 'Dark' },
+  { id: 'system', name: 'System' },
+];
 
-  async function changeDefinitionSetting(value: boolean) {
-    try {
-      await setShowDefinitions(value);
-      setShowDefinitionsState(value);
-      props.onShowDefinitions?.(value);
-    } catch {
-      setError('Could not save the definition setting.');
-    }
-  }
+function themeOnPage(): Theme {
+  if (typeof document === 'undefined') return DEFAULT_THEME;
+  return (
+    THEMES.find((option) =>
+      document.documentElement.classList.contains(option.id),
+    )?.id ?? DEFAULT_THEME
+  );
+}
+
+function colorModeOnPage(): ColorMode {
+  if (typeof document === 'undefined') return 'system';
+  const mode = document.documentElement.dataset.colorMode;
+  return mode === 'light' || mode === 'dark' ? mode : 'system';
+}
+
+export default function Settings(props: Props) {
+  const [theme, setThemeState] = createSignal<Theme>(themeOnPage());
+  const [colorMode, setColorModeState] = createSignal<ColorMode>(
+    colorModeOnPage(),
+  );
+  const [error, setError] = createSignal('');
 
   async function changeTheme(value: Theme) {
     try {
@@ -45,37 +53,27 @@ export default function Settings(props: Props) {
     }
   }
 
-  async function changeColorMode(value: Exclude<ColorMode, 'system'>) {
+  async function changeColorMode(value: ColorMode) {
     try {
       await setColorMode(value);
       setColorModeState(value);
-      setDark(value === 'dark');
     } catch {
-      setError('Could not save the dark mode setting.');
+      setError('Could not save the color mode setting.');
     }
   }
 
   onMount(() => {
     void getSettings()
       .then((settings) => {
-        setShowDefinitionsState(settings.showDefinitions);
         setThemeState(settings.theme);
         setColorModeState(settings.colorMode);
-        setDark(applyTheme(settings.theme, settings.colorMode));
+        applyTheme(settings.theme, settings.colorMode);
       })
-      .catch(() =>
+      .catch(() => {
         setError(
           'Local storage is unavailable. Enable site storage to keep your settings.',
-        ),
-      );
-    const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
-    const onSystemThemeChange = () => {
-      if (colorMode() === 'system') setDark(systemDark.matches);
-    };
-    systemDark.addEventListener('change', onSystemThemeChange);
-    onCleanup(() =>
-      systemDark.removeEventListener('change', onSystemThemeChange),
-    );
+        );
+      });
   });
 
   return (
@@ -99,58 +97,58 @@ export default function Settings(props: Props) {
           </button>
         </Show>
       </div>
-      <label class="setting-row label-voice">
-        <span>Always show definitions</span>
-        <input
-          type="checkbox"
-          checked={showDefinitions()}
-          onChange={(event) => {
-            void changeDefinitionSetting(event.currentTarget.checked);
-          }}
-        />
-      </label>
-      <div
-        class="setting-group"
-        role="radiogroup"
-        aria-labelledby="theme-label"
-      >
-        <span id="theme-label" class="label-voice">
-          Theme
-        </span>
-        <div class="segmented">
-          <For each={THEMES}>
-            {(option) => (
-              <label class="segment label-voice">
-                <input
-                  type="radio"
-                  name="theme"
-                  value={option.id}
-                  checked={theme() === option.id}
-                  onChange={() => void changeTheme(option.id)}
-                />
-                <span>{option.name}</span>
-              </label>
-            )}
-          </For>
+      <div>
+        <div
+          class="setting-group"
+          role="radiogroup"
+          aria-labelledby="theme-label"
+        >
+          <span id="theme-label" class="label-voice">
+            Theme
+          </span>
+          <div class="segmented">
+            <For each={THEMES}>
+              {(option) => (
+                <label class="segment label-voice">
+                  <input
+                    type="radio"
+                    name="theme"
+                    value={option.id}
+                    checked={theme() === option.id}
+                    onChange={() => void changeTheme(option.id)}
+                  />
+                  <span>{option.name}</span>
+                </label>
+              )}
+            </For>
+          </div>
         </div>
-        <p class="theme-blurb caption-voice">
-          {THEMES.find((option) => option.id === theme())?.blurb}
-        </p>
+        <div
+          class="setting-group"
+          role="radiogroup"
+          aria-labelledby="color-mode-label"
+        >
+          <span id="color-mode-label" class="label-voice">
+            Color mode
+          </span>
+          <div class="segmented">
+            <For each={COLOR_MODES}>
+              {(option) => (
+                <label class="segment label-voice">
+                  <input
+                    type="radio"
+                    name="color-mode"
+                    value={option.id}
+                    checked={colorMode() === option.id}
+                    onChange={() => void changeColorMode(option.id)}
+                  />
+                  <span>{option.name}</span>
+                </label>
+              )}
+            </For>
+          </div>
+        </div>
       </div>
-      <label class="setting-row label-voice">
-        <span>Dark mode</span>
-        <input
-          class="theme-switch"
-          type="checkbox"
-          checked={dark()}
-          onChange={(event) => {
-            void changeColorMode(
-              event.currentTarget.checked ? 'dark' : 'light',
-            );
-          }}
-        />
-        <span class="switch-track" aria-hidden="true" />
-      </label>
       <AccountControls variant="settings" />
       <p class="source-credit caption-voice">
         Etymologies and definitions are adapted from{' '}

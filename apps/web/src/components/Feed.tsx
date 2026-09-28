@@ -14,6 +14,7 @@ import {
   applyTheme,
   getSettings,
   getStack,
+  getStackPreview,
   type LocalSwipe,
   type PendingSwipe,
   saveSwipes,
@@ -33,7 +34,6 @@ import {
   springEasing,
 } from '../lib/swipe';
 import { drainSync } from '../lib/sync';
-import Settings from './Settings';
 
 /** A card that has been swiped and is still flying off-screen. */
 type Departing = {
@@ -120,9 +120,7 @@ export default function Feed() {
   const [online, setOnline] = createSignal(true);
   const [fetching, setFetching] = createSignal(false);
   const [error, setError] = createSignal('');
-  const [showDefinitions, setShowDefinitionsState] = createSignal(false);
   const [definitionOpen, setDefinitionOpen] = createSignal(false);
-  const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [pendingUndo, setPendingUndo] = createSignal<LocalSwipe | null>(null);
   let shownAt = Date.now();
   let filling = false;
@@ -293,7 +291,7 @@ export default function Feed() {
     batch(() => {
       if (element) setDeparting((current) => [...current, entry]);
       setStack((current) => current.slice(1));
-      setDefinitionOpen(showDefinitions());
+      setDefinitionOpen(false);
       setDragging(false);
     });
     resetDrag();
@@ -383,7 +381,7 @@ export default function Feed() {
         if (entry)
           setDeparting((current) => current.filter((item) => item !== entry));
         setStack(restored);
-        setDefinitionOpen(showDefinitions());
+        setDefinitionOpen(false);
         setDragging(false);
       });
       resetDrag();
@@ -551,6 +549,7 @@ export default function Feed() {
   }
 
   function keyDown(event: KeyboardEvent) {
+    if (document.querySelector('dialog[open]')) return;
     const target = event.target as HTMLElement;
     if (
       target.closest(
@@ -571,23 +570,14 @@ export default function Feed() {
 
   onMount(() => {
     setOnline(navigator.onLine);
-    if (new URLSearchParams(window.location.search).has('settings')) {
-      // On a phone, Settings is a page of its own rather than an overlay.
-      if (window.matchMedia('(max-width: 48rem)').matches) {
-        window.location.replace('/settings/');
-        return;
-      }
-      setSettingsOpen(true);
-    }
+    setStack(getStackPreview());
     void (async () => {
       try {
         const [cards, settings] = await Promise.all([
           getStack(),
           getSettings(),
         ]);
-        setStack(cards);
-        setShowDefinitionsState(settings.showDefinitions);
-        setDefinitionOpen(settings.showDefinitions);
+        setStack(reconcile(stack(), cards));
         applyTheme(settings.theme, settings.colorMode);
         setReady(true);
         void drainSync();
@@ -630,19 +620,6 @@ export default function Feed() {
   return (
     <section class="feed-page page-wrap">
       <h1 class="sr-only">Feed</h1>
-      <Show when={settingsOpen()}>
-        <Settings
-          variant="panel"
-          onClose={() => {
-            setSettingsOpen(false);
-            window.history.replaceState(null, '', '/');
-          }}
-          onShowDefinitions={(value) => {
-            setShowDefinitionsState(value);
-            setDefinitionOpen(value);
-          }}
-        />
-      </Show>
       <div
         class={`deck-area ${dragging() ? 'is-dragging' : ''}`}
         ref={deck}
@@ -651,17 +628,18 @@ export default function Feed() {
         onPointerUp={pointerUp}
         onPointerCancel={pointerCancel}
       >
-        <Show when={!stack().length}>
+        <Show when={!ready() && !stack().length}>
+          <div class="word-card" aria-hidden="true" />
+        </Show>
+        <Show when={ready() && !stack().length}>
           <div class="word-card empty-card">
             <span class="card-kicker label-voice">THE NEXT WORD</span>
             <h2 class="display-voice">
-              {ready()
-                ? online()
-                  ? fetching()
-                    ? 'Finding words…'
-                    : 'You’re all caught up.'
-                  : 'Offline for now.'
-                : 'Opening your stack…'}
+              {online()
+                ? fetching()
+                  ? 'Finding words…'
+                  : 'You’re all caught up.'
+                : 'Offline for now.'}
             </h2>
             <p class="body-voice">
               {online()
@@ -686,11 +664,33 @@ export default function Feed() {
               entry() ? 'departing' : stack()[0] === card ? 'top' : 'next',
             );
             const top = () => role() === 'top';
+            const [overflows, setOverflows] = createSignal(false);
+            let definition!: HTMLParagraphElement;
+            onMount(() => {
+              const measure = () => {
+                const style = getComputedStyle(definition);
+                const lineHeight = Number.parseFloat(style.lineHeight);
+                const lines = Number.parseInt(
+                  style.getPropertyValue('--definition-lines'),
+                  10,
+                );
+                setOverflows(definition.scrollHeight > lineHeight * lines + 1);
+              };
+              const observer = new ResizeObserver(measure);
+              observer.observe(definition);
+              document.fonts.addEventListener('loadingdone', measure);
+              window.addEventListener('resize', measure);
+              onCleanup(() => {
+                observer.disconnect();
+                document.fonts.removeEventListener('loadingdone', measure);
+                window.removeEventListener('resize', measure);
+              });
+            });
             const open = () => {
               const current = role();
               if (current === 'top') return definitionOpen();
               if (current === 'departing') return entry()?.definitionOpen;
-              return showDefinitions();
+              return false;
             };
             onCleanup(() => elements.delete(card));
             return (
@@ -704,33 +704,44 @@ export default function Feed() {
                   <h2 class="display-voice">{card.word}</h2>
                 </div>
                 <div class="card-body">
-                  <p class="etymology reading-voice">{card.etymology}</p>
-                  <Show when={open()}>
+                  <div class="definition">
+                    <span class="definition-label label-voice">
+                      {card.defPos}
+                    </span>
                     <div
-                      class="definition"
-                      id={top() ? 'definition' : undefined}
+                      class="definition-preview reading-voice"
+                      classList={{ 'is-collapsed': !open() && overflows() }}
                     >
-                      <span class="definition-label label-voice">
-                        {card.pos.join(' · ') || card.defPos}
-                      </span>
-                      <p class="reading-voice">{card.definition}</p>
+                      <p
+                        ref={definition}
+                        class="reading-voice"
+                        classList={{ 'is-clamped': !open() }}
+                        id={top() ? 'definition' : undefined}
+                      >
+                        {card.definition}
+                      </p>
+                      <Show when={overflows()}>
+                        <button
+                          class="definition-toggle label-voice"
+                          type="button"
+                          tabindex={top() ? undefined : -1}
+                          aria-expanded={open()}
+                          aria-controls={top() ? 'definition' : undefined}
+                          onClick={() => {
+                            if (top()) setDefinitionOpen((value) => !value);
+                          }}
+                        >
+                          <Show when={!open()}>
+                            <span aria-hidden="true">… </span>
+                          </Show>
+                          {open() ? 'See less' : 'See more'}
+                        </button>
+                      </Show>
                     </div>
-                  </Show>
+                  </div>
+                  <p class="etymology reading-voice">{card.etymology}</p>
                 </div>
                 <div class="card-bottom">
-                  <button
-                    class="definition-toggle label-voice"
-                    type="button"
-                    tabindex={top() ? undefined : -1}
-                    aria-expanded={open()}
-                    aria-controls={top() ? 'definition' : undefined}
-                    onClick={() => {
-                      if (top()) setDefinitionOpen((value) => !value);
-                    }}
-                  >
-                    {open() ? 'Hide definition' : 'Show definition'}{' '}
-                    <span aria-hidden="true">{open() ? '−' : '+'}</span>
-                  </button>
                   <a
                     class="entry-link caption-voice"
                     href={`https://en.wiktionary.org/wiki/${encodeURIComponent(card.word)}${card.etymNo ? `#Etymology_${card.etymNo}` : ''}`}

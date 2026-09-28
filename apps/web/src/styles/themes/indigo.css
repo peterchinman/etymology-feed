@@ -212,7 +212,8 @@
 }
 /* The definition is a dashed callout. */
 :root.indigo .definition {
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3)
+    calc(var(--definition-padding, var(--space-4)) - var(--hairline));
   border: var(--hairline) dashed var(--color-line);
 }
 :root.indigo .definition p {

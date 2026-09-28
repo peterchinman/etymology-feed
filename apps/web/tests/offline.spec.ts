@@ -2,6 +2,76 @@ import { expect, type Page, test } from '@playwright/test';
 import { SWIPE } from '../src/lib/swipe';
 import { THEME_COLORS } from '../src/lib/themes';
 
+test('definitions appear beneath the title and expand beyond the responsive line limit', async ({
+  page,
+}) => {
+  const longDefinition =
+    'A word with a detailed definition that continues beyond the preview. '.repeat(
+      15,
+    );
+  await page.route('**/api/feed?*', async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.cards.forEach((card: { definition: string }, index: number) => {
+      card.definition = index === 1 ? 'A short definition.' : longDefinition;
+    });
+    await route.fulfill({ response, json: data });
+  });
+  await page.goto('/');
+  const card = page.getByTestId('top-card');
+  const definition = card.locator('.definition p');
+  const more = card.getByRole('button', { name: 'See more', exact: true });
+  await expect(more).toBeVisible();
+  const titleBox = await card.locator('h2').boundingBox();
+  const definitionBox = await definition.boundingBox();
+  const etymologyBox = await card.locator('.etymology').boundingBox();
+  if (!titleBox || !definitionBox || !etymologyBox)
+    throw new Error('Card content has no visible bounds.');
+  expect(definitionBox.y).toBeGreaterThan(titleBox.y + titleBox.height);
+  expect(etymologyBox.y).toBeGreaterThan(
+    definitionBox.y + definitionBox.height,
+  );
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(more).toBeVisible();
+    expect(
+      await definition.evaluate(
+        (element, lines) =>
+          Math.abs(
+            element.clientHeight -
+              Number.parseFloat(getComputedStyle(element).lineHeight) * lines,
+          ),
+        width <= 768 ? 3 : 2,
+      ),
+    ).toBeLessThanOrEqual(1);
+    const previewBounds = await definition.boundingBox();
+    const toggleBounds = await more.boundingBox();
+    if (!previewBounds || !toggleBounds)
+      throw new Error('Definition preview has no visible bounds.');
+    expect(toggleBounds.y).toBeGreaterThan(previewBounds.y);
+    expect(toggleBounds.y + toggleBounds.height).toBeLessThanOrEqual(
+      previewBounds.y + previewBounds.height + 1,
+    );
+    await more.click();
+    const less = card.getByRole('button', { name: 'See less', exact: true });
+    await expect(less).toHaveAttribute('aria-expanded', 'true');
+    await expect(definition).toHaveText(longDefinition.trim());
+    expect(
+      await definition.evaluate(
+        (element) => element.scrollHeight - element.clientHeight,
+      ),
+    ).toBeLessThanOrEqual(1);
+    await less.click();
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+  }
+  await page.getByRole('button', { name: 'Interesting' }).click();
+  await expect(definition).toHaveText('A short definition.');
+  await expect(card.locator('.definition-toggle')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Interesting' }).click();
+  await expect(more).toBeVisible();
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
+});
+
 test('a right swipe adds a word to Liked and survives reload', async ({
   page,
 }) => {
@@ -53,6 +123,126 @@ test('a right swipe adds a word to Liked and survives reload', async ({
   await expect(page.getByText('Words you love.')).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('heading', { name: word })).toBeVisible();
+});
+
+test('Feed restores the saved top card without a loading message', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const top = page.getByTestId('top-card').locator('h2');
+  await expect(top).toBeVisible();
+  const first = await top.innerText();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const preview = JSON.parse(
+          localStorage.getItem('etymology-stack-preview') ?? '[]',
+        );
+        return preview[0]?.word;
+      }),
+    )
+    .toBe(first);
+
+  await page.reload();
+  await expect(top).toHaveText(first);
+  await expect(page.getByText('Opening your stack…')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Interesting' }).click();
+  const next = await top.innerText();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const preview = JSON.parse(
+          localStorage.getItem('etymology-stack-preview') ?? '[]',
+        );
+        return preview[0]?.word;
+      }),
+    )
+    .toBe(next);
+  await page.reload();
+  await expect(top).toHaveText(next);
+});
+
+test('Feed and Liked navigate without reloading the shared header', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.addInitScript(() => {
+    localStorage.setItem('etymology-theme', 'indigo');
+    localStorage.setItem('etymology-color-mode', 'dark');
+  });
+  await page.goto('/');
+  await expect(page.getByTestId('top-card')).toBeVisible();
+  await page.evaluate(() => {
+    const state = window as typeof window & { brand?: Element | null };
+    state.brand = document.querySelector('.brand');
+  });
+  const liked = page.locator('.top-nav').getByRole('link', { name: 'Liked' });
+  await liked.click();
+  await expect(page).toHaveURL(/\/liked\/$/);
+  await expect(liked).toHaveAttribute('aria-current', 'page');
+  await expect(page).toHaveTitle('Liked · Etymology Feed');
+  expect(
+    await page.evaluate(() => {
+      const state = window as typeof window & { brand?: Element | null };
+      return state.brand === document.querySelector('.brand');
+    }),
+  ).toBe(true);
+  await expect(page.locator('html')).toHaveClass(/indigo/);
+  await expect(page.locator('html')).toHaveClass(/dark/);
+
+  await page.locator('.top-nav').getByRole('link', { name: 'Feed' }).click();
+  await expect(page).toHaveURL('/');
+  await expect(page.getByTestId('top-card')).toBeVisible();
+  await expect(
+    page.locator('.top-nav').getByRole('link', { name: 'Feed' }),
+  ).toHaveAttribute('aria-current', 'page');
+  expect(
+    await page.evaluate(() => {
+      const state = window as typeof window & { brand?: Element | null };
+      return state.brand === document.querySelector('.brand');
+    }),
+  ).toBe(true);
+
+  await page.getByRole('button', { name: 'Interesting' }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Promise<number>((resolve, reject) => {
+            const request = indexedDB.open('etymology-feed');
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const database = request.result;
+              const count = database
+                .transaction('swipes')
+                .objectStore('swipes')
+                .count();
+              count.onsuccess = () => {
+                database.close();
+                resolve(count.result);
+              };
+              count.onerror = () => reject(count.error);
+            };
+          }),
+      ),
+    )
+    .toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const state = window as typeof window & { likedEmptySeen?: boolean };
+    state.likedEmptySeen = false;
+    new MutationObserver(() => {
+      if (document.querySelector('.liked-empty')) state.likedEmptySeen = true;
+    }).observe(document, { childList: true, subtree: true });
+  });
+  await liked.click();
+  await expect(page.locator('.liked-item')).toHaveCount(1);
+  expect(
+    await page.evaluate(() => {
+      const state = window as typeof window & { likedEmptySeen?: boolean };
+      return state.likedEmptySeen;
+    }),
+  ).toBe(false);
 });
 
 test('one fetched batch supports 100 offline swipes and survives reconnection', async ({
@@ -142,8 +332,8 @@ test('keyboard controls and undo work without a toast', async ({ page }) => {
   const first = await page.getByTestId('top-card').locator('h2').innerText();
   await page.keyboard.press('d');
   await expect(
-    page.getByRole('button', { name: 'Hide definition' }),
-  ).toBeVisible();
+    page.getByTestId('top-card').locator('.definition p'),
+  ).not.toHaveClass(/is-clamped/);
   await page.keyboard.press('ArrowRight');
   await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
     first,
@@ -156,9 +346,7 @@ test('keyboard controls and undo work without a toast', async ({ page }) => {
   );
 });
 
-test('Settings is its own page on a phone and the definition choice reaches the feed', async ({
-  page,
-}) => {
+test('Settings is its own page on a phone', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('top-card')).toBeVisible();
   const nav = page.locator('.bottom-nav');
@@ -172,36 +360,90 @@ test('Settings is its own page on a phone and the definition choice reaches the 
     'aria-current',
     'page',
   );
-  await page.getByLabel('Always show definitions').check();
+  await expect(page.getByLabel('Always expand definitions')).toHaveCount(0);
   await nav.getByRole('link', { name: 'Feed' }).click();
   await expect(
-    page.getByRole('button', { name: 'Hide definition' }),
-  ).toBeVisible();
+    page.getByTestId('top-card').locator('.definition p'),
+  ).toHaveClass(/is-clamped/);
   await page.reload();
   await expect(
-    page.getByRole('button', { name: 'Hide definition' }),
-  ).toBeVisible();
+    page.getByTestId('top-card').locator('.definition p'),
+  ).toHaveClass(/is-clamped/);
 
   // An old overlay link on a phone lands on the page instead.
   await page.goto('/?settings=1');
   await expect(page).toHaveURL(/\/settings\/$/);
 });
 
-test('the active dock tab underlines its label, not its icon', async ({
+test('desktop Settings opens a centered dialog over Feed and Liked', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  const card = page.getByTestId('top-card');
+  await expect(card).toBeVisible();
+  const word = await card.locator('h2').innerText();
+  const settings = page.locator('.top-nav').getByRole('link', {
+    name: 'Settings',
+  });
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await settings.click();
+  await expect(page).toHaveURL('/');
+  await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole('radiogroup', { name: 'Color mode' }),
+  ).toBeVisible();
+  const bounds = await dialog.boundingBox();
+  if (!bounds) throw new Error('Settings dialog has no visible bounds.');
+  expect(Math.abs(bounds.x + bounds.width / 2 - 640)).toBeLessThan(2);
+  expect(Math.abs(bounds.y + bounds.height / 2 - 400)).toBeLessThan(2);
+  await expect(dialog.getByLabel('Always expand definitions')).toHaveCount(0);
+  await expect(card.locator('.definition p')).toHaveClass(/is-clamped/);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(card.locator('h2')).toHaveText(word);
+
+  await page.goto('/liked/');
+  await settings.click();
+  await expect(page).toHaveURL('/liked/');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close settings' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL('/liked/');
+});
+
+test('mobile dock tabs are centered, evenly spaced, and underline only the label', async ({
   page,
 }) => {
   await page.goto('/');
-  const feed = page.locator('.bottom-nav').getByRole('link', { name: 'Feed' });
+  const dock = page.locator('.bottom-nav');
+  const feed = dock.getByRole('link', { name: 'Feed' });
   await expect(feed).toHaveAttribute('aria-current', 'page');
   await expect(feed).toHaveCSS('text-decoration-line', 'none');
   await expect(feed.locator('.nav-label')).toHaveCSS(
     'text-decoration-line',
     'underline',
   );
-  await expect(feed.locator('.nav-icon')).toHaveCSS(
-    'text-decoration-line',
-    'none',
-  );
+  await expect(feed.locator('svg')).toHaveCount(1);
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const dockBox = await dock.boundingBox();
+    if (!dockBox) throw new Error('Dock has no visible bounds.');
+    const links = await dock.getByRole('link').all();
+    expect(links).toHaveLength(3);
+    for (const [index, link] of links.entries()) {
+      const linkBox = await link.boundingBox();
+      const iconBox = await link.locator('svg, .nav-icon').boundingBox();
+      if (!linkBox || !iconBox)
+        throw new Error('Dock tab has no visible bounds.');
+      const center = linkBox.x + linkBox.width / 2;
+      expect(center).toBeCloseTo(
+        dockBox.x + (dockBox.width * (index + 0.5)) / 3,
+        0,
+      );
+      expect(iconBox.x + iconBox.width / 2).toBeCloseTo(center, 0);
+    }
+  }
 });
 
 test('the themes persist and system mode follows the device', async ({
@@ -209,28 +451,64 @@ test('the themes persist and system mode follows the device', async ({
 }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.goto('/settings/');
+  const themePicker = page.getByRole('radiogroup', { name: 'Theme' });
+  await expect(themePicker).toBeVisible();
+  const colorMode = page.getByRole('radiogroup', { name: 'Color mode' });
+  const light = colorMode.getByRole('radio', { name: 'Light' });
+  const dark = colorMode.getByRole('radio', { name: 'Dark' });
+  const system = colorMode.getByRole('radio', { name: 'System' });
+  await expect(system).toBeChecked();
   await expect(page.locator('html')).toHaveClass(/gallery dark/);
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveClass(/gallery light/);
-  await expect(page.getByLabel('Gallery')).toBeChecked();
+  await expect(page.getByLabel('Modern')).toBeChecked();
 
-  await page.getByLabel('Nocturne').check();
+  await page.getByLabel('Romantic').check();
   await expect(page.locator('html')).toHaveClass(/nocturne light/);
-  await page.getByLabel('Dark mode').check();
+  await dark.check();
   await expect(page.locator('html')).toHaveClass(/nocturne dark/);
   await page.reload();
-  await expect(page.getByLabel('Nocturne')).toBeChecked();
-  await expect(page.getByLabel('Dark mode')).toBeChecked();
+  await expect(page.getByLabel('Romantic')).toBeChecked();
+  await expect(dark).toBeChecked();
   await expect(page.locator('html')).toHaveClass(/nocturne dark/);
 
-  await page.getByLabel('Indigo').check();
-  await expect(page.locator('html')).toHaveClass(/indigo dark/);
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await light.check();
+  await expect(page.locator('html')).toHaveClass(/nocturne light/);
+  await system.check();
+  await expect(page.locator('html')).toHaveClass(/nocturne dark/);
+  await page.reload();
+  await expect(system).toBeChecked();
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).toHaveClass(/nocturne light/);
+
+  await page.getByLabel('Technical').check();
+  await expect(page.locator('html')).toHaveClass(/indigo light/);
+  await page.reload();
+  await expect(themePicker).toBeVisible();
+  await expect(page.getByLabel('Technical')).toBeChecked();
+  await expect(page.locator('html')).toHaveClass(/indigo light/);
   await page.goto('/liked/');
-  await expect(page.locator('html')).toHaveClass(/indigo dark/);
+  await expect(page.locator('html')).toHaveClass(/indigo light/);
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
     'content',
-    THEME_COLORS.indigo.dark,
+    THEME_COLORS.indigo.light,
   );
+});
+
+test('Settings shows the saved choices before its client code loads', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('etymology-theme', 'indigo');
+    localStorage.setItem('etymology-color-mode', 'dark');
+  });
+  await page.route('**/_astro/*.js', (route) => route.abort());
+  await page.goto('/settings/');
+  await expect(page.getByRole('radiogroup', { name: 'Theme' })).toBeVisible();
+  await expect(page.getByLabel('Technical')).toBeChecked();
+  await expect(page.getByRole('radio', { name: 'Dark' })).toBeChecked();
+  await expect(page.locator('html')).toHaveClass(/indigo dark/);
 });
 
 type RecordedAnimation = {
