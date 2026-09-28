@@ -163,6 +163,52 @@ test('Feed restores the saved top card without a loading message', async ({
   await expect(top).toHaveText(next);
 });
 
+test('a cached Feed preview cannot be swiped before the saved stack loads', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const top = page.getByTestId('top-card').locator('h2');
+  const like = page.getByRole('button', { name: 'Interesting', exact: true });
+  await expect(like).toBeEnabled();
+  const savedWord = await top.innerText();
+  await page.evaluate(() => {
+    const preview = JSON.parse(
+      localStorage.getItem('etymology-stack-preview') ?? '[]',
+    );
+    preview[0] = { ...preview[0], id: 'stale-preview', word: 'Stale preview' };
+    localStorage.setItem('etymology-stack-preview', JSON.stringify(preview));
+  });
+  await page.addInitScript(() => {
+    const get = IDBObjectStore.prototype.get;
+    IDBObjectStore.prototype.get = function (query) {
+      const request = get.call(this, query);
+      if (this.name === 'stack') {
+        request.addEventListener(
+          'success',
+          (event) => {
+            event.stopImmediatePropagation();
+            setTimeout(() => request.dispatchEvent(new Event('success')), 1500);
+          },
+          { once: true },
+        );
+      }
+      return request;
+    };
+  });
+  await page.reload();
+  await expect(top).toHaveText('Stale preview');
+  await expect(like).toBeDisabled();
+  await page.keyboard.press('ArrowRight');
+  await expect(top).toHaveText('Stale preview');
+  await expect(top).toHaveText(savedWord);
+  await expect(like).toBeEnabled();
+  await expect(
+    page.getByText('The swipe could not be saved. Please try again.'),
+  ).toHaveCount(0);
+  await page.goto('/liked/');
+  await expect(page.locator('.liked-item')).toHaveCount(0);
+});
+
 test('Feed and Liked navigate without reloading the shared header', async ({
   page,
 }) => {

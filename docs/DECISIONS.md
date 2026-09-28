@@ -502,3 +502,8 @@ actual deployed version metadata separately from the backup runner's checkout,
 and whitelist nonsecret fields. Artifact checks also reject gaps in the shuffle
 index or mismatched SQL/SQLite metadata. These are launch correctness changes;
 no public deployment occurs before the reviewed merge.
+
+The merged UI's synchronous card preview stays display-only until IndexedDB
+confirms the saved stack. A delayed-storage browser regression verifies that a
+stale preview cannot receive a swipe. Account fixtures update both preview and
+saved cards, then wait for the intended card to become interactive.

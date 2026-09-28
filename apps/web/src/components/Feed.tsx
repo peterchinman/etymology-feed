@@ -223,6 +223,8 @@ export default function Feed() {
    * at once; the swiped card keeps its DOM node and flies out on its own.
    */
   function commit(direction: Direction, release?: Release) {
+    // The cached preview is display-only until IndexedDB confirms the stack.
+    if (!ready()) return;
     const card = stack()[0];
     if (!card || !deck) return;
     const element = elements.get(card);
@@ -404,7 +406,7 @@ export default function Feed() {
 
   function pointerDown(event: PointerEvent) {
     // Only a finger drags the card; mouse and pen use the buttons or keys.
-    if (event.pointerType !== 'touch' || gesture || !deck) return;
+    if (!ready() || event.pointerType !== 'touch' || gesture || !deck) return;
     const target = event.target as HTMLElement;
     if (target.closest('button, a')) return;
     const card = stack()[0];
@@ -766,7 +768,7 @@ export default function Feed() {
         <button
           class={`swipe-button skip-button${armed() === -1 ? ' is-armed' : ''}`}
           type="button"
-          disabled={!stack().length}
+          disabled={!ready() || !stack().length}
           aria-label="Not for me"
           onClick={() => commit(-1)}
         >
@@ -782,7 +784,7 @@ export default function Feed() {
         <button
           class={`swipe-button like-button${armed() === 1 ? ' is-armed' : ''}`}
           type="button"
-          disabled={!stack().length}
+          disabled={!ready() || !stack().length}
           aria-label="Interesting"
           onClick={() => commit(1)}
         >
