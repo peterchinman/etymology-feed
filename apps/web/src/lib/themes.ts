@@ -8,26 +8,20 @@ export type Theme = 'gallery' | 'nocturne' | 'indigo';
 export type ThemeOption = {
   id: Theme;
   name: string;
-  /** One line of personality, shown under the picker in Settings. */
-  blurb: string;
 };
 
 export const THEMES: readonly ThemeOption[] = [
   {
     id: 'gallery',
-    name: 'Gallery',
-    blurb: 'White on white. Soft light, Garamond, and a grotesque with hooks.',
+    name: 'Modern',
   },
   {
     id: 'nocturne',
-    name: 'Nocturne',
-    blurb:
-      'Words as light. Midnight glass, sky blue, and an italic that glows.',
+    name: 'Romantic',
   },
   {
     id: 'indigo',
-    name: 'Indigo',
-    blurb: 'The word as a diagram: a cyanotype sheet, registered and measured.',
+    name: 'Technical',
   },
 ];
 

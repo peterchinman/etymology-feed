@@ -1,14 +1,31 @@
 ---
 import '../styles/global.css';
 import AccountControls from '../components/AccountControls';
+import SettingsDialog from '../components/SettingsDialog';
 import { DEFAULT_THEME, THEME_COLORS, THEMES } from '../lib/themes';
+import { ClientRouter } from 'astro:transitions';
+import modernFont from '@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-opsz-normal.woff2?url';
+import romanticLabelFont from '@fontsource/instrument-sans/files/instrument-sans-latin-500-normal.woff2?url';
+import romanticBodyFont from '@fontsource/instrument-sans/files/instrument-sans-latin-400-normal.woff2?url';
+import romanticHeadingFont from '@fontsource/instrument-serif/files/instrument-serif-latin-400-italic.woff2?url';
+import technicalLabelFont from '@fontsource/b612-mono/files/b612-mono-latin-400-normal.woff2?url';
+import technicalHeadingFont from '@fontsource/b612-mono/files/b612-mono-latin-700-normal.woff2?url';
+import technicalBodyFont from '@fontsource/b612/files/b612-latin-400-normal.woff2?url';
 
 type Props = { title: string; page: 'feed' | 'liked' | 'settings' };
 const { title, page } = Astro.props;
 const themeIds = THEMES.map((option) => option.id);
+const settingsFonts =
+  page === 'settings'
+    ? {
+        gallery: [modernFont],
+        nocturne: [romanticLabelFont, romanticBodyFont, romanticHeadingFont],
+        indigo: [technicalLabelFont, technicalHeadingFont, technicalBodyFont],
+      }
+    : null;
 ---
 <!doctype html>
-<html lang="en" class={`${DEFAULT_THEME} light`}>
+<html lang="en" class={`${DEFAULT_THEME} light`} transition:animate="none">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -17,7 +34,10 @@ const themeIds = THEMES.map((option) => option.id);
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <title>{title} · Etymology Feed</title>
-    <script define:vars={{ themeIds, colors: THEME_COLORS, fallback: DEFAULT_THEME }}>
+    <ClientRouter fallback="swap" />
+    <script
+      define:vars={{ themeIds, colors: THEME_COLORS, fallback: DEFAULT_THEME, settingsFonts }}
+    >
       (() => {
         let theme = fallback;
         let mode = 'system';
@@ -31,35 +51,57 @@ const themeIds = THEMES.map((option) => option.id);
           // Use the device preference when localStorage is unavailable.
         }
         const root = document.documentElement;
+        if (settingsFonts) {
+          for (const href of settingsFonts[theme]) {
+            const preload = document.createElement('link');
+            preload.rel = 'preload';
+            preload.as = 'font';
+            preload.type = 'font/woff2';
+            preload.crossOrigin = 'anonymous';
+            preload.href = href;
+            document.head.append(preload);
+          }
+        }
         const systemDark = matchMedia('(prefers-color-scheme: dark)');
-        const themeColor = document.querySelector('meta[name="theme-color"]');
         root.dataset.colorMode = mode;
         const apply = () => {
           const dark = mode === 'dark' || (mode !== 'light' && systemDark.matches);
           root.classList.remove(...themeIds, 'light', 'dark');
           root.classList.add(theme, dark ? 'dark' : 'light');
-          themeColor?.setAttribute('content', colors[theme][dark ? 'dark' : 'light']);
+          document.querySelector('meta[name="theme-color"]')
+            ?.setAttribute('content', colors[theme][dark ? 'dark' : 'light']);
         };
         apply();
-        systemDark.addEventListener('change', () => {
-          if (root.dataset.colorMode !== 'system') return;
-          mode = 'system';
-          theme = themeIds.find((id) => root.classList.contains(id)) || fallback;
-          apply();
-        });
+        if (!window.__etymologyThemeNavigation) {
+          window.__etymologyThemeNavigation = true;
+          document.addEventListener('astro:before-swap', (event) => {
+            const current = document.documentElement;
+            const incoming = event.newDocument.documentElement;
+            incoming.className = current.className;
+            incoming.dataset.colorMode = current.dataset.colorMode;
+            event.newDocument.querySelector('meta[name="theme-color"]')
+              ?.setAttribute('content', document.querySelector('meta[name="theme-color"]')?.content || '');
+          });
+          systemDark.addEventListener('change', () => {
+            if (root.dataset.colorMode !== 'system') return;
+            mode = 'system';
+            theme = themeIds.find((id) => root.classList.contains(id)) || fallback;
+            apply();
+          });
+        }
       })();
     </script>
   </head>
   <body class="body-voice">
     <div class="site-shell">
       <header class="topbar">
-        <a class="brand label-voice" href="/" aria-label="Etymology Feed home">
+        <a class="brand label-voice" href="/" aria-label="Etymology Feed home" transition:persist>
           <span>Etymology Feed</span>
         </a>
         <nav class="top-nav label-voice" aria-label="Main navigation">
           <a href="/" aria-current={page === 'feed' ? 'page' : undefined}>Feed</a>
           <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}>Liked</a>
-          <a href="/?settings=1" aria-current={page === 'settings' ? 'page' : undefined}>Settings</a>
+          <a href="/settings/" data-settings-dialog-trigger aria-current={page === 'settings' ? 'page' : undefined}>Settings</a>
         </nav>
         <AccountControls client:load variant="compact" />
       </header>
@@ -76,6 +118,7 @@ const themeIds = THEMES.map((option) => option.id);
       </a>
       <a href="/settings/" aria-current={page === 'settings' ? 'page' : undefined}><span class="nav-icon" aria-hidden="true">⚙</span><span class="nav-label">Settings</span></a>
     </nav>
+    {page !== 'settings' && <SettingsDialog client:load />}
     <script>
       if ('serviceWorker' in navigator && import.meta.env.PROD) {
         window.addEventListener('load', () => {

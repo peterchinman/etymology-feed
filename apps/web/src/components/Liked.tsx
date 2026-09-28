@@ -12,6 +12,7 @@ import { drainSync } from '../lib/sync';
 
 export default function Liked() {
   const [swipes, setSwipes] = createSignal<LocalSwipe[]>([]);
+  const [loaded, setLoaded] = createSignal(false);
   const [query, setQuery] = createSignal('');
   const [open, setOpen] = createSignal<string | null>(null);
   const [online, setOnline] = createSignal(true);
@@ -61,8 +62,14 @@ export default function Liked() {
       sessionStorage.getItem('etymology-anon-banner-dismissed') !== '1',
     );
     void getSwipes()
-      .then(setSwipes)
-      .catch(() => setError('Could not open your saved words.'));
+      .then((saved) => {
+        setSwipes(saved);
+        setLoaded(true);
+      })
+      .catch(() => {
+        setError('Could not open your saved words.');
+        setLoaded(true);
+      });
     void getAccount()
       .then(async (account) => {
         setRegistered(!account.user.isAnonymous);
@@ -150,30 +157,32 @@ export default function Liked() {
       <Show
         when={visible().length}
         fallback={
-          <div class="liked-empty">
-            <svg class="heart-icon" aria-hidden="true" viewBox="0 0 256 256">
-              <rect width="256" height="256" fill="none" />
-              <path
-                d="M128,224l89.36-90.64a50,50,0,1,0-70.72-70.72L128,80,109.36,62.64a50,50,0,0,0-70.72,70.72Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="16"
-              />
-            </svg>
-            <h2 class="display-voice">
-              {query() ? 'No matching words.' : 'Your list begins here.'}
-            </h2>
-            <p class="body-voice">
-              {query()
-                ? 'Try another search.'
-                : 'Swipe right on a word that stays with you.'}
-            </p>
-            <a class="label-voice" href="/">
-              Explore the feed →
-            </a>
-          </div>
+          <Show when={loaded()}>
+            <div class="liked-empty">
+              <svg class="heart-icon" aria-hidden="true" viewBox="0 0 256 256">
+                <rect width="256" height="256" fill="none" />
+                <path
+                  d="M128,224l89.36-90.64a50,50,0,1,0-70.72-70.72L128,80,109.36,62.64a50,50,0,0,0-70.72,70.72Z"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="16"
+                />
+              </svg>
+              <h2 class="display-voice">
+                {query() ? 'No matching words.' : 'Your list begins here.'}
+              </h2>
+              <p class="body-voice">
+                {query()
+                  ? 'Try another search.'
+                  : 'Swipe right on a word that stays with you.'}
+              </p>
+              <a class="label-voice" href="/">
+                Explore the feed →
+              </a>
+            </div>
+          </Show>
         }
       >
         <div class="liked-list">
@@ -237,7 +246,7 @@ export default function Liked() {
                 <Show when={open() === swipe.id}>
                   <div class="definition">
                     <span class="definition-label label-voice">
-                      {swipe.card.pos.join(' · ') || swipe.card.defPos}
+                      {swipe.card.defPos}
                     </span>
                     <p class="reading-voice">{swipe.card.definition}</p>
                   </div>
