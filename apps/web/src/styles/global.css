@@ -885,6 +885,9 @@ a {
   .liked-page {
     padding-top: calc(var(--space-4) + env(safe-area-inset-top));
   }
+  .liked-page:not(:has(.anon-banner, .offline-note)) .liked-tools {
+    margin-top: 0;
+  }
   .settings-screen {
     padding-top: calc(var(--space-5) + env(safe-area-inset-top));
   }
