@@ -1,5 +1,10 @@
 from pathlib import Path
 import sqlite3
+import copy
+import json
+import shutil
+from unittest.mock import patch
+import production
 import tempfile
 import unittest
 from production import check_membership, prepare, verify
@@ -57,6 +62,121 @@ class ReleaseTests(unittest.TestCase):
             db.execute("DELETE FROM word WHERE id='bluff::second'")
         with self.assertRaisesRegex(ValueError, 'removes 1 cards'):
             check_membership(previous, candidate)
+
+
+class ReleaseRecoveryTests(unittest.TestCase):
+    """Exercise the real release coordinator, substituting only external I/O."""
+
+    def test_failed_release_and_retry_preserve_statistics(self):
+        for failure in ("seed", "pointer", "deploy", "smoke"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                assets = {}
+                for tag, extra in (("feed-old", False), ("feed-new", True)):
+                    directory = root / tag
+                    directory.mkdir()
+                    with sqlite3.connect(directory / "etymology.db") as db:
+                        db.executescript("""
+                            CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT);
+                            INSERT INTO meta VALUES('source_published','true');
+                            CREATE TABLE word(id TEXT PRIMARY KEY,prior REAL,shuffle INTEGER);
+                            INSERT INTO word VALUES('bluff',0.6,1),('bluff::second',0.7,2);
+                        """)
+                        if extra:
+                            db.execute("INSERT INTO word VALUES('new-card',0.8,3)")
+                        db.execute("INSERT INTO meta VALUES('row_count',?)", (str(3 if extra else 2),))
+                        (directory / "etymology.sql").write_text("\n".join(db.iterdump()))
+                    (directory / "etymology-report.txt").write_text("fixture")
+                    prepare(directory)
+                    assets[tag] = directory
+                app = sqlite3.connect(":memory:")
+                self.addCleanup(app.close)
+                app.executescript("CREATE TABLE word_stats(card_id TEXT PRIMARY KEY,likes INTEGER,dislikes INTEGER,prior REAL,score REAL,updated_at INTEGER);")
+                app.executescript((assets["feed-old"] / "word-stats.sql").read_text())
+                app.execute("UPDATE word_stats SET likes=8,dislikes=2,score=0.9,updated_at=123 WHERE card_id='bluff'")
+                previous = {"database_id": "00000000-0000-0000-0000-000000000000",
+                            "database_name": "old-dict", "release": "feed-old"}
+                state = copy.deepcopy(previous)
+                deployed = copy.deepcopy(previous)
+                names = []
+                databases = {}
+                failed = False
+                runtime = root / "runtime.json"
+
+                def render():
+                    cfg = {"d1_databases": [{"binding": "DICT", **state}, {"binding": "APP"}],
+                           "vars": {"DICT_RELEASE": state["release"]}}
+                    runtime.write_text(json.dumps(cfg))
+                    return cfg, copy.deepcopy(state)
+
+                def save_state(candidate):
+                    nonlocal state, failed
+                    state = copy.deepcopy(candidate)
+                    if failure == "pointer" and not failed and state["release"] == "feed-new":
+                        failed = True
+                        raise RuntimeError("injected pointer failure after write")
+
+                def run(*args, **kwargs):
+                    nonlocal failed
+                    if args[:3] == ("gh", "release", "download"):
+                        directory = Path(args[args.index("--dir") + 1])
+                        shutil.copytree(assets[args[3]], directory, dirs_exist_ok=True)
+                    elif args[:2] == ("node", "scripts/smoke-production.mjs"):
+                        if failure == "smoke" and not failed and deployed["release"] == "feed-new":
+                            # A rating arrives while the new Worker is serving.
+                            app.execute("UPDATE word_stats SET likes=1,score=0.667,updated_at=456 WHERE card_id='new-card'")
+                            failed = True
+                            raise RuntimeError("injected smoke failure")
+                    else:
+                        self.fail(f"Unexpected external command: {args}")
+
+                def wrangler(*args, **kwargs):
+                    nonlocal deployed, failed
+                    cfg = json.loads(runtime.read_text())
+                    if args[:2] == ("d1", "create"):
+                        names.append(args[2])
+                        database_id = f"00000000-0000-0000-0000-{len(names):012d}"
+                        databases[database_id] = sqlite3.connect(":memory:")
+                        self.addCleanup(databases[database_id].close)
+                        return json.dumps({"database_id": database_id})
+                    if args[:2] == ("d1", "execute"):
+                        db = app if args[2] == "APP" else databases[cfg["d1_databases"][0]["database_id"]]
+                        if "--file" in args:
+                            db.executescript(Path(args[args.index("--file") + 1]).read_text())
+                            if failure == "seed" and not failed and args[2] == "APP":
+                                failed = True
+                                raise RuntimeError("injected seed failure after write")
+                        else:
+                            n = db.execute(args[args.index("--command") + 1]).fetchone()[0]
+                            return json.dumps([{"results": [{"n": n}]}])
+                    elif args[:3] == ("d1", "migrations", "apply"):
+                        pass
+                    elif args == ("deploy",):
+                        deployed = copy.deepcopy(state)
+                        if failure == "deploy" and not failed and state["release"] == "feed-new":
+                            failed = True
+                            raise RuntimeError("injected deploy failure after activation")
+                    else:
+                        self.fail(f"Unexpected Wrangler command: {args}")
+
+                with patch.multiple(production, render=render, save_state=save_state,
+                                    run=run, wrangler=wrangler, RUNTIME=runtime):
+                    with self.assertRaisesRegex(RuntimeError, "injected"):
+                        production.release("feed-new")
+                    self.assertEqual(state, previous)
+                    self.assertEqual(deployed, previous)
+                    before_retry = app.execute("SELECT * FROM word_stats ORDER BY card_id").fetchall()
+                    self.assertEqual(len(before_retry), 3)
+                    production.release("feed-new")
+                    self.assertEqual(state["release"], "feed-new")
+                    self.assertEqual(deployed, state)
+                    self.assertEqual(app.execute("SELECT * FROM word_stats ORDER BY card_id").fetchall(), before_retry)
+                    self.assertEqual(len(set(names)), 2, "Retry must use a fresh immutable DICT")
+                    self.assertEqual(app.execute("SELECT likes,dislikes,score,updated_at FROM word_stats WHERE card_id='bluff'").fetchone(), (8,2,0.9,123))
+                    # An interrupted job retried after the pointer was saved is idempotent.
+                    production.release("feed-new")
+                    self.assertEqual(len(names), 2)
+                    self.assertEqual(app.execute("SELECT * FROM word_stats ORDER BY card_id").fetchall(), before_retry)
 
 
 if __name__ == '__main__':

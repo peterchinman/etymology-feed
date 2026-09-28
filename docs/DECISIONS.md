@@ -470,3 +470,19 @@ resources were removed. RUNBOOK records the evidence and the limitation that
 this snapshot preceded real user data. Public deployment, real OAuth checks,
 and initial feed artifact publication remain pending PR review. Automatic
 releases currently refuse removed card IDs until retired membership is modeled.
+
+
+## 2026-09-28 — Preserve shared ratings through dictionary rollback (M5)
+
+A failed dictionary release can leave new statistics in APP, and the candidate
+Worker may already have accepted ratings. Keep those rows. Feed batches now
+resolve their selected IDs against the active immutable DICT before filling
+missing slots from its shuffle index. Cached candidates and served history from
+other releases cannot imply dictionary exhaustion. Recovery scans are bounded
+at 1,000 extra rows; normal complete-pool requests retain their existing cost.
+
+The release coordinator also restores the previous pointer after ambiguous
+pointer-write failures and gives every retry a unique DICT name. Local tests
+inject failures at seed, pointer, deployment, and smoke-check boundaries, then
+retry without resetting either old ratings or ratings received on the candidate.
+The production smoke check now requires a full, distinct 100-card feed.

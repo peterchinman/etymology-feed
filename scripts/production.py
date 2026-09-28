@@ -8,6 +8,7 @@ import re
 import sqlite3
 import subprocess
 import tempfile
+from uuid import uuid4
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -157,7 +158,7 @@ def release(tag):
             raise ValueError("Previous dictionary checksum mismatch")
         check_membership(old_directory / "etymology.db", directory / "etymology.db")
         suffix = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        name = f"etymology-feed-dict-{suffix}"
+        name = f"etymology-feed-dict-{suffix}-{uuid4().hex[:8]}"
         created = wrangler("d1", "create", name, "--location", "enam", "--update-config=false", capture=True)
         match = re.search(r'"database_id":\s*"([0-9a-f-]+)"', created)
         if not match:
@@ -174,8 +175,10 @@ def release(tag):
         wrangler("d1", "execute", "APP", "--remote", "--file", directory / "word-stats.sql", "-y")
         # State is durable across ordinary app deploys; workflow concurrency holds
         # the same lock for this switch, migrations, deploys, and backups.
-        save_state(candidate)
         try:
+            # Include the pointer write: a failed response can still mean the
+            # object changed remotely. Restore the previous desired state too.
+            save_state(candidate)
             deploy()
         except Exception:
             save_state(previous)

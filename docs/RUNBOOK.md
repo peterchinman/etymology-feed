@@ -83,7 +83,9 @@ python3 scripts/production.py deploy
 ```
 
 This resolves current DICT, applies APP migrations, deploys the Worker and custom
-domain, then tests HTTPS, health, the static shell, and both paired Bluffs.
+domain, then tests HTTPS, health, the static shell, both paired Bluffs, and a full
+100-card feed. The feed check creates one anonymous session/served record and
+does not submit ratings.
 Check real sign-in for both providers, anonymous-to-account reconciliation,
 cross-device likes, account deletion, and offline reconnection after launch.
 Local mocked OAuth tests do not prove provider-console settings are correct.
@@ -107,14 +109,27 @@ into main. Do not publish the initial tag before the production PR is merged.
 The release workflow checks provenance, hashes, SQL/SQLite equality, seed contents,
 and membership against the previous release. It imports a new immutable DICT,
 seeds missing statistics without resetting ratings, updates the R2 pointer,
-and deploys. The previous DICT is retained. A deployment failure attempts to
-restore the previous pointer and deployment; it does not undo APP writes.
+and deploys. The previous DICT is retained. A pointer-write or deployment failure
+attempts to restore the previous pointer and deployment; it does not undo APP
+writes. Every import attempt gets a unique DICT name, including quick retries.
 
 Current limitation: releases removing existing card IDs are refused before remote
 changes. Retired-card membership needs explicit support before such releases can
-be automated. After any failed release that seeded new IDs, inspect APP pool
-membership before retrying or returning to the previous dictionary; dictionary
-rollback alone does not roll back statistics. Do not delete historical ratings.
+be automated. Seeded IDs and ratings from a failed release remain in APP. The
+feed resolves candidates against its active DICT and fills missing slots from
+that dictionary, without deleting ratings or recording unavailable IDs as served.
+Recovery reads at most 1,000 additional dictionary rows in indexed pages; normal
+requests with complete pools keep their existing read budget. If this bounded
+scan cannot fill the batch and has not exhausted the dictionary, it returns a
+retryable 503 without writing served history. IDs known from a different release
+do not count as proof of dictionary exhaustion.
+
+Local failure-injection tests cover seed, pointer-write, deployment, and smoke
+check failures followed by retry; Worker/D1 integration tests cover full batches,
+nonrepetition, and preservation of a like received before rollback. If rollback
+itself fails, stop further release operations, inspect the retained databases and
+R2 pointer, and rerun the deployment for the intended release. Do not delete APP
+statistics to make rollback work.
 
 ## Private backups
 

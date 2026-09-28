@@ -11,4 +11,11 @@ assert.equal(cards.length, 2, 'Both Bluff origins');
 assert.equal(new Set(cards.map((card) => card.id)).size, 2);
 assert.notEqual(cards[0].definition, cards[1].definition);
 assert.equal((await fetch(origin)).status, 200, 'Static app shell');
-console.log('HTTPS, health, app shell, and both paired Bluffs passed.');
+// Exercise active DICT + shared APP + cached pools, not just dictionary lookup.
+// This creates one anonymous session/served record; it does not submit ratings.
+const feed = await fetch(`${origin}/api/feed?n=100`);
+assert.equal(feed.status, 200, 'Feed check');
+const batch = (await feed.json()).cards;
+assert.equal(batch.length, 100, 'Complete feed after dictionary switch');
+assert.equal(new Set(batch.map((card) => card.id)).size, 100);
+console.log('HTTPS, health, app shell, both paired Bluffs, and a full feed passed.');
