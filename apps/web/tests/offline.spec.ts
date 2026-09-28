@@ -531,10 +531,14 @@ test('holding or double-tapping the text selects a word and holds the card still
   const selected = () => page.evaluate(() => getSelection()?.toString() ?? '');
   const touch = await finger(page);
 
-  await touch.hold(x, y);
-  await expect.poll(selected).toMatch(/^\S+$/);
-  await touch.tap(x + 150, y + 150);
-  await expect.poll(selected).toBe('');
+  // Desktop Linux Chrome does not implement native touch long-press selection.
+  // The macOS CI job covers it; app-provided double tap runs on both platforms.
+  if (process.platform === 'darwin') {
+    await touch.hold(x, y);
+    await expect.poll(selected).toMatch(/^\S+$/);
+    await touch.tap(x + 150, y + 150);
+    await expect.poll(selected).toBe('');
+  }
 
   await touch.tap(x, y);
   await page.waitForTimeout(90);

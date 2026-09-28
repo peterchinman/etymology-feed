@@ -1,0 +1,97 @@
+{
+  "name": "etymology-feed",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-25",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "directory": "../web/dist",
+    "run_worker_first": [
+      "/api/*",
+      "/auth/*",
+      "/healthz"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DICT",
+      "database_name": "etymology-feed-dict-20260928-v4",
+      "database_id": "bbcea6f6-1c37-4ed4-bad0-dbac396bc425"
+    },
+    {
+      "binding": "APP",
+      "database_name": "etymology-feed-app",
+      "database_id": "a0961bd8-4f99-4af7-b1da-2f00cd82b44d",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "CACHE",
+      "id": "4fa55f4da70f460ca8d2dca9117361c4"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "FEED_RATE",
+      "namespace_id": "101",
+      "simple": {
+        "limit": 10,
+        "period": 10
+      }
+    },
+    {
+      "name": "SYNC_RATE",
+      "namespace_id": "102",
+      "simple": {
+        "limit": 20,
+        "period": 10
+      }
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
+  "vars": {
+    "CONFIRMED_SLOTS": 6,
+    "PROMISING_SLOTS": 6,
+    "FRESH_SLOTS": 6,
+    "WILD_SLOTS": 2,
+    "MIN_RATINGS": 5,
+    "DISLIKE_WEIGHT": 0.25,
+    "CONFIRM_SCORE": 0.55,
+    "PARK_LOOKS": 15,
+    "SERVED_CAP": 30000,
+    "CONFIRMED_POOL_SIZE": 3000,
+    "PROMISING_POOL_SIZE": 3000,
+    "FRESH_POOL_SIZE": 3000,
+    "BETTER_AUTH_URL": "https://etymologyfeed.com",
+    "DICT_RELEASE": "feed-2026-09-28-v4"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  },
+  "account_id": "718c6831c05a1caaaa1cbea88dd211c2",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "etymologyfeed.com",
+      "custom_domain": true
+    }
+  ],
+  "limits": {
+    "cpu_ms": 50
+  }
+}

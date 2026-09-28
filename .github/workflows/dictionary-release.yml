@@ -1,0 +1,46 @@
+name: Release dictionary
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published feed-* release to deploy
+        required: true
+permissions:
+  contents: read
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.release.tag_name, 'feed-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    concurrency:
+      group: etymology-production
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: '718c6831c05a1caaaa1cbea88dd211c2'
+      GH_TOKEN: ${{ github.token }}
+      FEED_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Require release code to have been merged
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          git merge-base --is-ancestor "refs/tags/$FEED_TAG" HEAD
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm run build:web
+      - name: Validate, import, seed, and switch the dictionary
+        run: python3 scripts/production.py release "$FEED_TAG"
