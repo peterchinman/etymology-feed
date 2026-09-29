@@ -569,3 +569,19 @@ limit, existing bounded shuffle recovery keeps name-heavy or stale ranked pools
 from blocking the feed and preserves dictionary rollback behavior. Filtered and
 missing IDs never enter served history. Tests cover lane proportions, no repeats,
 read costs, the limit, and existing rollback recovery.
+
+
+## 2026-09-29 — Reduce duplicate CI and stabilize browser fixtures
+
+Run the complete suite on Linux and only the native-touch selection case on
+macOS. Keep existing check names and deployment/release gates. Remove the
+standalone main-push trigger because Deploy production already invokes the same
+checks. Reuse Chrome after a real launch probe, and seed the small APP fixture in
+one statement instead of starting Wrangler six times.
+
+Keep browser coverage for persistence, offline operation, identity, accounts, and
+real input. Drop decorative/demo checks and duplicate animation assertions; wire
+the existing swipe and text-selection unit tests into CI. Seed decks only after
+leaving the active Feed and intercept service-worker requests at context scope.
+Retain failure traces and screenshots rather than enabling automatic retries. See
+TESTING.md for commands, coverage, the measured baseline, and fixture rules.
