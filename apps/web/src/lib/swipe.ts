@@ -15,6 +15,8 @@ export type Direction = 1 | -1;
 export const SWIPE = {
   /** Pointer travel before a drag is recognized (px). */
   slop: 10,
+  /** Vertical travel must clearly dominate before a gesture becomes a scroll. */
+  scrollBias: 1.25,
   /** A touch shorter than this that stays within `slop` is a tap (ms). */
   tapTime: 300,
   /** Two taps this close in time and space are a double tap (ms, px). */
