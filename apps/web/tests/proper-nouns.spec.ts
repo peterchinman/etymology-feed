@@ -42,7 +42,7 @@ test('proper nouns default off, toggle immediately, and remain available offline
     defPos: 'noun',
     pos: ['noun'],
   };
-  await page.route('**/api/feed?*', (route) =>
+  await context.route('**/api/feed?*', (route) =>
     route.fulfill({ json: { cards: [] } }),
   );
   await putCardsOnStack(

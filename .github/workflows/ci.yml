@@ -2,8 +2,7 @@ name: App checks
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  # main is checked once by deploy.yml through workflow_call before deployment.
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -38,27 +37,52 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - uses: actions/setup-python@v5
+        if: runner.os == 'Linux'
         with:
           python-version: '3.12'
       - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck:shared
-      - run: npm run typecheck:api
-      - run: npm run typecheck:web
-      - run: npm run test:shared
-      - run: npm run test:dictionary
-      - run: npm run test:report -w @etymology-feed/api
-      - run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
-      - run: node --test scripts/*.test.mjs
+      - if: runner.os == 'Linux'
+        run: npm run lint
+      - if: runner.os == 'Linux'
+        run: npm run typecheck:shared
+      - if: runner.os == 'Linux'
+        run: npm run typecheck:api
+      - if: runner.os == 'Linux'
+        run: npm run typecheck:web
+      - if: runner.os == 'Linux'
+        run: npm run test:unit
+      - if: runner.os == 'Linux'
+        run: npm run test:dictionary
+      - if: runner.os == 'Linux'
+        run: npm run test:report -w @etymology-feed/api
+      - if: runner.os == 'Linux'
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
+      - if: runner.os == 'Linux'
+        run: node --test scripts/*.test.mjs
       - run: npm run build:web
-      - run: npm run test:api
-      - name: Install the browser used by the offline and account tests
-        run: npx --no-install playwright install --with-deps chrome
-      - name: Test offline use and account reconciliation with local D1
+      - if: runner.os == 'Linux'
+        run: npm run test:api
+      - name: Use the runner's Chrome or install it if unavailable
+        run: node apps/web/scripts/ensure-browser.mjs
+      - name: Test app behavior with local D1
+        if: runner.os == 'Linux'
         run: npx --no-install playwright test --config apps/web/playwright.config.ts
+      - name: Test native touch selection on macOS
+        if: runner.os == 'macOS'
+        run: npx --no-install playwright test --config apps/web/playwright.config.ts --grep @native
+      - name: Keep browser failure traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failures-${{ matrix.os }}
+          path: apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Validate Worker packaging without deploying
+        if: runner.os == 'Linux'
         working-directory: apps/api
         run: npx --no-install wrangler deploy --dry-run
       - name: Validate production Worker packaging
+        if: runner.os == 'Linux'
         working-directory: apps/api
         run: npx --no-install wrangler deploy --config wrangler.production.json --dry-run

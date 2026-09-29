@@ -1,0 +1,64 @@
+# Testing and CI
+
+Run the cheapest relevant checks first:
+
+```sh
+npm run test:unit       # scoring, card eligibility, swipe math, text selection
+npm run test:api        # real Workers runtime and local D1
+npm run test:dictionary # source selection and dictionary construction
+npm run test:e2e        # built app, local D1, mock OAuth, Chrome
+```
+
+Use Node 24. For browser tests, `node apps/web/scripts/ensure-browser.mjs`
+checks the installed Chrome and installs it only if it cannot launch. Set
+`ETYMOLOGY_E2E_PORT` when the default port is in use. Each port uses a separate
+local D1 directory; none of these tests read the deployed database.
+
+## Coverage and cost
+
+- Linux runs lint, type checks, all unit/API/data/release tests, the browser suite,
+  and development/production Worker packaging checks.
+- macOS runs the one `@native` browser test for native long-press selection,
+  double-tap selection, and suppressing swipes while text is selected. Linux Chrome
+  does not provide native touch long-press selection.
+- PRs run App checks. A merge runs the same reusable checks through Deploy
+  production before deployment; App checks does not also trigger on that push.
+  Dictionary releases still check the exact main commit they will deploy.
+
+Keep browser tests for saved data, offline reload/reconnection, account merging,
+settings, and actual browser input behavior. Use fast unit tests for gesture and
+selection algorithms. Avoid browser assertions about exact animation duration,
+easing strings, decorative spacing, or development-only demos. The existing swipe
+and selection unit tests are included in `test:unit`, alongside shared tests.
+
+The September 29 baseline ran 31 browser cases on each OS, twice per main merge
+(standalone App checks and Deploy production). One successful PR run took 2m43s
+on Linux and 3m06s on macOS; Chrome reinstallation alone took 34–38 seconds.
+The cleanup runs 27 browser cases on Linux and one on macOS, once per main merge,
+reuses a working installed Chrome, and seeds APP with one fixture statement.
+
+## Reliable fixtures
+
+Use `putCardsOnStack` for a specific deck. It leaves the live Feed before replacing
+IndexedDB, intercepts background feed requests, updates both saved state and the
+display preview, then waits for the intended etymology to become interactive.
+Do not write a fixture underneath a running feed or equate headwords with card IDs.
+Wait for stored swipes, including their card IDs where identity matters, before
+navigating away.
+
+Use `context.route` when a real service worker is involved: page routes do not
+intercept its network requests. See [Playwright's service-worker routing guide](https://playwright.dev/docs/service-workers#network-events-and-routing).
+Keep real service workers in offline tests. A focused test that explicitly blocks
+them must not claim to cover offline shell caching.
+
+Retries stay disabled. Failures retain a Playwright trace and screenshot under
+`apps/web/test-results`; CI uploads these for seven days. Inspect the failing
+action and stored state before rerunning or changing a timeout:
+
+```sh
+npx playwright show-trace path/to/trace.zip
+```
+
+One browser worker avoids collisions between tests sharing the local API and mock
+sign-in account. Separate browser contexts isolate each test's cookies and storage.
+Do not parallelize this suite without also isolating its server-side fixtures.

@@ -5,8 +5,8 @@ import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 
 const api = resolve(import.meta.dirname, '../../api');
-const persist = resolve(api, '.wrangler/e2e');
 const port = process.env.ETYMOLOGY_E2E_PORT ?? '8787';
+const persist = resolve(api, `.wrangler/e2e-${port}`);
 const oauthPort = String(Number(port) + 1);
 const issuer = `http://127.0.0.1:${oauthPort}`;
 const wrangler = resolve(
@@ -64,29 +64,28 @@ if (wordsResult.status !== 0) {
 }
 const words = JSON.parse(wordsResult.stdout)[0].results;
 const quote = (value) => `'${value.replaceAll("'", "''")}'`;
-for (let i = 0; i < words.length; i += 100) {
-  const rows = words
-    .slice(i, i + 100)
-    .map(({ id, prior }) => `(${quote(id)},0,0,${Number(prior)},0.5,0)`)
-    .join(',');
-  const seeded = spawnSync(
-    wrangler,
-    [
-      'd1',
-      'execute',
-      'APP',
-      '--local',
-      '--persist-to',
-      persist,
-      '--command',
-      `INSERT INTO word_stats (card_id,likes,dislikes,prior,score,updated_at) VALUES ${rows}`,
-    ],
-    { cwd: api, encoding: 'utf8' },
-  );
-  if (seeded.status !== 0) {
-    process.stderr.write(seeded.stdout + seeded.stderr);
-    process.exit(seeded.status ?? 1);
-  }
+// The small fixture fits in one SQL statement. Starting Wrangler for every
+// hundred rows dominated local server setup time.
+const rows = words
+  .map(({ id, prior }) => `(${quote(id)},0,0,${Number(prior)},0.5,0)`)
+  .join(',');
+const seeded = spawnSync(
+  wrangler,
+  [
+    'd1',
+    'execute',
+    'APP',
+    '--local',
+    '--persist-to',
+    persist,
+    '--command',
+    `INSERT INTO word_stats (card_id,likes,dislikes,prior,score,updated_at) VALUES ${rows}`,
+  ],
+  { cwd: api, encoding: 'utf8' },
+);
+if (seeded.status !== 0) {
+  process.stderr.write(seeded.stdout + seeded.stderr);
+  process.exit(seeded.status ?? 1);
 }
 const { privateKey, publicKey } = generateKeyPairSync('rsa', {
   modulusLength: 2048,

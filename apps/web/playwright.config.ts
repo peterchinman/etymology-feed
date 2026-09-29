@@ -4,7 +4,11 @@ export default defineConfig({
   testDir: './tests',
   timeout: 90_000,
   expect: { timeout: 10_000 },
+  // Expose intermittent failures; retained traces make a rerun unnecessary for diagnosis.
   retries: 0,
+  outputDir: decodeURIComponent(
+    new URL('./test-results', import.meta.url).pathname,
+  ),
   workers: 1,
   reporter: 'list',
   use: {
@@ -12,6 +16,8 @@ export default defineConfig({
     browserName: 'chromium',
     channel: 'chrome',
     headless: true,
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
