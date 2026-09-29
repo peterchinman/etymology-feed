@@ -22,6 +22,35 @@ async function signInWithMockProvider(page: Page) {
   ).toBe(false);
 }
 
+test('signed-in Settings stays visible across repeat navigation', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await signInWithMockProvider(page);
+  const nav = page.locator('.bottom-nav');
+
+  for (let visit = 0; visit < 3; visit++) {
+    await nav.getByRole('link', { name: 'Settings' }).click();
+    await expect(page).toHaveURL(/\/settings\/$/);
+    await expect(
+      page.getByRole('radiogroup', { name: 'Theme', exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('radiogroup', { name: 'Color mode' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('switch', { name: 'Include proper nouns' }),
+    ).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    await page.getByRole('radio', { name: 'Dark', exact: true }).check();
+    await expect(page.locator('html')).toHaveClass(/dark/);
+    await nav.getByRole('link', { name: 'Liked' }).click();
+    await expect(page).toHaveURL(/\/liked\/$/);
+  }
+  expect(errors).toEqual([]);
+});
+
 test('offline guest likes survive sign-in and union with a second device', async ({
   page,
   browser,
