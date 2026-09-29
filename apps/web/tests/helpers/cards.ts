@@ -6,6 +6,15 @@ export async function putCardsOnStack(
   cards: Card[],
   firstVisible = cards[0],
 ) {
+  // Stop the live feed before replacing its database, and intercept worker-owned
+  // requests as well as page requests. Otherwise a refill can race this fixture.
+  await page
+    .context()
+    .route('**/api/feed?*', (route) => route.fulfill({ json: { cards: [] } }));
+  await page.goto('/settings/');
+  await expect(
+    page.getByRole('switch', { name: 'Include proper nouns' }),
+  ).toBeEnabled();
   await page.evaluate(async (pair) => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('etymology-feed');
@@ -29,9 +38,12 @@ export async function putCardsOnStack(
       JSON.stringify(pair.slice(0, 2)),
     );
   }, cards);
-  await page.reload();
+  await page.goto('/');
   await expect(page.getByTestId('top-card').locator('h2')).toHaveText(
     firstVisible.word,
+  );
+  await expect(page.getByTestId('top-card').locator('.etymology')).toHaveText(
+    firstVisible.etymology,
   );
   await expect(
     page.getByRole('button', { name: 'Interesting', exact: true }),
