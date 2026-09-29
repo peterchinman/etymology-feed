@@ -585,3 +585,12 @@ the existing swipe and text-selection unit tests into CI. Seed decks only after
 leaving the active Feed and intercept service-worker requests at context scope.
 Retain failure traces and screenshots rather than enabling automatic retries. See
 TESTING.md for commands, coverage, the measured baseline, and fixture rules.
+
+## 2026-09-29 — Make Liked cards scroll with the page
+
+A nested etymology scroller intercepts vertical reading gestures on mobile. Show
+the paired definition directly under the headword and clamp long definition and
+etymology text with separate inline See more controls. Expanding text grows its
+Liked card in the page flow. Use the Feed footer component for the Wiktionary
+source and cached positive like count, preserving per-etymology source links and
+older offline cards without count snapshots.

@@ -9,18 +9,74 @@ import {
 import { getAccount, reconcileAccountLikes } from '../lib/account';
 import { getSwipes, type LocalSwipe, removeSwipe } from '../lib/local';
 import { drainSync } from '../lib/sync';
+import CardFooter from './CardFooter';
+import ExpandableText from './ExpandableText';
+
+function LikedCard(props: { swipe: LocalSwipe; onRemove: () => void }) {
+  let touch: { x: number; y: number } | null = null;
+  const swipe = props.swipe;
+  return (
+    <article
+      class="liked-item"
+      onPointerDown={(event) => {
+        if (event.pointerType === 'touch')
+          touch = { x: event.clientX, y: event.clientY };
+      }}
+      onPointerCancel={() => {
+        touch = null;
+      }}
+      onPointerUp={(event) => {
+        if (!touch) return;
+        const dx = event.clientX - touch.x;
+        const dy = event.clientY - touch.y;
+        touch = null;
+        if (dx < -80 && Math.abs(dx) > Math.abs(dy)) props.onRemove();
+      }}
+    >
+      <div class="liked-item-main word-head">
+        <h2 class="display-voice">{swipe.word}</h2>
+        <button
+          type="button"
+          class="remove-button"
+          aria-label={`Remove ${swipe.word} from Liked`}
+          onClick={props.onRemove}
+        >
+          ×
+        </button>
+      </div>
+      <div class="definition">
+        <span class="definition-label label-voice">{swipe.card.defPos}</span>
+        <ExpandableText
+          text={swipe.card.definition}
+          id={`liked-definition-${swipe.id}`}
+          label="definition"
+          className="liked-definition"
+        />
+      </div>
+      <ExpandableText
+        text={swipe.card.etymology}
+        id={`liked-etymology-${swipe.id}`}
+        label="etymology"
+        className="liked-etymology"
+      />
+      <CardFooter
+        word={swipe.word}
+        etymNo={swipe.card.etymNo}
+        likeCount={swipe.card.likeCount}
+      />
+    </article>
+  );
+}
 
 export default function Liked() {
   const [swipes, setSwipes] = createSignal<LocalSwipe[]>([]);
   const [loaded, setLoaded] = createSignal(false);
   const [query, setQuery] = createSignal('');
-  const [open, setOpen] = createSignal<string | null>(null);
   const [online, setOnline] = createSignal(true);
   const [accountLoaded, setAccountLoaded] = createSignal(false);
   const [registered, setRegistered] = createSignal(false);
   const [copied, setCopied] = createSignal(false);
   const [error, setError] = createSignal('');
-  let touch: { id: string; x: number; y: number } | null = null;
   const liked = createMemo(() =>
     swipes().filter((swipe) => swipe.verdict === 1 && !swipe.removed),
   );
@@ -171,70 +227,7 @@ export default function Liked() {
         <div class="liked-list">
           <For each={visible()}>
             {(swipe) => (
-              <article
-                class="liked-item"
-                onPointerDown={(event) => {
-                  if (event.pointerType === 'touch')
-                    touch = {
-                      id: swipe.id,
-                      x: event.clientX,
-                      y: event.clientY,
-                    };
-                }}
-                onPointerUp={(event) => {
-                  if (!touch || touch.id !== swipe.id) return;
-                  const dx = event.clientX - touch.x;
-                  const dy = event.clientY - touch.y;
-                  touch = null;
-                  if (dx < -80 && Math.abs(dx) > Math.abs(dy))
-                    void remove(swipe.id);
-                }}
-              >
-                <div class="liked-item-main">
-                  <div>
-                    <h2 class="display-voice">
-                      <a
-                        class="word-source"
-                        href={`https://en.wiktionary.org/wiki/${encodeURIComponent(swipe.word)}${swipe.card.etymNo ? `#Etymology_${swipe.card.etymNo}` : ''}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={`View ${swipe.word} on Wiktionary`}
-                      >
-                        {swipe.word}
-                      </a>
-                    </h2>
-                  </div>
-                  <button
-                    type="button"
-                    class="remove-button"
-                    aria-label={`Remove ${swipe.word} from Liked`}
-                    onClick={() => void remove(swipe.id)}
-                  >
-                    ×
-                  </button>
-                </div>
-                <p class="liked-etymology reading-voice">
-                  {swipe.card.etymology}
-                </p>
-                <button
-                  type="button"
-                  class="definition-toggle label-voice"
-                  aria-expanded={open() === swipe.id}
-                  onClick={() => setOpen(open() === swipe.id ? null : swipe.id)}
-                >
-                  {open() === swipe.id
-                    ? 'Hide definition −'
-                    : 'Show definition +'}
-                </button>
-                <Show when={open() === swipe.id}>
-                  <div class="definition">
-                    <span class="definition-label label-voice">
-                      {swipe.card.defPos}
-                    </span>
-                    <p class="reading-voice">{swipe.card.definition}</p>
-                  </div>
-                </Show>
-              </article>
+              <LikedCard swipe={swipe} onRemove={() => void remove(swipe.id)} />
             )}
           </For>
         </div>
