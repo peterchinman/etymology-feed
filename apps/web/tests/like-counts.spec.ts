@@ -40,7 +40,7 @@ test('subtle like totals survive offline reloads and old cards omit unknown tota
       .getByRole('link', { name: 'Wiktionary' })
       .boundingBox();
     if (!countBox || !sourceBox) throw new Error('Missing card footer.');
-    expect(countBox.x + countBox.width).toBeLessThan(sourceBox.x);
+    expect(sourceBox.x + sourceBox.width).toBeLessThan(countBox.x);
     expect(Math.abs(countBox.y - sourceBox.y)).toBeLessThan(5);
   }
   await page.screenshot({

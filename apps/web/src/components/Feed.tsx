@@ -744,6 +744,16 @@ export default function Feed() {
                   <p class="etymology reading-voice">{card.etymology}</p>
                 </div>
                 <div class="card-bottom">
+                  <a
+                    class="entry-link caption-voice"
+                    href={`https://en.wiktionary.org/wiki/${encodeURIComponent(card.word)}${card.etymNo ? `#Etymology_${card.etymNo}` : ''}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`View ${card.word} on Wiktionary`}
+                    tabindex={top() ? undefined : -1}
+                  >
+                    Wiktionary
+                  </a>
                   <Show when={card.likeCount !== undefined}>
                     <span class="card-like-count caption-voice">
                       <svg aria-hidden="true" viewBox="0 0 256 256">
@@ -763,16 +773,6 @@ export default function Feed() {
                       </span>
                     </span>
                   </Show>
-                  <a
-                    class="entry-link caption-voice"
-                    href={`https://en.wiktionary.org/wiki/${encodeURIComponent(card.word)}${card.etymNo ? `#Etymology_${card.etymNo}` : ''}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={`View ${card.word} on Wiktionary`}
-                    tabindex={top() ? undefined : -1}
-                  >
-                    Wiktionary
-                  </a>
                 </div>
               </article>
             );
