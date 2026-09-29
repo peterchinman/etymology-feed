@@ -102,15 +102,46 @@ export async function syncSwipes(
       };
       continue;
     }
-    const likeDelta =
-      (item.verdict === 1 ? 1 : 0) - (old?.verdict === 1 ? 1 : 0);
-    const dislikeDelta =
-      (item.verdict === -1 ? 1 : 0) - (old?.verdict === -1 ? 1 : 0);
-    // UNIQUE(user_id,card_id) and id PK: one swipe row, then one stats row.
+    // The earlier lookups reject obvious duplicates, but another request may
+    // sync this card before this batch starts. Read the current swipe inside
+    // the transaction so retries and concurrent tabs cannot count it twice.
     writes.push(
-      env.APP.prepare(
-        'INSERT INTO swipe (id,user_id,card_id,verdict,bucket,shown_at,swiped_at,received_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(user_id,card_id) DO UPDATE SET id=excluded.id,verdict=excluded.verdict,bucket=excluded.bucket,shown_at=excluded.shown_at,swiped_at=excluded.swiped_at,received_at=excluded.received_at',
-      ).bind(
+      env.APP.prepare(`
+        WITH incoming(card_id,user_id,id,verdict,swiped_at) AS (VALUES (?,?,?,?,?))
+        UPDATE word_stats AS stats SET
+          likes=stats.likes+(incoming.verdict=1)-COALESCE(current.verdict=1,0),
+          dislikes=stats.dislikes+(incoming.verdict=-1)-COALESCE(current.verdict=-1,0),
+          score=(stats.likes+(incoming.verdict=1)-COALESCE(current.verdict=1,0)+1.0)/
+            (stats.likes+(incoming.verdict=1)-COALESCE(current.verdict=1,0)+
+             (stats.dislikes+(incoming.verdict=-1)-COALESCE(current.verdict=-1,0))*?+2.0),
+          updated_at=?
+        FROM incoming LEFT JOIN swipe AS current
+          ON current.user_id=incoming.user_id AND current.card_id=incoming.card_id
+        WHERE stats.card_id=incoming.card_id
+          AND (current.id IS NULL OR
+            (current.id<>incoming.id AND current.swiped_at<incoming.swiped_at))
+      `).bind(
+        item.cardId,
+        userId,
+        item.id,
+        item.verdict,
+        item.swipedAt,
+        dislikeWeight,
+        now,
+      ),
+    );
+    // D1 runs the batch as one transaction in order. The stats update above
+    // sees the previous swipe; this upsert applies the same timestamp guard.
+    writes.push(
+      env.APP.prepare(`
+        INSERT INTO swipe (id,user_id,card_id,verdict,bucket,shown_at,swiped_at,received_at)
+        VALUES (?,?,?,?,?,?,?,?)
+        ON CONFLICT(user_id,card_id) DO UPDATE SET
+          id=excluded.id,verdict=excluded.verdict,bucket=excluded.bucket,
+          shown_at=excluded.shown_at,swiped_at=excluded.swiped_at,
+          received_at=excluded.received_at
+        WHERE swipe.id<>excluded.id AND swipe.swiped_at<excluded.swiped_at
+      `).bind(
         item.id,
         userId,
         item.cardId,
@@ -119,24 +150,6 @@ export async function syncSwipes(
         item.shownAt,
         item.swipedAt,
         now,
-      ),
-    );
-    // PK card_id: one row written. SET expressions see the pre-update row, so
-    // the deltas are added explicitly. Score is the weighted-left posterior
-    // mean (§6.2): (likes + 1) / (likes + w * dislikes + 2); the heuristic
-    // prior orders only the fresh lane.
-    writes.push(
-      env.APP.prepare(
-        'UPDATE word_stats SET likes=likes+?, dislikes=dislikes+?, score=(likes+?+1.0)/(likes+?+(dislikes+?)*?+2.0), updated_at=? WHERE card_id=?',
-      ).bind(
-        likeDelta,
-        dislikeDelta,
-        likeDelta,
-        likeDelta,
-        dislikeDelta,
-        dislikeWeight,
-        now,
-        item.cardId,
       ),
     );
     applied.push(item);
@@ -182,23 +195,19 @@ export async function deleteLiked(
   userId: string,
   cardId: string,
 ): Promise<boolean> {
-  // UNIQUE(user_id,card_id): one row read.
-  const old = await env.APP.prepare(
-    'SELECT verdict FROM swipe WHERE user_id=? AND card_id=?',
-  )
-    .bind(userId, cardId)
-    .first<{ verdict: number }>();
-  if (old?.verdict !== 1) return false;
   const now = Date.now();
   const dislikeWeight = Number(env.DISLIKE_WEIGHT);
-  await env.APP.batch([
+  const writes = await env.APP.batch([
+    env.APP.prepare(
+      `UPDATE word_stats SET
+        likes=likes-1,score=likes/(likes+1.0+dislikes*?),updated_at=?
+       WHERE card_id=? AND EXISTS (
+         SELECT 1 FROM swipe WHERE user_id=? AND card_id=? AND verdict=1
+       )`,
+    ).bind(dislikeWeight, now, cardId, userId, cardId),
     env.APP.prepare(
       'DELETE FROM swipe WHERE user_id=? AND card_id=? AND verdict=1',
     ).bind(userId, cardId),
-    // (likes - 1 + 1) / (likes - 1 + w * dislikes + 2), pre-update values.
-    env.APP.prepare(
-      'UPDATE word_stats SET likes=likes-1,score=likes/(likes+1.0+dislikes*?),updated_at=? WHERE card_id=?',
-    ).bind(dislikeWeight, now, cardId),
   ]);
-  return true;
+  return writes[1].meta.changes === 1;
 }
