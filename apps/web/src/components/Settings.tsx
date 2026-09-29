@@ -182,11 +182,8 @@ export default function Settings(props: Props) {
             }
           />
         </label>
-        <p class="caption-voice">
-          Show names of people, places, and other named things in your feed.
-        </p>
       </div>
-      <AccountControls variant="settings" />
+      <AccountControls />
       <p class="source-credit caption-voice">
         Etymologies and definitions are adapted from{' '}
         <a
