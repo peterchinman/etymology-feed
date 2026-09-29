@@ -122,6 +122,7 @@ export default function Feed() {
   const [error, setError] = createSignal('');
   const [definitionOpen, setDefinitionOpen] = createSignal(false);
   const [pendingUndo, setPendingUndo] = createSignal<LocalSwipe | null>(null);
+  const [demoLikeCount, setDemoLikeCount] = createSignal<number | null>(null);
   let shownAt = Date.now();
   let filling = false;
   let exhaustedUntil = 0;
@@ -571,6 +572,12 @@ export default function Feed() {
   }
 
   onMount(() => {
+    if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+      const value = new URLSearchParams(window.location.search).get(
+        'demoLikes',
+      );
+      if (value && /^\d{1,6}$/.test(value)) setDemoLikeCount(Number(value));
+    }
     setOnline(navigator.onLine);
     setStack(getStackPreview());
     void (async () => {
@@ -666,6 +673,10 @@ export default function Feed() {
               entry() ? 'departing' : stack()[0] === card ? 'top' : 'next',
             );
             const top = () => role() === 'top';
+            const shownLikeCount = () =>
+              top() && demoLikeCount() !== null
+                ? demoLikeCount()
+                : card.likeCount;
             const [overflows, setOverflows] = createSignal(false);
             let definition!: HTMLParagraphElement;
             onMount(() => {
@@ -754,7 +765,7 @@ export default function Feed() {
                   >
                     Wiktionary
                   </a>
-                  <Show when={card.likeCount !== undefined}>
+                  <Show when={shownLikeCount() !== undefined}>
                     <span class="card-like-count caption-voice">
                       <svg aria-hidden="true" viewBox="0 0 256 256">
                         <path
@@ -767,9 +778,9 @@ export default function Feed() {
                         />
                       </svg>
                       <span class="sr-only">Liked by </span>
-                      <span>{card.likeCount?.toLocaleString()}</span>
+                      <span>{shownLikeCount()?.toLocaleString()}</span>
                       <span class="sr-only">
-                        {card.likeCount === 1 ? ' user' : ' users'}
+                        {shownLikeCount() === 1 ? ' user' : ' users'}
                       </span>
                     </span>
                   </Show>

@@ -80,6 +80,11 @@ reload on `localhost:4321`, proxying `/api` and `/auth` to Wrangler. Open
 `http://127.0.0.1:8787`, which serves `apps/web/dist`. Delete
 `apps/api/.wrangler/dev-v2` to reseed.
 
+To preview a card with likes locally, open the feed with `?demoLikes=24`
+(for example, `http://localhost:4321/?demoLikes=24`). The top card displays
+that sample count; other cards and stored like totals stay as they are. Use any
+whole number from 0 to 999999, or remove the query parameter to see real totals.
+
 `GET /api/feed?n=100` returns 100 distinct cards drawn from lanes by what is
 known about each card: confirmed, promising (at least one like), fresh (never
 liked, fewest looks then best heuristic prior), and wild. Empty lanes hand

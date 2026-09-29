@@ -1,6 +1,36 @@
 import type { Card } from '@etymology-feed/shared/card';
 import { expect, test } from '@playwright/test';
 
+test('local demo count changes the display without changing saved card totals', async ({
+  page,
+}) => {
+  await page.goto('/?demoLikes=24');
+  const card = page.getByTestId('top-card');
+  await expect(card.locator('.card-like-count')).toHaveText(
+    'Liked by 24 users',
+  );
+  const storedCount = await page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('etymology-feed');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const count = await new Promise<number | undefined>((resolve, reject) => {
+      const request = database
+        .transaction('stack')
+        .objectStore('stack')
+        .get('cards');
+      request.onsuccess = () => resolve(request.result?.[0]?.likeCount);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return count;
+  });
+  expect(storedCount).toBe(0);
+  await page.goto('/');
+  await expect(card.locator('.card-like-count')).toHaveText('Liked by 0 users');
+});
+
 test('subtle like totals survive offline reloads and old cards omit unknown totals', async ({
   page,
   context,
