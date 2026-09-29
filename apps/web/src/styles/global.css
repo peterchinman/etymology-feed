@@ -508,7 +508,8 @@ a {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* Stop scroll chaining and the edge bounce that competes with a swipe. */
+  overscroll-behavior: none;
   touch-action: pan-y;
   /* Let the definition background extend into half the card gutter while
      keeping its text on the same edges as the title and etymology. */
