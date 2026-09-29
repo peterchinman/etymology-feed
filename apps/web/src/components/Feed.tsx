@@ -452,11 +452,15 @@ export default function Feed() {
         gesture.cancelled = true;
         return;
       }
-      if (Math.abs(dy) > SWIPE.slop && Math.abs(dy) >= Math.abs(dx)) {
+      // Lock the initial intent, with a little tolerance for diagonal swipes.
+      if (
+        Math.abs(dy) > SWIPE.slop &&
+        Math.abs(dy) > Math.abs(dx) * SWIPE.scrollBias
+      ) {
         gesture.cancelled = true;
         return;
       }
-      if (Math.abs(dx) <= SWIPE.slop || Math.abs(dx) <= Math.abs(dy)) return;
+      if (Math.abs(dx) <= SWIPE.slop) return;
       gesture.active = true;
       deck?.setPointerCapture(event.pointerId);
       // Catching a card mid-spring: pick it up where it is, no jump.
@@ -521,6 +525,15 @@ export default function Feed() {
     touchStart = touch
       ? { x: touch.clientX, y: touch.clientY, t: event.timeStamp }
       : null;
+  }
+
+  function touchMoved(event: TouchEvent) {
+    // Canceling pointermove cannot stop native panning. Once the pointer
+    // handler locks a swipe, claim touchmove before the scroller takes over
+    // and sends pointercancel. Vertical gestures keep native scrolling.
+    if (gesture?.active && event.touches.length === 1 && event.cancelable) {
+      event.preventDefault();
+    }
   }
 
   /** A second tap on the card text selects the word under the finger. */
@@ -636,11 +649,13 @@ export default function Feed() {
     window.addEventListener('offline', onOffline);
     window.addEventListener(FEED_SETTINGS_CHANGED, onFeedSettings);
     deck?.addEventListener('touchstart', touchBegan, { passive: true });
+    deck?.addEventListener('touchmove', touchMoved, { passive: false });
     deck?.addEventListener('touchend', touchEnded, { passive: false });
     window.addEventListener('keydown', keyDown);
     document.addEventListener('visibilitychange', onVisible);
     onCleanup(() => {
       deck?.removeEventListener('touchstart', touchBegan);
+      deck?.removeEventListener('touchmove', touchMoved);
       deck?.removeEventListener('touchend', touchEnded);
       if (undoTimer) clearTimeout(undoTimer);
       window.removeEventListener('online', onOnline);

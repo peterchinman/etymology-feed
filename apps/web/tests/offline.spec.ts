@@ -731,6 +731,80 @@ test('horizontal drag commits a swipe while vertical movement leaves the card in
   await expect(page.getByRole('heading', { name: first })).toBeVisible();
 });
 
+for (const direction of [-1, 1]) {
+  test(`diagonal swipe ${direction} keeps a long card from scrolling`, async ({
+    page,
+  }) => {
+    await page.route('**/api/feed?*', async (route) => {
+      const response = await route.fetch();
+      const data = await response.json();
+      for (const card of data.cards) {
+        card.etymology =
+          'A long word history for reading and scrolling. '.repeat(100);
+      }
+      await route.fulfill({ response, json: data });
+    });
+    await page.goto('/');
+    const card = page.getByTestId('top-card');
+    await expect(card).toBeVisible();
+    const first = await card.locator('h2').innerText();
+    const body = card.locator('.card-body');
+    // Start midway through real overflowing content, away from scroll edges.
+    await body.evaluate((element) => {
+      element.scrollTop = 180;
+    });
+    const box = await body.boundingBox();
+    if (!box) throw new Error('Card body has no visible bounds.');
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    const touch = await finger(page);
+    await touch.down(x, y);
+    // The initial diagonal has slightly more vertical than horizontal travel.
+    await touch.move(x + direction * 20, y - 22);
+    await touch.move(x + direction * 140, y - 100, { steps: 8 });
+    await expect(page.locator('.deck-area')).toHaveClass(/is-dragging/);
+    expect(await body.evaluate((element) => element.scrollTop)).toBe(180);
+    await touch.up();
+    await expect(card.locator('h2')).not.toHaveText(first);
+  });
+}
+
+test('vertical reading stays locked to scrolling and card edges do not bounce', async ({
+  page,
+}) => {
+  await page.route('**/api/feed?*', async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    for (const card of data.cards) {
+      card.etymology = 'A long word history for reading and scrolling. '.repeat(
+        100,
+      );
+    }
+    await route.fulfill({ response, json: data });
+  });
+  await page.goto('/');
+  const card = page.getByTestId('top-card');
+  await expect(card).toBeVisible();
+  const first = await card.locator('h2').innerText();
+  const body = card.locator('.card-body');
+  await expect(body).toHaveCSS('overscroll-behavior-y', 'none');
+  const box = await body.boundingBox();
+  if (!box) throw new Error('Card body has no visible bounds.');
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const touch = await finger(page);
+  await touch.down(x, y);
+  await touch.move(x + 4, y - 90, { steps: 6 });
+  await expect
+    .poll(() => body.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  // Turning sideways after starting to read must not dismiss the card.
+  await touch.move(x + 140, y - 95, { steps: 6 });
+  await touch.up();
+  await expect(card.locator('h2')).toHaveText(first);
+  await expect(page.locator('.deck-area')).not.toHaveClass(/is-dragging/);
+});
+
 test('the next card waits fully drawn and takes over without sliding back', async ({
   page,
 }) => {
