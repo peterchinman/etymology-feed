@@ -5,20 +5,24 @@ import Shell from '../layouts/Shell.astro';
 <Shell title="Settings" page="settings">
   <section class="settings-screen page-wrap" data-settings-initializing>
     <Settings client:load variant="page" />
-    <script is:inline>
-      const root = document.documentElement;
-      for (const input of document.querySelectorAll('input[name="theme"]')) {
-        if (input instanceof HTMLInputElement)
-          input.checked = root.classList.contains(input.value);
-      }
-      const mode = root.dataset.colorMode || 'system';
-      const selectedMode = document.querySelector(
-        `input[name="color-mode"][value="${mode}"]`,
-      );
-      if (selectedMode instanceof HTMLInputElement) selectedMode.checked = true;
-      document
-        .querySelector('.settings-screen')
-        ?.removeAttribute('data-settings-initializing');
+    <script is:inline data-astro-rerun>
+      // Reveal the controls on every client-side visit, with locals scoped so
+      // rerunning the script cannot redeclare global const bindings.
+      (() => {
+        const root = document.documentElement;
+        for (const input of document.querySelectorAll('input[name="theme"]')) {
+          if (input instanceof HTMLInputElement)
+            input.checked = root.classList.contains(input.value);
+        }
+        const mode = root.dataset.colorMode || 'system';
+        const selectedMode = document.querySelector(
+          `input[name="color-mode"][value="${mode}"]`,
+        );
+        if (selectedMode instanceof HTMLInputElement) selectedMode.checked = true;
+        document
+          .querySelector('.settings-screen')
+          ?.removeAttribute('data-settings-initializing');
+      })();
     </script>
   </section>
 </Shell>
