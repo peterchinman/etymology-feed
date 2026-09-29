@@ -130,7 +130,7 @@ it.each(['filtered', 'missing'])(
         true,
       );
       expect(result.rowsWritten).toBe(1);
-      expect(result.rowsRead).toBeLessThanOrEqual(1004);
+      expect(result.rowsRead).toBeLessThanOrEqual(1010);
       const served = await env.APP.prepare(
         'SELECT card_ids FROM served WHERE user_id=?',
       )

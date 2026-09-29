@@ -127,6 +127,7 @@ export default function Feed() {
   const [error, setError] = createSignal('');
   const [definitionOpen, setDefinitionOpen] = createSignal(false);
   const [pendingUndo, setPendingUndo] = createSignal<LocalSwipe | null>(null);
+  const [demoLikeCount, setDemoLikeCount] = createSignal<number | null>(null);
   let shownAt = Date.now();
   let filling = false;
   let exhaustedUntil = 0;
@@ -452,11 +453,15 @@ export default function Feed() {
         gesture.cancelled = true;
         return;
       }
-      if (Math.abs(dy) > SWIPE.slop && Math.abs(dy) >= Math.abs(dx)) {
+      // Lock the initial intent, with a little tolerance for diagonal swipes.
+      if (
+        Math.abs(dy) > SWIPE.slop &&
+        Math.abs(dy) > Math.abs(dx) * SWIPE.scrollBias
+      ) {
         gesture.cancelled = true;
         return;
       }
-      if (Math.abs(dx) <= SWIPE.slop || Math.abs(dx) <= Math.abs(dy)) return;
+      if (Math.abs(dx) <= SWIPE.slop) return;
       gesture.active = true;
       deck?.setPointerCapture(event.pointerId);
       // Catching a card mid-spring: pick it up where it is, no jump.
@@ -523,6 +528,15 @@ export default function Feed() {
       : null;
   }
 
+  function touchMoved(event: TouchEvent) {
+    // Canceling pointermove cannot stop native panning. Once the pointer
+    // handler locks a swipe, claim touchmove before the scroller takes over
+    // and sends pointercancel. Vertical gestures keep native scrolling.
+    if (gesture?.active && event.touches.length === 1 && event.cancelable) {
+      event.preventDefault();
+    }
+  }
+
   /** A second tap on the card text selects the word under the finger. */
   function touchEnded(event: TouchEvent) {
     const start = touchStart;
@@ -581,6 +595,12 @@ export default function Feed() {
   }
 
   onMount(() => {
+    if (['localhost', '127.0.0.1'].includes(window.location.hostname)) {
+      const value = new URLSearchParams(window.location.search).get(
+        'demoLikes',
+      );
+      if (value && /^\d{1,6}$/.test(value)) setDemoLikeCount(Number(value));
+    }
     setOnline(navigator.onLine);
     setStack(getStackPreview());
     void (async () => {
@@ -636,11 +656,13 @@ export default function Feed() {
     window.addEventListener('offline', onOffline);
     window.addEventListener(FEED_SETTINGS_CHANGED, onFeedSettings);
     deck?.addEventListener('touchstart', touchBegan, { passive: true });
+    deck?.addEventListener('touchmove', touchMoved, { passive: false });
     deck?.addEventListener('touchend', touchEnded, { passive: false });
     window.addEventListener('keydown', keyDown);
     document.addEventListener('visibilitychange', onVisible);
     onCleanup(() => {
       deck?.removeEventListener('touchstart', touchBegan);
+      deck?.removeEventListener('touchmove', touchMoved);
       deck?.removeEventListener('touchend', touchEnded);
       if (undoTimer) clearTimeout(undoTimer);
       window.removeEventListener('online', onOnline);
@@ -698,6 +720,10 @@ export default function Feed() {
               entry() ? 'departing' : stack()[0] === card ? 'top' : 'next',
             );
             const top = () => role() === 'top';
+            const shownLikeCount = () =>
+              top() && demoLikeCount() !== null
+                ? demoLikeCount()
+                : card.likeCount;
             const [overflows, setOverflows] = createSignal(false);
             let definition!: HTMLParagraphElement;
             onMount(() => {
@@ -786,6 +812,25 @@ export default function Feed() {
                   >
                     Wiktionary
                   </a>
+                  <Show when={(shownLikeCount() ?? 0) > 0}>
+                    <span class="card-like-count caption-voice">
+                      <svg aria-hidden="true" viewBox="0 0 256 256">
+                        <path
+                          d="M128,224l89.36-90.64a50,50,0,1,0-70.72-70.72L128,80,109.36,62.64a50,50,0,0,0-70.72,70.72Z"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="16"
+                        />
+                      </svg>
+                      <span class="sr-only">Liked by </span>
+                      <span>{shownLikeCount()?.toLocaleString()}</span>
+                      <span class="sr-only">
+                        {shownLikeCount() === 1 ? ' user' : ' users'}
+                      </span>
+                    </span>
+                  </Show>
                 </div>
               </article>
             );

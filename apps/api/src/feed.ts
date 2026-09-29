@@ -5,6 +5,7 @@ import {
   pickFromLanes,
   slotPattern,
 } from '@etymology-feed/shared/scoring';
+import { withLikeCounts } from './likes';
 import { type FeedBindings, getPools, rankLane, shuffleFresh } from './pools';
 
 type WordRow = {
@@ -229,6 +230,8 @@ export async function getUserFeed(
       throw new FeedUnavailable('Feed recovery needs a retry.');
     }
     const cards = cardSlots.filter((card): card is Card => !!card);
+    const counted = await withLikeCounts(env.APP, cards);
+    rowsRead += counted.rowsRead;
     const nextWords = JSON.stringify(
       [...previous, ...cards.map(({ id }) => id)].slice(-cap),
     );
@@ -253,7 +256,11 @@ export async function getUserFeed(
             )
             .run();
     if (write.meta.changes === 1)
-      return { cards, rowsRead, rowsWritten: write.meta.rows_written };
+      return {
+        cards: counted.cards,
+        rowsRead,
+        rowsWritten: write.meta.rows_written,
+      };
   }
   throw new FeedUnavailable('Concurrent feed requests need a retry.');
 }
