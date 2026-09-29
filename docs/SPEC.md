@@ -280,11 +280,16 @@ Cron Trigger `*/5 * * * *` runs three indexed queries, one per pooled lane, each
 `includeProperNouns=true|false` defaults to `false`. Eligibility uses the paired
 definition's POS (`def_pos`), not capitalization or another proper-noun sense.
 Filter every lane, including wild draws and recovery. A filtered candidate cannot
-consume a batch slot or enter served history. Replacement cards come from the
-bounded shuffle-index recovery scan and carry the `wild` bucket. The 101-row
-estimate applies to complete unfiltered batches; filtered batches require extra
-indexed reads, including up to 1,000 recovery rows. Keep the existing retry response
-when the scan budget cannot prove exhaustion or fill a batch.
+consume a batch slot or enter served history. Retry each unfilled slot from its
+ranked lane, then use the normal fill-through order when that lane is exhausted.
+Keep the actual source lane as the card's bucket. Limit ranked candidate lookups
+to 500 per selection attempt. When lanes are exhausted or this limit is reached,
+bounded shuffle-index recovery can supply `wild` cards. This keeps a name-heavy
+or stale ranked pool from blocking the feed. The 201-row estimate (including like
+totals) applies to complete unfiltered batches; filtering requires extra indexed
+reads, and recovery scans
+at most 1,000 additional rows. Keep the existing retry response when the scan
+budget cannot prove exhaustion or fill a batch.
 
 1. Read `served.card_ids` for the user (1 row).
 2. Fill slots per 20-card block with **6 confirmed / 6 promising / 6 fresh / 2 wild**, spread evenly by largest remainder, repeated `n/20` times. `confirmed`, `promising`: top Thompson draws; `fresh`: random from the first 1,000 of the lane (jitter so concurrent users don't all get the same card); `wild`: uniform via `shuffle`. Skip anything in `served`. **Fill-through**: a slot whose lane is exhausted takes from the lanes below it, then the lanes above, so an empty confirmed lane hands its slots to promising, then fresh; when every lane is exhausted, relax to `wild`. The card's `bucket` records the lane it actually came from, not the slot, so per-lane like-rates in §6.5 are honest.

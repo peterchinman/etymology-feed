@@ -519,3 +519,20 @@ offline. Apply the preference to every server feed path, including cached lane
 candidates and fallback draws, and send it explicitly on new fetches. Filtering
 can require additional indexed reads; measure production usage before claiming
 the original unfiltered 101-row estimate for default feed requests.
+
+
+## 2026-09-28 — Preserve sibling identity and ranked slots when filtering
+
+A hidden proper-noun etymology can share its headword with a visible common-word
+card. Swipe persistence must compare explicit card IDs; normalize only old records
+without IDs to their legacy headword identity. Otherwise a swipe can remove the
+hidden sibling and leave the swiped card in the stack. Browser regressions cover
+both stored ID formats and restoring the hidden sibling through Settings.
+
+Filtering a ranked candidate now retries its slot from the same lane before
+normal fill-through, preserving the feed mix and the actual source bucket. Batch
+primary-key lookups and a 500-candidate limit bound this work per attempt. At the
+limit, existing bounded shuffle recovery keeps name-heavy or stale ranked pools
+from blocking the feed and preserves dictionary rollback behavior. Filtered and
+missing IDs never enter served history. Tests cover lane proportions, no repeats,
+read costs, the limit, and existing rollback recovery.
