@@ -219,12 +219,13 @@ CREATE TABLE word_stats (               -- denormalized aggregate, upserted on e
   dislikes    INTEGER NOT NULL DEFAULT 0,
   prior       REAL NOT NULL,            -- heuristic prior copied from DICT at seed time; orders the fresh lane only
   score       REAL NOT NULL,            -- weighted flat-prior posterior mean, §6.2; 0.5 while unrated
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  pool_order  TEXT NOT NULL DEFAULT (hex(randomblob(8))) -- stable random tie-breaker
 ) WITHOUT ROWID;
-CREATE INDEX idx_word_stats_unrated ON word_stats((likes + dislikes), prior DESC);           -- fresh lane
-CREATE INDEX idx_word_stats_rec ON word_stats(score DESC)
+CREATE INDEX idx_word_stats_unrated ON word_stats((likes + dislikes), prior DESC, pool_order);           -- fresh lane
+CREATE INDEX idx_word_stats_rec ON word_stats(score DESC, pool_order)
   WHERE likes + dislikes >= 5 AND score >= 0.5;                                              -- confirmed lane (partial)
-CREATE INDEX idx_word_stats_promising ON word_stats(score DESC)
+CREATE INDEX idx_word_stats_promising ON word_stats(score DESC, pool_order)
   WHERE likes > 0 AND (likes + dislikes < 5 OR score < 0.55)
     AND (likes + dislikes < 15 OR score >= 0.5);                                             -- promising lane (partial)
 ```
@@ -250,9 +251,15 @@ Goal: keep people swiping (show good stuff) while spreading ratings across the p
 
 - **Confirmed**: `n >= MIN_RATINGS (5) AND score >= CONFIRM_SCORE (0.55)`: clearly above the average card (§6.2), top 3,000 by `score`. Re-evaluated every refresh, so a wrongly confirmed card keeps getting looks and drops out on its own. Empty for months; that is fine.
 - **Promising**: liked, and neither confirmed nor parked: `likes > 0 AND (n < 5 OR score < 0.55) AND (n < PARK_LOOKS (15) OR score >= 0.5)`, top 3,000 by `score`. Thompson ranking inside the lane already shows a card less as lefts arrive, so undecided cards cost little. This is the lane that makes early users' likes visible.
-- **Fresh**: never liked and under `MIN_RATINGS` looks (`likes = 0 AND n < 5`), ordered by `n ASC, prior DESC` (§4.3), first 3,000. Never-seen cards fill the lane until the whole frontier is exhausted; only then do cards passed over once get a second look, so no card's fate is sealed by one swipe and no exploration budget is spent on second looks while new cards remain.
+- **Fresh**: never liked and under `MIN_RATINGS` looks (`likes = 0 AND n < 5`), ordered by `n ASC, prior DESC, pool_order` (§4.3), first 3,000. Never-seen cards fill the lane until the whole frontier is exhausted; only then do cards passed over once get a second look, so no card's fate is sealed by one swipe and no exploration budget is spent on second looks while new cards remain.
 - **Parked**: never liked in `MIN_RATINGS` looks, or liked but below average (`score < 0.5`) after `PARK_LOOKS` looks. Not pooled; reachable only through wild. Parking is the one irreversible call, because a parked card gets no more looks, so it waits for three times the evidence that confirming does: at a 20% base rate a five-look rule would park one in eight cards twice as good as average, the fifteen-look rule about one in two thousand.
 - **Wild**: any card, uniform via `shuffle`.
+
+All pool queries break equal-priority ties with an indexed, persistent random
+`pool_order` before applying their size limits. Each statistics row receives its
+own key on insertion; ratings and repeated dictionary imports preserve it.
+This prevents punctuation, capitalization, and alphabetical card IDs from
+determining which tied cards enter the pools or the first 1,000 fresh candidates.
 
 There is no minimum-rating gate on being shown, and no cold-start branch: the lanes are shares, not gates, so nothing disappears when a count crosses a threshold.
 
@@ -271,7 +278,7 @@ At `w = 0.25`: one like is 2/3, one left is 0.44, one like then two lefts is 0.5
 
 ### 6.3 Pools live in KV, refreshed by cron
 
-Cron Trigger `*/5 * * * *` runs three indexed queries, one per pooled lane, each reading only that lane's own rows (≤ 3,000 for `fresh`; the partial indexes make `confirmed` and `promising` cost exactly their populations), and writes one KV key `pools:v3` = `{ builtAt, cardCount, confirmed: [[cardId, likes, dislikes]…], promising: [[cardId, likes, dislikes]…], fresh: [cardId…] }`. The feed handler reads that one key, samples in memory, then touches D1 twice. A vote therefore changes other users' feeds within about five minutes. If the read budget ever binds, a fifteen-minute cron is the lever.
+Cron Trigger `*/5 * * * *` runs three indexed queries, one per pooled lane, each reading only that lane's own rows (≤ 3,000 for `fresh`; the partial indexes make `confirmed` and `promising` cost exactly their populations), and writes one KV key `pools:v4:<DICT_RELEASE>` = `{ builtAt, cardCount, confirmed: [[cardId, likes, dislikes]…], promising: [[cardId, likes, dislikes]…], fresh: [cardId…] }`. The feed handler reads that one key, samples in memory, then touches D1 twice. A vote therefore changes other users' feeds within about five minutes. If the read budget ever binds, a fifteen-minute cron is the lever.
 
 ### 6.4 Composing a fetch
 
@@ -281,7 +288,9 @@ Cron Trigger `*/5 * * * *` runs three indexed queries, one per pooled lane, each
 definition's POS (`def_pos`), not capitalization or another proper-noun sense.
 Filter every lane, including wild draws and recovery. A filtered candidate cannot
 consume a batch slot or enter served history. Replacement cards come from the
-bounded shuffle-index recovery scan and carry the `wild` bucket. The 101-row
+bounded shuffle-index recovery scan and carry the `wild` bucket. They fill the
+original missing slots, including exhausted lanes, so filtering does not move
+all surviving pool picks to the beginning of the batch. The 101-row
 estimate applies to complete unfiltered batches; filtered batches require extra
 indexed reads, including up to 1,000 recovery rows. Keep the existing retry response
 when the scan budget cannot prove exhaustion or fill a batch.

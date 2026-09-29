@@ -162,10 +162,23 @@ def main():
             "CREATE TABLE swipe (id TEXT, user_id TEXT, card_id TEXT, verdict INTEGER, "
             "bucket TEXT, shown_at INTEGER, swiped_at INTEGER, received_at INTEGER);"
             "CREATE TABLE word_stats (card_id TEXT, likes INTEGER, dislikes INTEGER, "
-            "prior REAL, score REAL, updated_at INTEGER);"
+            "prior REAL, score REAL, updated_at INTEGER, pool_order TEXT);"
         )
-        for path in (args.swipes_sql, args.word_stats_sql):
-            connection.executescript(path.read_text(encoding="utf-8"))
+        connection.executescript(args.swipes_sql.read_text(encoding="utf-8"))
+        stats_sql = args.word_stats_sql.read_text(encoding="utf-8")
+        try:
+            connection.executescript(stats_sql)
+        except sqlite3.OperationalError as error:
+            # Data-only exports before the pool-order migration use six
+            # positional values. Keep those historical reports readable too.
+            if "table word_stats has 7 columns but 6 values were supplied" not in str(error):
+                raise
+            connection.executescript(
+                "DROP TABLE word_stats;"
+                "CREATE TABLE word_stats (card_id TEXT, likes INTEGER, dislikes INTEGER, "
+                "prior REAL, score REAL, updated_at INTEGER);"
+            )
+            connection.executescript(stats_sql)
         dictionary_uri = args.dict_db.resolve().as_uri() + "?mode=ro"
         connection.execute("ATTACH DATABASE ? AS dictionary", (dictionary_uri,))
         report = make_report(

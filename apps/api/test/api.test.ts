@@ -168,13 +168,13 @@ describe('dictionary and persistent feed API', () => {
     );
     const plans = await env.APP.batch([
       env.APP.prepare(
-        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC LIMIT ?',
+        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC, pool_order LIMIT ?',
       ).bind(5, 0.55, 3000),
       env.APP.prepare(
-        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes > 0 AND (likes + dislikes < 5 OR score < 0.55) AND (likes + dislikes < 15 OR score >= 0.5) ORDER BY score DESC LIMIT ?',
+        'EXPLAIN QUERY PLAN SELECT card_id,likes,dislikes FROM word_stats WHERE likes > 0 AND (likes + dislikes < 5 OR score < 0.55) AND (likes + dislikes < 15 OR score >= 0.5) ORDER BY score DESC, pool_order LIMIT ?',
       ).bind(3000),
       env.APP.prepare(
-        'EXPLAIN QUERY PLAN SELECT card_id FROM word_stats WHERE likes = 0 AND likes + dislikes < ? ORDER BY likes + dislikes ASC, prior DESC LIMIT ?',
+        'EXPLAIN QUERY PLAN SELECT card_id FROM word_stats WHERE likes = 0 AND likes + dislikes < ? ORDER BY likes + dislikes ASC, prior DESC, pool_order LIMIT ?',
       ).bind(5, 3000),
     ]);
     const details = plans.map((plan) =>
@@ -401,7 +401,7 @@ describe('dictionary and persistent feed API', () => {
     };
     const seed = () =>
       env.APP.prepare(
-        'INSERT INTO word_stats VALUES (?,0,0,0.6,0.5,0) ON CONFLICT(card_id) DO NOTHING',
+        'INSERT INTO word_stats (card_id,likes,dislikes,prior,score,updated_at) VALUES (?,0,0,0.6,0.5,0) ON CONFLICT(card_id) DO NOTHING',
       )
         .bind(id)
         .run();

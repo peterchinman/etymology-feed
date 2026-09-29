@@ -5,7 +5,7 @@ import {
   pickFromLanes,
   slotPattern,
 } from '@etymology-feed/shared/scoring';
-import { getPools, rankLane, shuffleFresh } from './pools';
+import { type FeedBindings, getPools, rankLane, shuffleFresh } from './pools';
 
 type WordRow = {
   id: string;
@@ -78,7 +78,7 @@ export function randomPosition(maximum: number): number {
 const SERVED_KEY = 'SELECT card_ids FROM served WHERE user_id = ?';
 
 export async function getUserFeed(
-  env: CloudflareBindings,
+  env: FeedBindings,
   userId: string,
   count: number,
   known: string[] = [],
@@ -148,18 +148,18 @@ export async function getUserFeed(
       fresh: shuffleFresh(pools.fresh),
     };
     const slots = interleave(count, pattern);
-    const chosen: { id: string; bucket: Bucket }[] = [];
+    const chosen: { id: string; bucket: Bucket; index: number }[] = [];
     let wildIndex = 0;
     const wildIds = [...wild.keys()];
-    for (const slot of slots) {
+    for (const [index, slot] of slots.entries()) {
       if (slot === 'wild' && wildIndex < wildIds.length) {
-        chosen.push({ id: wildIds[wildIndex++], bucket: 'wild' });
+        chosen.push({ id: wildIds[wildIndex++], bucket: 'wild', index });
         continue;
       }
       // Fill-through: an empty lane hands its slot down (§6.4). The recorded
       // bucket is the lane the card came from, so per-lane like-rates are honest.
       const picked = pickFromLanes(slot, lanes, seen);
-      if (picked) chosen.push({ id: picked.item, bucket: picked.lane });
+      if (picked) chosen.push({ id: picked.item, bucket: picked.lane, index });
     }
     // Individual primary-key lookups cost one row each in D1, whereas the
     // JSON-array IN query measured three rows per card on the fixture.
@@ -178,23 +178,28 @@ export async function getUserFeed(
       rowsRead += result.meta.rows_read;
       for (const row of result.results as WordRow[]) byWord.set(row.id, row);
     });
-    const cards = chosen
-      .map(({ id, bucket }) => {
-        const row = byWord.get(id);
-        return row && eligibleRow(row, includeProperNouns)
-          ? toCard(row, bucket)
-          : undefined;
-      })
-      .filter((card): card is Card => !!card);
+    // Keep each surviving card in its slot. Compacting here would put all the
+    // pool picks first and append recovery cards in a separate block.
+    const cardSlots = new Array<Card | undefined>(count).fill(undefined);
+    for (const { id, bucket, index } of chosen) {
+      const row = byWord.get(id);
+      if (row && eligibleRow(row, includeProperNouns))
+        cardSlots[index] = toCard(row, bucket);
+    }
+    const gaps = cardSlots.flatMap((card, index) => (card ? [] : [index]));
+    let filled = 0;
     // APP statistics outlive a DICT switch or rollback. Resolve the selected
     // IDs before filling through: missing or ineligible cards cannot consume slots.
     // Historical IDs can also be absent from this DICT, so seen.size is not a
     // count of unavailable dictionary rows. Only an actual scan proves that.
-    const delivered = new Set([...previous, ...cards.map(({ id }) => id)]);
+    const delivered = new Set([
+      ...previous,
+      ...cardSlots.flatMap((card) => (card ? [card.id] : [])),
+    ]);
     const scanLimit = Math.min(pools.cardCount, 1000);
     let scanned = 0;
-    let cursor = cards.length < count ? randomPosition(pools.cardCount) : 1;
-    while (cards.length < count && scanned < scanLimit) {
+    let cursor = gaps.length ? randomPosition(pools.cardCount) : 1;
+    while (filled < gaps.length && scanned < scanLimit) {
       const size = Math.min(
         100,
         scanLimit - scanned,
@@ -212,17 +217,18 @@ export async function getUserFeed(
         if (!eligibleRow(row, includeProperNouns) || delivered.has(row.id))
           continue;
         delivered.add(row.id);
-        cards.push(toCard(row, 'wild'));
-        if (cards.length === count) break;
+        cardSlots[gaps[filled++]] = toCard(row, 'wild');
+        if (filled === gaps.length) break;
       }
       scanned += size;
       cursor = ((cursor - 1 + size) % pools.cardCount) + 1;
     }
-    if (cards.length < count && scanned < pools.cardCount) {
+    if (filled < gaps.length && scanned < pools.cardCount) {
       // Do not report exhaustion to the offline client just because this
       // request reached its recovery budget. No served history is written.
       throw new FeedUnavailable('Feed recovery needs a retry.');
     }
+    const cards = cardSlots.filter((card): card is Card => !!card);
     const nextWords = JSON.stringify(
       [...previous, ...cards.map(({ id }) => id)].slice(-cap),
     );

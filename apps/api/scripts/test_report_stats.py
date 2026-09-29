@@ -13,6 +13,12 @@ SCRIPT = Path(__file__).with_name("report_stats.py")
 
 class ReportStatsTest(unittest.TestCase):
     def test_local_exports_report_recent_current_ratings(self):
+        self.check_report(current_schema=True)
+
+    def test_legacy_exports_remain_readable(self):
+        self.check_report(current_schema=False)
+
+    def check_report(self, current_schema):
         now = datetime.now(timezone.utc)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -50,6 +56,8 @@ class ReportStatsTest(unittest.TestCase):
                 "('eta',1,14,0.6,0.308,0),('theta',0,5,0.6,0.308,0);",
                 encoding="utf-8",
             )
+            if current_schema:
+                stats.write_text(stats.read_text().replace(",0)", ",0,'0123456789ABCDEF')"))
             output = subprocess.run(
                 [
                     sys.executable,
