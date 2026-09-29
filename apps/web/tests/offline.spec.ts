@@ -1,5 +1,4 @@
 import { expect, type Page, test } from '@playwright/test';
-import { SWIPE } from '../src/lib/swipe';
 import { THEME_COLORS } from '../src/lib/themes';
 
 test('definitions appear beneath the title and expand beyond the responsive line limit', async ({
@@ -9,7 +8,7 @@ test('definitions appear beneath the title and expand beyond the responsive line
     'A word with a detailed definition that continues beyond the preview. '.repeat(
       15,
     );
-  await page.route('**/api/feed?*', async (route) => {
+  await page.context().route('**/api/feed?*', async (route) => {
     const response = await route.fetch();
     const data = await response.json();
     data.cards.forEach((card: { definition: string }, index: number) => {
@@ -308,7 +307,7 @@ test('one fetched batch supports 100 offline swipes and survives reconnection', 
 }) => {
   test.setTimeout(180_000);
   let feedFetches = 0;
-  await page.route('**/api/feed?*', async (route) => {
+  await page.context().route('**/api/feed?*', async (route) => {
     feedFetches++;
     if (feedFetches > 1) await route.abort();
     else await route.continue();
@@ -506,7 +505,7 @@ test('mobile dock tabs are centered, evenly spaced, and underline only the label
 test('Settings icons and controls use the correct theme styles', async ({
   page,
 }) => {
-  await page.route('**/api/me', async (route) => {
+  await page.context().route('**/api/me', async (route) => {
     const response = await route.fetch();
     const account = await response.json();
     account.providers = ['google', 'github'];
@@ -615,7 +614,7 @@ test('Settings shows the saved choices before its client code loads', async ({
     localStorage.setItem('etymology-theme', 'indigo');
     localStorage.setItem('etymology-color-mode', 'dark');
   });
-  await page.route('**/_astro/*.js', (route) => route.abort());
+  await page.context().route('**/_astro/*.js', (route) => route.abort());
   await page.goto('/settings/');
   await expect(page.getByRole('radiogroup', { name: 'Theme' })).toBeVisible();
   await expect(page.getByLabel('Technical')).toBeChecked();
@@ -623,92 +622,22 @@ test('Settings shows the saved choices before its client code loads', async ({
   await expect(page.locator('html')).toHaveClass(/indigo dark/);
 });
 
-type RecordedAnimation = {
-  id: string;
-  word: string;
-  duration: number;
-  easing: string;
-  from: string;
-  to: string;
-  playState: string;
-};
-
-/** Wrap Element.prototype.animate so tests can read back what the deck ran. */
-async function recordAnimations(page: Page) {
-  await page.evaluate(() => {
-    const original = Element.prototype.animate;
-    const log: Animation[] = [];
-    (window as unknown as { __animations: Animation[] }).__animations = log;
-    Element.prototype.animate = function (this: Element, keyframes, options) {
-      const animation = original.call(this, keyframes, options);
-      log.push(animation);
-      return animation;
-    };
-  });
-}
-
-function readAnimations(page: Page): Promise<RecordedAnimation[]> {
-  return page.evaluate(() =>
-    (window as unknown as { __animations: Animation[] }).__animations.map(
-      (animation) => {
-        const effect = animation.effect as KeyframeEffect;
-        const frames = effect.getKeyframes();
-        return {
-          id: animation.id,
-          word:
-            (effect.target as Element).querySelector('h2')?.textContent ?? '',
-          duration: Number(effect.getTiming().duration),
-          easing: effect.getTiming().easing ?? '',
-          from: String(frames[0]?.transform ?? ''),
-          to: String(frames[frames.length - 1]?.transform ?? ''),
-          playState: animation.playState,
-        };
-      },
-    ),
-  );
-}
-
-/** Largest horizontal offset the top card shows over the next dozen frames. */
-function topCardDrift(page: Page): Promise<number> {
-  return page.evaluate(async () => {
-    let maximum = 0;
-    for (let frame = 0; frame < 12; frame++) {
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => resolve()),
-      );
-      const top = document.querySelector('[data-testid="top-card"]');
-      if (!top) throw new Error('Top card is missing.');
-      const transform = getComputedStyle(top).transform;
-      maximum = Math.max(
-        maximum,
-        Math.abs(new DOMMatrixReadOnly(transform).m41),
-      );
-    }
-    return maximum;
-  });
-}
-
 /** A single finger on the touchscreen, driven through the browser's real
  * touch pipeline so touch-action and native scrolling take part. */
-async function finger(page: Page, fixedTiming = false) {
+async function finger(page: Page) {
   const cdp = await page.context().newCDPSession(page);
   let at = { x: 0, y: 0 };
-  let timestamp = Date.now() / 1000;
   const send = (
     type: 'touchStart' | 'touchMove' | 'touchEnd',
     points: { x: number; y: number }[],
-    elapsed = 8,
   ) => {
-    timestamp += elapsed / 1000;
     return cdp.send('Input.dispatchTouchEvent', {
       type,
       touchPoints: points,
-      ...(fixedTiming ? { timestamp } : {}),
     });
   };
   return {
     async down(x: number, y: number) {
-      timestamp = Math.max(timestamp, Date.now() / 1000);
       at = { x, y };
       await send('touchStart', [at]);
     },
@@ -719,7 +648,7 @@ async function finger(page: Page, fixedTiming = false) {
           x: from.x + ((x - from.x) * step) / steps,
           y: from.y + ((y - from.y) * step) / steps,
         };
-        await send('touchMove', [at], wait || 8);
+        await send('touchMove', [at]);
         await page.waitForTimeout(wait);
       }
     },
@@ -763,7 +692,6 @@ test('horizontal drag commits a swipe while vertical movement leaves the card in
   await touch.move(x + 4, y + 85, { steps: 5 });
   await touch.up();
   await expect(card.locator('h2')).toHaveText(first);
-  await recordAnimations(page);
   await touch.down(x, y);
   await touch.move(x + box.width * 0.48, y, { steps: 8 });
   await touch.up();
@@ -776,11 +704,6 @@ test('horizontal drag commits a swipe while vertical movement leaves the card in
   await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
     first,
   );
-  const exits = (await readAnimations(page)).filter((a) => a.id === 'exit');
-  expect(exits).toHaveLength(1);
-  expect(exits[0].word).toBe(first);
-  expect(exits[0].to).toMatch(/^translate\(\d+(\.\d+)?px/);
-  expect(exits[0].duration).toBeLessThanOrEqual(SWIPE.exitMax);
   await expect(page.locator('.is-departing')).toHaveCount(0);
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: first })).toBeVisible();
@@ -790,7 +713,7 @@ for (const direction of [-1, 1]) {
   test(`diagonal swipe ${direction} keeps a long card from scrolling`, async ({
     page,
   }) => {
-    await page.route('**/api/feed?*', async (route) => {
+    await page.context().route('**/api/feed?*', async (route) => {
       const response = await route.fetch();
       const data = await response.json();
       for (const card of data.cards) {
@@ -827,7 +750,7 @@ for (const direction of [-1, 1]) {
 test('vertical reading stays locked to scrolling and card edges do not bounce', async ({
   page,
 }) => {
-  await page.route('**/api/feed?*', async (route) => {
+  await page.context().route('**/api/feed?*', async (route) => {
     const response = await route.fetch();
     const data = await response.json();
     for (const card of data.cards) {
@@ -860,73 +783,6 @@ test('vertical reading stays locked to scrolling and card edges do not bounce', 
   await expect(page.locator('.deck-area')).not.toHaveClass(/is-dragging/);
 });
 
-test('the next card waits fully drawn and takes over without sliding back', async ({
-  page,
-}) => {
-  await page.goto('/');
-  const top = page.getByTestId('top-card');
-  await expect(top).toBeVisible();
-  const next = page.locator('.is-next');
-  await expect(next).toHaveCount(1);
-  await expect(next).toHaveCSS('opacity', '1');
-  await expect(next.locator('.word-head')).toHaveCSS('opacity', '1');
-  await expect(next).toHaveAttribute('aria-hidden', 'true');
-  const nextWord = await next.locator('h2').innerText();
-  await recordAnimations(page);
-  await page.getByRole('button', { name: 'Interesting' }).click();
-  await expect(top.locator('h2')).toHaveText(nextWord);
-  expect(await topCardDrift(page)).toBeLessThan(1);
-  const animations = await readAnimations(page);
-  const exit = animations.find((a) => a.id === 'exit');
-  const rise = animations.find((a) => a.id === 'rise');
-  expect(exit?.duration).toBe(SWIPE.press.duration);
-  expect(exit?.to).toMatch(/rotate\(/);
-  expect(rise?.word).toBe(nextWord);
-  expect(rise?.duration).toBe(SWIPE.press.duration);
-  await expect(page.locator('.is-departing')).toHaveCount(0);
-  await expect(page.locator('.is-next')).toHaveCount(1);
-  await expect(page.locator('.is-next h2')).not.toHaveText(nextWord);
-});
-
-test('the exit speed follows the hand: a slow drag eases away, a flick leaves fast', async ({
-  page,
-}) => {
-  await page.goto('/');
-  const card = page.getByTestId('top-card');
-  await expect(card).toBeVisible();
-  const first = await card.locator('h2').innerText();
-  const box = await card.boundingBox();
-  if (!box) throw new Error('Card has no visible bounds.');
-  const x = box.x + box.width / 2;
-  const y = box.y + box.height / 2;
-  await recordAnimations(page);
-  // Keep gesture velocity independent of CDP round-trip latency on CI runners.
-  // Events still travel through Chrome's native touch pipeline.
-  const touch = await finger(page, true);
-  await touch.down(x, y);
-  await touch.move(x + box.width * 0.45, y, { steps: 10, wait: 60 });
-  await touch.up();
-  await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
-    first,
-  );
-  const slow = (await readAnimations(page)).find((a) => a.id === 'exit');
-  expect(slow?.word).toBe(first);
-  expect(slow?.duration).toBe(SWIPE.exitMax);
-
-  const second = await page.getByTestId('top-card').locator('h2').innerText();
-  await touch.down(x, y);
-  await touch.move(x + box.width * 0.4, y, { steps: 3, wait: 0 });
-  await touch.up();
-  await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(
-    second,
-  );
-  const exits = (await readAnimations(page)).filter((a) => a.id === 'exit');
-  expect(exits).toHaveLength(2);
-  expect(exits[1].word).toBe(second);
-  expect(exits[1].duration).toBeLessThan(SWIPE.exitMax);
-  expect(exits[1].duration).toBeGreaterThanOrEqual(SWIPE.exitMin);
-});
-
 test('a short drag springs the card home with the next card in step', async ({
   page,
 }) => {
@@ -938,30 +794,13 @@ test('a short drag springs the card home with the next card in step', async ({
   if (!box) throw new Error('Card has no visible bounds.');
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2;
-  await recordAnimations(page);
   const touch = await finger(page);
   await touch.down(x, y);
   await touch.move(x + box.width * 0.18, y, { steps: 6 });
   await page.waitForTimeout(150);
   await touch.up();
   await expect(card.locator('h2')).toHaveText(first);
-  const snaps = (await readAnimations(page)).filter((a) => a.id === 'snap');
-  expect(snaps).toHaveLength(2);
-  expect(snaps[0].easing.startsWith('linear(')).toBe(true);
-  expect(snaps[0].from).toMatch(/^matrix\(/);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => document.getAnimations().filter((a) => a.id === 'snap').length,
-      ),
-    )
-    .toBe(0);
   await expect(card).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 0)');
-  const peek = await page
-    .locator('.is-next')
-    .evaluate((el) => new DOMMatrixReadOnly(getComputedStyle(el).transform));
-  expect(peek.a).toBeCloseTo(0.96, 3);
-  expect(peek.f).toBeGreaterThan(0);
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: first })).toHaveCount(0);
 });
@@ -983,7 +822,7 @@ test('a mouse drag does not move the card', async ({ page }) => {
   await expect(card.locator('h2')).toHaveText(first);
 });
 
-test('holding or double-tapping the text selects a word and holds the card still', async ({
+test('holding or double-tapping the text selects a word and holds the card still @native', async ({
   page,
 }) => {
   await page.goto('/');

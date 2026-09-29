@@ -19,7 +19,8 @@
     "typecheck:api": "tsc --project apps/api/tsconfig.json",
     "typecheck:shared": "tsc --project packages/shared/tsconfig.json",
     "typecheck:web": "tsc --noEmit --project apps/web/tsconfig.json && npm run check -w @etymology-feed/web",
-    "test:dictionary": "python3 -m unittest discover -s database -p 'test_*.py' -v"
+    "test:dictionary": "python3 -m unittest discover -s database -p 'test_*.py' -v",
+    "test:unit": "vitest run packages/shared apps/web/src/lib"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",

@@ -60,11 +60,13 @@ npm run build:web
 npm run typecheck:api
 npm run typecheck:web
 npm run test:api
-npm run test:shared
+npm run test:unit
 npm run test:report -w @etymology-feed/api
 npm run test:e2e
 npm run lint
 ```
+
+See [Testing and CI](docs/TESTING.md) for coverage, fixture rules, and failure traces.
 
 To run the site locally:
 

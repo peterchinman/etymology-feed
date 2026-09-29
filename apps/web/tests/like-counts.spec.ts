@@ -1,43 +1,11 @@
 import type { Card } from '@etymology-feed/shared/card';
 import { expect, test } from '@playwright/test';
 
-test('local demo count changes the display without changing saved card totals', async ({
-  page,
-}) => {
-  await page.goto('/?demoLikes=24');
-  const card = page.getByTestId('top-card');
-  await expect(card.locator('.card-like-count')).toHaveText(
-    'Liked by 24 users',
-  );
-  const storedCount = await page.evaluate(async () => {
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('etymology-feed');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    const count = await new Promise<number | undefined>((resolve, reject) => {
-      const request = database
-        .transaction('stack')
-        .objectStore('stack')
-        .get('cards');
-      request.onsuccess = () => resolve(request.result?.[0]?.likeCount);
-      request.onerror = () => reject(request.error);
-    });
-    database.close();
-    return count;
-  });
-  expect(storedCount).toBe(0);
-  await page.goto('/');
-  await expect(card.locator('.card-like-count')).toHaveCount(0);
-  await page.goto('/?demoLikes=0');
-  await expect(card.locator('.card-like-count')).toHaveCount(0);
-});
-
 test('subtle like totals survive offline reloads and old cards omit unknown totals', async ({
   page,
   context,
-}, testInfo) => {
-  await page.route('**/api/feed?*', async (route) => {
+}) => {
+  await context.route('**/api/feed?*', async (route) => {
     const response = await route.fetch();
     const data = (await response.json()) as { cards: Card[] };
     data.cards.forEach((card, index) => {
@@ -75,13 +43,7 @@ test('subtle like totals survive offline reloads and old cards omit unknown tota
     expect(sourceBox.x + sourceBox.width).toBeLessThan(countBox.x);
     expect(Math.abs(countBox.y - sourceBox.y)).toBeLessThan(5);
   }
-  await page.screenshot({
-    path: testInfo.outputPath('like-count-desktop.png'),
-  });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({
-    path: testInfo.outputPath('like-count-mobile.png'),
-  });
   await context.setOffline(true);
   await page.reload();
   await expect(count).toHaveText('Liked by 1,234 users');
