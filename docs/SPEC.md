@@ -367,9 +367,9 @@ Types flow to the frontend through `hc<AppType>()`. All bodies validated with zo
 | `GET /api/me` | any | `{ user: { id, isAnonymous, name, image }, providers: ['google','github'] }`. |
 | `GET /api/me/likes?cursor=&limit=200` | any | Liked cards, newest first, full card payload. |
 | `DELETE /api/me` | signed-in | Delete account and all rows. |
-| `GET /api/cards/{id}` | none | One card by ID, including non-primary origins. `Cache-Control: public, max-age=86400`. |
+| `GET /api/cards/{id}` | none | One card by ID, including non-primary origins. `Cache-Control: public, max-age=60`. |
 | `GET /api/words/{word}/etymologies` | none | All retained cards for a headword, in etymology order. |
-| `GET /api/words/{word}` | none | Legacy primary card by headword. `Cache-Control: public, max-age=86400`. |
+| `GET /api/words/{word}` | none | Legacy primary card by headword. `Cache-Control: public, max-age=60`. |
 | `/auth/*` | — | Better Auth handler. |
 | `GET /healthz` | none | Pings both D1s and KV. |
 
@@ -377,9 +377,11 @@ Card payload (shared type in `packages/shared`):
 
 ```ts
 type Card = { id: string; word: string; etymNo: number | null; ipa: string | null; pos: string[]; definition: string; defPos: string;
-              etymology: string; tier: string; shape: string; etymBand: string;
+              etymology: string; tier: string; shape: string; etymBand: string; likeCount?: number;
               bucket?: 'confirmed' | 'promising' | 'fresh' | 'wild' }
 ```
+
+Feed, card, and word lookup responses include `likeCount` from the current per-card `word_stats.likes` total. Separate etymologies retain separate totals. Counts are snapshots taken when fetched and remain available offline; older cached cards without a count omit the indicator. The feed footer shows a muted outlined heart and a locale-formatted number for positive totals, with a full label for screen readers; zero hides the indicator. Each feed card adds one indexed APP read and no writes.
 
 Errors: `{ error: { code, message } }` with matching status. Rate limits via the binding: `/api/feed` 1 req/s per user, `/api/sync` 2 req/s.
 
@@ -437,7 +439,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 
 **M3 — Persistence + algorithm**
 - `APP` migrations; Better Auth with the anonymous plugin (no social yet); `served` record; `POST /api/sync` (idempotent upsert + stats delta + served update); `DELETE /api/swipes/{word}`; `word_stats` seeding script; lane pools (confirmed / promising / fresh) cron → KV with fill-through; Thompson sampling under the flat prior; slot composition + interleave; `known=` reseed; local on-demand stats report script; rate limiting.
-- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 101 rows read and 1 write, and a 100-swipe sync of 50 likes and 50 dislikes costs ≤ 650 rows written including index updates; a simulated user of 5,000 fetches never receives a repeat; one like moves a card into the promising lane at the next pool refresh, two lefts from other users do not remove it, five looks scoring at or above `CONFIRM_SCORE` move it into confirmed, five looks at exactly average leave it promising, and fifteen looks below average park it; a card passed over once returns to the tail of the fresh lane behind every never-seen card; every lane query uses its own index and a pool refresh reads no more than `FRESH_POOL_SIZE` plus the rated lanes' populations; the local report script produces global like-rate, like-rate by lane, band and shape, and lane populations from exported tables.
+- ✅ Unit tests for scoring, Beta sampler (mean/variance sanity), interleave pattern, refill; integration test proves a 100-card fetch costs ≤ 201 rows read (including like totals) and 1 write, and a 100-swipe sync of 50 likes and 50 dislikes costs ≤ 650 rows written including index updates; a simulated user of 5,000 fetches never receives a repeat; one like moves a card into the promising lane at the next pool refresh, two lefts from other users do not remove it, five looks scoring at or above `CONFIRM_SCORE` move it into confirmed, five looks at exactly average leave it promising, and fifteen looks below average park it; a card passed over once returns to the tail of the fresh lane behind every never-seen card; every lane query uses its own index and a pool refresh reads no more than `FRESH_POOL_SIZE` plus the rated lanes' populations; the local report script produces global like-rate, like-rate by lane, band and shape, and lane populations from exported tables.
 
 **M4 — Accounts**
 - Google + GitHub providers; `onLinkAccount` merge (swipes + served); post-login sync + likes reconcile; `GET /api/me/likes`; `DELETE /api/me`; sign-in/out UI and avatar.
