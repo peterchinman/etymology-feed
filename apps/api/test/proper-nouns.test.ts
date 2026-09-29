@@ -118,8 +118,9 @@ it('replaces filtered fresh candidates from the same lane without a random scan'
     random.mockRestore();
     expect(result.cards.map(({ id }) => id)).toEqual(ids.slice(100));
     expect(result.cards.every(({ bucket }) => bucket === 'fresh')).toBe(true);
-    // One served lookup plus 200 candidate PK reads, with no range recovery.
-    expect(result.rowsRead).toBeLessThanOrEqual(201);
+    // One served lookup, 200 candidate PK reads, and 100 current like totals.
+    // No dictionary range recovery is needed.
+    expect(result.rowsRead).toBeLessThanOrEqual(301);
     expect(result.rowsWritten).toBe(1);
     const served = await env.APP.prepare(
       'SELECT card_ids FROM served WHERE user_id=?',
