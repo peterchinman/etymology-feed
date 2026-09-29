@@ -37,6 +37,23 @@ test('two origins of one headword stay separate in the offline stack and Liked',
     cards[1].etymology,
   );
   await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('etymology-feed');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const count = await new Promise<number>((resolve, reject) => {
+      const request = database
+        .transaction('swipes')
+        .objectStore('swipes')
+        .count();
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    database.close();
+    return count === 2;
+  });
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: 'bluff' })).toHaveCount(2);
   expect(
