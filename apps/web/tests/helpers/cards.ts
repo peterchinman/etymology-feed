@@ -38,22 +38,40 @@ export async function putCardsOnStack(
   ).toBeEnabled();
 }
 
-export async function waitForSavedSwipes(page: Page, count: number) {
-  await page.waitForFunction(async (expected) => {
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('etymology-feed');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    const total = await new Promise<number>((resolve, reject) => {
-      const request = database
-        .transaction('swipes')
-        .objectStore('swipes')
-        .count();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    database.close();
-    return total >= expected;
-  }, count);
+export async function waitForSavedSwipes(
+  page: Page,
+  count: number,
+  cardIds?: string[],
+) {
+  await page.waitForFunction(
+    async ({ count: expected, cardIds }) => {
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('etymology-feed');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const swipes = await new Promise<
+        { cardId: string; verdict: number; removed?: boolean }[]
+      >((resolve, reject) => {
+        const request = database
+          .transaction('swipes')
+          .objectStore('swipes')
+          .getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      database.close();
+      return (
+        swipes.length >= expected &&
+        (!cardIds ||
+          cardIds.every((id) =>
+            swipes.some(
+              (swipe) =>
+                swipe.cardId === id && swipe.verdict === 1 && !swipe.removed,
+            ),
+          ))
+      );
+    },
+    { count, cardIds },
+  );
 }
