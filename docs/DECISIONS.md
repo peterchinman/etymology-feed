@@ -534,9 +534,9 @@ Assign each statistics row an independent `pool_order` using SQLite's random
 blob default, and index it after the existing lane priorities. Apply that order
 explicitly before every pool limit. Keep the fresh lane's 1,000-card head and
 per-request shuffle, rating formulas, and lane quotas unchanged. Preserve empty
-slots through dictionary resolution and fill them in place from bounded wild
-recovery, including stale IDs and exhausted lanes. Bucket labels still report
-the actual source of each card.
+slots through dictionary resolution and ranked-lane retries, then fill remaining
+gaps in place from bounded wild recovery, including stale IDs and exhausted
+lanes. Bucket labels still report the actual source of each card.
 
 Migration `0001_random_pool_ties` rebuilds only `word_stats`, retains its
 WITHOUT ROWID layout and all six existing values, assigns tie keys to existing
@@ -553,3 +553,19 @@ replay reduced suffixes in the first 1,000 fresh candidates from 120 to 13
 remain indexed without a temporary sort. Existing offline stacks retain their
 already downloaded cards; the change affects newly fetched batches. Production
 migration/deployment is separate from this local validation.
+
+## 2026-09-28 — Preserve sibling identity and ranked slots when filtering
+
+A hidden proper-noun etymology can share its headword with a visible common-word
+card. Swipe persistence must compare explicit card IDs; normalize only old records
+without IDs to their legacy headword identity. Otherwise a swipe can remove the
+hidden sibling and leave the swiped card in the stack. Browser regressions cover
+both stored ID formats and restoring the hidden sibling through Settings.
+
+Filtering a ranked candidate now retries its slot from the same lane before
+normal fill-through, preserving the feed mix and the actual source bucket. Batch
+primary-key lookups and a 500-candidate limit bound this work per attempt. At the
+limit, existing bounded shuffle recovery keeps name-heavy or stale ranked pools
+from blocking the feed and preserves dictionary rollback behavior. Filtered and
+missing IDs never enter served history. Tests cover lane proportions, no repeats,
+read costs, the limit, and existing rollback recovery.

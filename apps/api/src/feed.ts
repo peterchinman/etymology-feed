@@ -6,7 +6,7 @@ import {
   slotPattern,
 } from '@etymology-feed/shared/scoring';
 import { withLikeCounts } from './likes';
-import { type FeedBindings, getPools, rankLane, shuffleFresh } from './pools';
+import { getPools, rankLane, shuffleFresh } from './pools';
 
 type WordRow = {
   id: string;
@@ -79,7 +79,7 @@ export function randomPosition(maximum: number): number {
 const SERVED_KEY = 'SELECT card_ids FROM served WHERE user_id = ?';
 
 export async function getUserFeed(
-  env: FeedBindings,
+  env: CloudflareBindings,
   userId: string,
   count: number,
   known: string[] = [],
@@ -149,45 +149,49 @@ export async function getUserFeed(
       fresh: shuffleFresh(pools.fresh),
     };
     const slots = interleave(count, pattern);
-    const chosen: { id: string; bucket: Bucket; index: number }[] = [];
+    const selected: (Card | undefined)[] = Array.from({ length: count });
     let wildIndex = 0;
-    const wildIds = [...wild.keys()];
-    for (const [index, slot] of slots.entries()) {
-      if (slot === 'wild' && wildIndex < wildIds.length) {
-        chosen.push({ id: wildIds[wildIndex++], bucket: 'wild', index });
-        continue;
-      }
-      // Fill-through: an empty lane hands its slot down (§6.4). The recorded
-      // bucket is the lane the card came from, so per-lane like-rates are honest.
-      const picked = pickFromLanes(slot, lanes, seen);
-      if (picked) chosen.push({ id: picked.item, bucket: picked.lane, index });
-    }
-    // Individual primary-key lookups cost one row each in D1, whereas the
-    // JSON-array IN query measured three rows per card on the fixture.
-    const lookups = chosen.filter(({ id }) => !wild.has(id));
-    const fetched = lookups.length
-      ? await env.DICT.batch(
-          lookups.map(({ id }) =>
-            env.DICT.prepare(
-              `SELECT ${CARD_COLUMNS} FROM word WHERE id = ?`,
-            ).bind(id),
-          ),
-        )
-      : [];
-    const byWord = new Map<string, WordRow>(wild);
-    fetched.forEach((result) => {
-      rowsRead += result.meta.rows_read;
-      for (const row of result.results as WordRow[]) byWord.set(row.id, row);
+    const wildRows = [...wild.values()];
+    slots.forEach((slot, index) => {
+      if (slot === 'wild' && wildIndex < wildRows.length)
+        selected[index] = toCard(wildRows[wildIndex++], 'wild');
     });
-    // Keep each surviving card in its slot. Compacting here would put all the
-    // pool picks first and append recovery cards in a separate block.
-    const cardSlots = new Array<Card | undefined>(count).fill(undefined);
-    for (const { id, bucket, index } of chosen) {
-      const row = byWord.get(id);
-      if (row && eligibleRow(row, includeProperNouns))
-        cardSlots[index] = toCard(row, bucket);
+
+    // Retry a filtered/missing candidate in its original slot before using
+    // random recovery. Seen tracks attempted IDs too, so no ID is fetched twice.
+    // At most 500 indexed candidate lookups per attempt; ordinary complete
+    // batches still resolve each chosen card exactly once.
+    const rankedLimit = 500;
+    let rankedLookups = 0;
+    while (selected.some((card) => !card) && rankedLookups < rankedLimit) {
+      const candidates: { index: number; id: string; bucket: Bucket }[] = [];
+      for (const [index, slot] of slots.entries()) {
+        if (rankedLookups + candidates.length >= rankedLimit) break;
+        if (selected[index]) continue;
+        const picked = pickFromLanes(slot, lanes, seen);
+        if (!picked) continue;
+        candidates.push({ index, id: picked.item, bucket: picked.lane });
+      }
+      if (!candidates.length) break;
+      // Individual PK lookups cost one row per existing card, unlike JSON IN.
+      const results = await env.DICT.batch(
+        candidates.map(({ id }) =>
+          env.DICT.prepare(
+            `SELECT ${CARD_COLUMNS} FROM word WHERE id = ?`,
+          ).bind(id),
+        ),
+      );
+      rankedLookups += candidates.length;
+      results.forEach((result, index) => {
+        rowsRead += result.meta.rows_read;
+        const row = result.results[0] as WordRow | undefined;
+        if (row && eligibleRow(row, includeProperNouns)) {
+          const candidate = candidates[index];
+          selected[candidate.index] = toCard(row, candidate.bucket);
+        }
+      });
     }
-    const gaps = cardSlots.flatMap((card, index) => (card ? [] : [index]));
+    const gaps = selected.flatMap((card, index) => (card ? [] : [index]));
     let filled = 0;
     // APP statistics outlive a DICT switch or rollback. Resolve the selected
     // IDs before filling through: missing or ineligible cards cannot consume slots.
@@ -195,7 +199,7 @@ export async function getUserFeed(
     // count of unavailable dictionary rows. Only an actual scan proves that.
     const delivered = new Set([
       ...previous,
-      ...cardSlots.flatMap((card) => (card ? [card.id] : [])),
+      ...selected.flatMap((card) => (card ? [card.id] : [])),
     ]);
     const scanLimit = Math.min(pools.cardCount, 1000);
     let scanned = 0;
@@ -207,7 +211,7 @@ export async function getUserFeed(
         pools.cardCount - cursor + 1,
       );
       // idx_word_shuffle range: at most size rows read, no writes. This bounded
-      // recovery path runs only on pool exhaustion or stale release IDs.
+      // recovery runs on lane exhaustion or the ranked candidate lookup limit.
       const query = await env.DICT.prepare(
         `SELECT ${CARD_COLUMNS} FROM word WHERE shuffle >= ? ORDER BY shuffle LIMIT ?`,
       )
@@ -218,7 +222,7 @@ export async function getUserFeed(
         if (!eligibleRow(row, includeProperNouns) || delivered.has(row.id))
           continue;
         delivered.add(row.id);
-        cardSlots[gaps[filled++]] = toCard(row, 'wild');
+        selected[gaps[filled++]] = toCard(row, 'wild');
         if (filled === gaps.length) break;
       }
       scanned += size;
@@ -229,7 +233,7 @@ export async function getUserFeed(
       // request reached its recovery budget. No served history is written.
       throw new FeedUnavailable('Feed recovery needs a retry.');
     }
-    const cards = cardSlots.filter((card): card is Card => !!card);
+    const cards = selected.filter((card): card is Card => !!card);
     const counted = await withLikeCounts(env.APP, cards);
     rowsRead += counted.rowsRead;
     const nextWords = JSON.stringify(

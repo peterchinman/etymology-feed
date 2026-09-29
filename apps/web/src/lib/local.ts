@@ -156,24 +156,27 @@ export async function saveSwipes(
     card,
   }));
   const tx = db.transaction(['stack', 'swipes'], 'readwrite');
-  const stack = (await tx.objectStore('stack').get('cards')) ?? [];
+  // Only records without an ID use the legacy headword identity. An explicit
+  // etymology ID must never match a sibling just because its word is the same.
+  const stack = ((await tx.objectStore('stack').get('cards')) ?? []).map(
+    normalizeCard,
+  );
   let index = 0;
   const consumed = new Set<string>();
   for (const { card } of pending) {
     while (
       stack[index] &&
       stack[index].id !== card.id &&
-      stack[index].word !== card.id &&
       !isFeedEligible(stack[index])
     )
       index++;
-    if (stack[index]?.id !== card.id && stack[index]?.word !== card.id) {
+    if (stack[index]?.id !== card.id) {
       throw new Error('The card stack changed before the swipe was saved.');
     }
-    consumed.add(stack[index].id ?? stack[index].word);
+    consumed.add(stack[index].id);
     index++;
   }
-  const nextStack = stack.filter((card) => !consumed.has(card.id ?? card.word));
+  const nextStack = stack.filter((card) => !consumed.has(card.id));
   tx.objectStore('stack').put(nextStack, 'cards');
   for (const swipe of swipes) tx.objectStore('swipes').put(swipe);
   await tx.done;

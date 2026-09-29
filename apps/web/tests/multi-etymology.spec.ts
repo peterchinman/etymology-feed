@@ -20,7 +20,11 @@ test('two origins of one headword stay separate in the offline stack and Liked',
     cards[1].etymology,
   );
   await page.keyboard.press('ArrowRight');
-  await waitForSavedSwipes(page, 2);
+  await waitForSavedSwipes(
+    page,
+    2,
+    cards.map(({ id }) => id),
+  );
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: 'bluff' })).toHaveCount(2);
   expect(
