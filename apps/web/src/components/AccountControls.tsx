@@ -9,9 +9,7 @@ import {
 
 type Provider = 'google' | 'github' | 'mock';
 
-export default function AccountControls(props: {
-  variant: 'compact' | 'settings';
-}) {
+export default function AccountControls() {
   const [account, setAccount] = createSignal<AccountInfo | null>(null);
   const [error, setError] = createSignal('');
   const [busy, setBusy] = createSignal(false);
@@ -63,88 +61,72 @@ export default function AccountControls(props: {
   return (
     <Show when={account()}>
       {(current) => (
-        <Show
-          when={props.variant === 'settings'}
-          fallback={
-            <Show when={!current().user.isAnonymous}>
-              <a class="account-badge label-voice" href="/settings/#account">
+        <section class="account-section" id="account" aria-label="Account">
+          <h2 class="label-voice">Account</h2>
+          <Show
+            when={!current().user.isAnonymous}
+            fallback={
+              <>
+                <p class="body-voice">
+                  Sign in to keep your Liked list across devices.
+                </p>
                 <Show
-                  when={current().user.image}
-                  fallback={current().user.name.slice(0, 1).toUpperCase()}
+                  when={current().providers.length}
+                  fallback={
+                    <p class="caption-voice">
+                      Sign-in is not available on this deployment yet.
+                    </p>
+                  }
                 >
-                  {(image) => <img src={image()} alt="" />}
+                  <div class="account-actions">
+                    <For each={current().providers as Provider[]}>
+                      {(provider) => (
+                        <button
+                          type="button"
+                          class="label-voice"
+                          disabled={busy()}
+                          onClick={() => void signIn(provider)}
+                        >
+                          Continue with{' '}
+                          {provider === 'google'
+                            ? 'Google'
+                            : provider === 'github'
+                              ? 'GitHub'
+                              : 'Test account'}
+                        </button>
+                      )}
+                    </For>
+                  </div>
                 </Show>
-              </a>
-            </Show>
-          }
-        >
-          <section class="account-section" id="account" aria-label="Account">
-            <h2 class="label-voice">Account</h2>
-            <Show
-              when={!current().user.isAnonymous}
-              fallback={
-                <>
-                  <p class="body-voice">
-                    Sign in to keep your Liked list across devices.
-                  </p>
-                  <Show
-                    when={current().providers.length}
-                    fallback={
-                      <p class="caption-voice">
-                        Sign-in is not available on this deployment yet.
-                      </p>
-                    }
-                  >
-                    <div class="account-actions">
-                      <For each={current().providers as Provider[]}>
-                        {(provider) => (
-                          <button
-                            type="button"
-                            class="label-voice"
-                            disabled={busy()}
-                            onClick={() => void signIn(provider)}
-                          >
-                            Continue with{' '}
-                            {provider === 'google'
-                              ? 'Google'
-                              : provider === 'github'
-                                ? 'GitHub'
-                                : 'Test account'}
-                          </button>
-                        )}
-                      </For>
-                    </div>
-                  </Show>
-                </>
-              }
-            >
-              <p class="body-voice">Signed in as {current().user.name}</p>
-              <div class="account-actions">
-                <button
-                  type="button"
-                  class="label-voice"
-                  disabled={busy()}
-                  onClick={() => void signOut()}
-                >
-                  Sign out
-                </button>
-                <button
-                  type="button"
-                  class="label-voice account-delete"
-                  disabled={busy()}
-                  onClick={() => void removeAccount()}
-                >
-                  Delete account
-                </button>
-              </div>
-            </Show>
-            <Show when={error()}>
-              <p class="inline-error body-voice" role="alert">
-                {error()}
-              </p>
-            </Show>
-          </section>
-        </Show>
+              </>
+            }
+          >
+            <p class="body-voice">Signed in as {current().user.name}</p>
+            <div class="account-actions">
+              <button
+                type="button"
+                class="label-voice"
+                disabled={busy()}
+                onClick={() => void signOut()}
+              >
+                Sign out
+              </button>
+              <button
+                type="button"
+                class="label-voice account-delete"
+                disabled={busy()}
+                onClick={() => void removeAccount()}
+              >
+                Delete account
+              </button>
+            </div>
+          </Show>
+          <Show when={error()}>
+            <p class="inline-error body-voice" role="alert">
+              {error()}
+            </p>
+          </Show>
+        </section>
       )}
     </Show>
   );

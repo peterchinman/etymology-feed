@@ -217,22 +217,6 @@ a {
   color: var(--color-bar-ink);
   border-bottom-color: var(--color-nav-mark);
 }
-.account-badge {
-  display: grid;
-  place-items: center;
-  min-width: var(--space-7);
-  min-height: var(--space-7);
-  border: var(--stroke-control) solid currentColor;
-  border-radius: var(--radius-control);
-  color: var(--color-bar-ink);
-  text-decoration: none;
-  overflow: hidden;
-}
-.account-badge img {
-  width: var(--space-7);
-  height: var(--space-7);
-  object-fit: cover;
-}
 .bottom-nav {
   display: none;
 }
@@ -316,9 +300,9 @@ a {
   flex-shrink: 0;
   width: 2.5rem;
   height: 1.5rem;
-  border: 1px solid var(--color-line);
+  border: 1px solid var(--color-switch-line);
   border-radius: 999px;
-  background: var(--color-segment-track);
+  background: var(--color-switch-off);
   cursor: pointer;
 }
 .setting-toggle input::before {
@@ -329,14 +313,14 @@ a {
   width: 1rem;
   height: 1rem;
   border-radius: 50%;
-  background: var(--color-muted);
+  background: var(--color-thumb-off);
 }
 .setting-toggle input:checked {
-  background: var(--color-accent);
+  background: var(--color-on);
 }
 .setting-toggle input:checked::before {
   transform: translateX(1rem);
-  background: white;
+  background: var(--color-thumb-on);
 }
 .setting-toggle input:focus-visible {
   outline: 2px solid var(--color-accent);
@@ -344,6 +328,9 @@ a {
 }
 .setting-toggle input:disabled {
   opacity: 0.5;
+}
+:root.indigo .setting-toggle input:disabled {
+  opacity: 0.85;
 }
 .segmented {
   display: grid;
@@ -416,6 +403,9 @@ a {
   padding: var(--space-2) var(--space-3);
   background: var(--color-surface);
   color: var(--color-ink);
+}
+:root.gallery .account-actions button {
+  border: var(--hairline) solid var(--color-divider);
 }
 .account-actions .account-delete {
   color: var(--color-accent);
@@ -920,14 +910,6 @@ a {
     min-width: 0;
     color: var(--color-bar-muted);
     text-decoration: none;
-  }
-  .bottom-nav .nav-icon {
-    display: grid;
-    place-items: center;
-    width: var(--icon-size);
-    height: var(--icon-size);
-    font-size: var(--icon-size);
-    line-height: 1;
   }
   .bottom-nav a svg {
     display: block;

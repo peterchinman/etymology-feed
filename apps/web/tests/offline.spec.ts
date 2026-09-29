@@ -468,6 +468,95 @@ test('desktop Settings opens a centered dialog over Feed and Liked', async ({
   await expect(page).toHaveURL('/liked/');
 });
 
+test('mobile dock tabs are centered, evenly spaced, and underline only the label', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const dock = page.locator('.bottom-nav');
+  const feed = dock.getByRole('link', { name: 'Feed' });
+  await expect(feed).toHaveAttribute('aria-current', 'page');
+  await expect(feed).toHaveCSS('text-decoration-line', 'none');
+  await expect(feed.locator('.nav-label')).toHaveCSS(
+    'text-decoration-line',
+    'underline',
+  );
+  await expect(feed.locator('svg')).toHaveCount(1);
+  for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const dockBox = await dock.boundingBox();
+    if (!dockBox) throw new Error('Dock has no visible bounds.');
+    const links = await dock.getByRole('link').all();
+    expect(links).toHaveLength(3);
+    for (const [index, link] of links.entries()) {
+      const linkBox = await link.boundingBox();
+      const iconBox = await link.locator('svg').boundingBox();
+      if (!linkBox || !iconBox)
+        throw new Error('Dock tab has no visible bounds.');
+      const center = linkBox.x + linkBox.width / 2;
+      expect(center).toBeCloseTo(
+        dockBox.x + (dockBox.width * (index + 0.5)) / 3,
+        0,
+      );
+      expect(iconBox.x + iconBox.width / 2).toBeCloseTo(center, 0);
+    }
+  }
+});
+
+test('Settings icons and controls use the correct theme styles', async ({
+  page,
+}) => {
+  await page.context().route('**/api/me', async (route) => {
+    const response = await route.fetch();
+    const account = await response.json();
+    account.providers = ['google', 'github'];
+    await route.fulfill({ response, json: account });
+  });
+  await page.goto('/settings/');
+  const settingsLink = page.locator('.bottom-nav').getByRole('link', {
+    name: 'Settings',
+  });
+  await expect(settingsLink.locator('svg')).toHaveCount(1);
+  await expect(settingsLink).not.toContainText('⚙');
+  await expect(page.locator('.topbar .account-badge')).toHaveCount(0);
+  await expect(
+    page.getByText(
+      'Show names of people, places, and other named things in your feed.',
+    ),
+  ).toHaveCount(0);
+
+  const account = page.locator('.account-section');
+  await expect(
+    account.getByText('Sign in to keep your Liked list across devices.'),
+  ).toHaveCSS('font-family', /Instrument Sans/);
+  for (const provider of ['Google', 'GitHub']) {
+    const button = account.getByRole('button', {
+      name: `Continue with ${provider}`,
+    });
+    await expect(button).toHaveCSS('border-top-width', '1px');
+    await expect(button).toHaveCSS('border-top-color', 'rgb(232, 232, 237)');
+  }
+  await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCSS(
+    'font-family',
+    /Bricolage Grotesque/,
+  );
+
+  await page.getByRole('radio', { name: 'Technical' }).check();
+  const switchInput = page.getByRole('switch', {
+    name: 'Include proper nouns',
+  });
+  await expect(switchInput).toBeEnabled();
+  await expect(switchInput).not.toBeChecked();
+  await expect(switchInput).toHaveCSS('border-top-color', 'rgb(47, 94, 168)');
+  await switchInput.evaluate((input) => {
+    (input as HTMLInputElement).disabled = true;
+  });
+  await expect(switchInput).toHaveCSS('opacity', '0.85');
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.locator('.topbar')).toBeVisible();
+  await expect(page.locator('.topbar > *')).toHaveCount(2);
+});
+
 test('the themes persist and system mode follows the device', async ({
   page,
 }) => {

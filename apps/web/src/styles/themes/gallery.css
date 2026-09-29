@@ -1,11 +1,8 @@
-/* Gallery. A white room with the lights on. Every word is a print on a white
-   wall, held off the surface by soft light rather than a line: there are no
-   borders anywhere, only shadow and space. Garamond carries the reading;
-   Bricolage Grotesque, a grotesque with hooked terminals and an optical
-   size axis, carries the word itself and every piece of information around
-   it, the contrast of a wall label beside a print. Rounded rectangles, one
-   link blue, and the green of a switch. */
+/* Gallery uses Garamond for reading, Instrument Sans for controls and details,
+   and Bricolage Grotesque for titles. */
 @import "@fontsource/eb-garamond/latin-400.css";
+@import "@fontsource/instrument-sans/latin-400.css";
+@import "@fontsource/instrument-sans/latin-500.css";
 @font-face {
   font-family: "Bricolage Grotesque Variable";
   font-style: normal;
@@ -17,11 +14,11 @@
 
 :root.gallery {
   --font-reading: "EB Garamond", Garamond, Georgia, serif;
-  --font-body: var(--font-reading);
+  --font-body: "Instrument Sans", system-ui, "Segoe UI", sans-serif;
   --font-display:
     "Bricolage Grotesque Variable", system-ui, "Segoe UI", Roboto, sans-serif;
-  --font-label: var(--font-display);
-  --font-caption: var(--font-display);
+  --font-label: var(--font-body);
+  --font-caption: var(--font-body);
   --font-brand: var(--font-display);
   --weight-display: 400;
   --weight-reading: 400;
