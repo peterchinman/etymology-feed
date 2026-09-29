@@ -507,3 +507,15 @@ The merged UI's synchronous card preview stays display-only until IndexedDB
 confirms the saved stack. A delayed-storage browser regression verifies that a
 stale preview cannot receive a swipe. Account fixtures update both preview and
 saved cards, then wait for the intended card to become interactive.
+
+## 2026-09-28 — Proper nouns are an opt-in feed preference
+
+Add **Include proper nouns** to desktop and mobile Settings, off by default and
+stored on the device. Use the paired definition's part of speech, so common-word
+senses remain eligible even when the headword is capitalized or also has a name
+sense. Keep the full dictionary, card IDs, ratings, and Liked history unchanged.
+Retain hidden unswiped cards in IndexedDB so enabling the preference also works
+offline. Apply the preference to every server feed path, including cached lane
+candidates and fallback draws, and send it explicitly on new fetches. Filtering
+can require additional indexed reads; measure production usage before claiming
+the original unfiltered 101-row estimate for default feed requests.

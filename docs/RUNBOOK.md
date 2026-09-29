@@ -2,17 +2,24 @@
 
 ## Current state — 2026-09-28
 
-M5 is in progress; the public app has not yet been deployed. Production
-resources, secrets, the initial dictionary, and a private backup/restore drill
-are complete. Merge the reviewed production PR to enable automatic deployment.
-Real Google/GitHub sign-in and post-launch usage metrics still need verification.
+The public app is live at https://etymologyfeed.com on merged commit
+`2be5a00e03972acf30445971ca167b6bd4242d9d`. The production deployment workflow
+passed after the owner resolved the initial root-domain DNS conflict. Live
+checks verified HTTPS, the expected commit/dictionary, both paired Bluffs, the
+static shell, and 100 distinct feed cards. The initial release assets are published
+and the first GitHub Actions backup passed. M5 remains in progress: real
+Google/GitHub sign-in and post-launch usage metrics still need verification.
+
+Launch evidence: [deployment](https://github.com/peterchinman/etymology-feed/actions/runs/36423935011),
+[private backup workflow](https://github.com/peterchinman/etymology-feed/actions/runs/36424514174),
+and [initial dictionary release](https://github.com/peterchinman/etymology-feed/releases/tag/feed-2026-09-28-v4).
 
 | Resource | Production target |
 | --- | --- |
 | Origin | `https://etymologyfeed.com` |
 | Cloudflare account | Peter Chinman, `718c6831c05a1caaaa1cbea88dd211c2` |
 | Active zone | `da274e3d8816f45b2d816e80c3480ab3` |
-| Worker | `etymology-feed` (secrets installed; application deployment pending) |
+| Worker | `etymology-feed` (live) |
 | APP | `etymology-feed-app`, `a0961bd8-4f99-4af7-b1da-2f00cd82b44d` |
 | Initial DICT | `etymology-feed-dict-20260928-v4`, `bbcea6f6-1c37-4ed4-bad0-dbac396bc425` |
 | CACHE | `4fa55f4da70f460ca8d2dca9117361c4` |
@@ -41,7 +48,8 @@ issuer belongs in production.
 The repository Actions secret `CLOUDFLARE_API_TOKEN` was added on 2026-09-28.
 The read-only **Check production credentials** workflow passed from GitHub:
 Worker, APP/DICT metadata, KV, R2 bucket, account, zone, and routes were accessible.
-Write permissions will be exercised by the deploy and backup workflows.
+The deployment rerun and first backup workflow also passed, exercising their
+required write permissions.
 
 Token permissions, scoped to this account: Workers Scripts Edit, Workers KV
 Storage Edit, D1 Edit, Workers R2 Storage Edit, Account Settings Read; scoped to
@@ -59,8 +67,8 @@ all card rows matching the accepted local build, including both paired Bluffs.
 Production DICT is imported and APP has migration `0000_initial` plus 100,537
 initial statistics rows. Initial import costs were 502,724 DICT writes and
 201,074 APP seed writes. Do not repeat those imports into the existing databases.
-The initial feed release `feed-2026-09-28-v4` still needs publication from merged
-code with the five assets prepared in `data/production-release/`.
+The initial feed release `feed-2026-09-28-v4` is published from merged code with
+the five validated assets prepared in `data/production-release/`.
 
 ## App deployment
 
@@ -96,6 +104,13 @@ does not submit ratings.
 Check real sign-in for both providers, anonymous-to-account reconciliation,
 cross-device likes, account deletion, and offline reconnection after launch.
 Local mocked OAuth tests do not prove provider-console settings are correct.
+
+If domain attachment fails with Cloudflare error `100117`, inspect existing DNS
+records for that exact hostname. The initial launch encountered this conflict;
+the Worker upload succeeded but the custom-domain step failed. Resolve the
+conflicting web record, then rerun the failed deployment job. Keep unrelated
+mail and verification records. Cloudflare documents the existing-CNAME restriction
+in its [Custom Domains guide](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/).
 
 ## Dictionary releases
 

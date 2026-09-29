@@ -4,6 +4,7 @@ import {
   type ColorMode,
   getSettings,
   setColorMode,
+  setIncludeProperNouns,
   setTheme,
 } from '../lib/local';
 import { DEFAULT_THEME, THEMES, type Theme } from '../lib/themes';
@@ -43,6 +44,22 @@ export default function Settings(props: Props) {
     colorModeOnPage(),
   );
   const [error, setError] = createSignal('');
+  const [includeProperNouns, setProperNounsState] = createSignal(false);
+  const [savingFeed, setSavingFeed] = createSignal(false);
+  const [loaded, setLoaded] = createSignal(false);
+
+  async function changeProperNouns(value: boolean) {
+    setSavingFeed(true);
+    try {
+      await setIncludeProperNouns(value);
+      setProperNounsState(value);
+      setError('');
+    } catch {
+      setError('Could not save the proper nouns setting.');
+    } finally {
+      setSavingFeed(false);
+    }
+  }
 
   async function changeTheme(value: Theme) {
     try {
@@ -67,6 +84,8 @@ export default function Settings(props: Props) {
       .then((settings) => {
         setThemeState(settings.theme);
         setColorModeState(settings.colorMode);
+        setProperNounsState(settings.includeProperNouns);
+        setLoaded(true);
         applyTheme(settings.theme, settings.colorMode);
       })
       .catch(() => {
@@ -148,6 +167,24 @@ export default function Settings(props: Props) {
             </For>
           </div>
         </div>
+      </div>
+      <div class="setting-group">
+        <label class="setting-toggle label-voice">
+          <span>Include proper nouns</span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-checked={includeProperNouns()}
+            checked={includeProperNouns()}
+            disabled={!loaded() || savingFeed()}
+            onChange={(event) =>
+              void changeProperNouns(event.currentTarget.checked)
+            }
+          />
+        </label>
+        <p class="caption-voice">
+          Show names of people, places, and other named things in your feed.
+        </p>
       </div>
       <AccountControls variant="settings" />
       <p class="source-credit caption-voice">
