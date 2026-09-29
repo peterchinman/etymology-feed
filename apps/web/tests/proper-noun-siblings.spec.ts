@@ -2,12 +2,23 @@ import type { Card } from '@etymology-feed/shared/card';
 import { expect, test } from '@playwright/test';
 import { putCardsOnStack, waitForSavedSwipes } from './helpers/cards';
 
+// This fixture routes feed requests; service-worker fetches bypass page routes.
+// The offline suite separately exercises the real service worker.
+test.use({ serviceWorkers: 'block' });
+
 for (const legacy of [false, true]) {
   test(`swiping a common origin preserves its hidden proper sibling (${legacy ? 'legacy' : 'explicit'} ID)`, async ({
     page,
   }) => {
+    await page.route('**/api/feed?*', (route) =>
+      route.fulfill({ json: { cards: [] } }),
+    );
     await page.goto('/');
-    await expect(page.getByTestId('top-card')).toBeVisible();
+    await page.waitForFunction(async () =>
+      (await indexedDB.databases()).some(
+        ({ name }) => name === 'etymology-feed',
+      ),
+    );
     const response = await page.request.get('/api/words/bluff/etymologies');
     const { cards } = (await response.json()) as { cards: Card[] };
     const common = cards.find((card) => card.id === 'bluff');
@@ -19,9 +30,6 @@ for (const legacy of [false, true]) {
       defPos: 'proper noun',
       pos: ['proper noun'],
     };
-    await page.route('**/api/feed?*', (route) =>
-      route.fulfill({ json: { cards: [] } }),
-    );
     await putCardsOnStack(page, [proper, common], common);
     await expect(page.getByTestId('top-card').locator('.etymology')).toHaveText(
       common.etymology,
