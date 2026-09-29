@@ -521,6 +521,39 @@ can require additional indexed reads; measure production usage before claiming
 the original unfiltered 101-row estimate for default feed requests.
 
 
+## 2026-09-28 — Randomize pool ties before selection, preserve filtered slots
+
+A read-only production cache inspection found 79 suffixes among 226 eligible
+cards in the first 1,000 fresh candidates; the other 774 were proper nouns.
+The pool indexes implicitly broke equal-priority ties by card ID, putting
+hyphen-prefixed suffixes and capitalized names first. Shuffling this head after
+the cutoff could not remove its bias. Filtering then compacted surviving picks
+and appended replacements, concentrating the biased picks at the front.
+
+Assign each statistics row an independent `pool_order` using SQLite's random
+blob default, and index it after the existing lane priorities. Apply that order
+explicitly before every pool limit. Keep the fresh lane's 1,000-card head and
+per-request shuffle, rating formulas, and lane quotas unchanged. Preserve empty
+slots through dictionary resolution and ranked-lane retries, then fill remaining
+gaps in place from bounded wild recovery, including stale IDs and exhausted
+lanes. Bucket labels still report the actual source of each card.
+
+Migration `0001_random_pool_ties` rebuilds only `word_stats`, retains its
+WITHOUT ROWID layout and all six existing values, assigns tie keys to existing
+rows, and recreates its indexes. New dictionary seeds receive keys from the
+default; conflict retries and ratings retain them. No per-refresh random sort
+or additional index is needed. Cache keys advance to `pools:v4:<DICT_RELEASE>`
+so an old biased pool cannot survive deployment. The reporting tool accepts
+both six-column historical exports and seven-column current exports.
+
+Local validation applied the migration to all 100,537 release statistics rows:
+all original values were identical afterward and integrity passed. One random
+replay reduced suffixes in the first 1,000 fresh candidates from 120 to 13
+(proper nouns from 712 to 139); exact counts vary with assigned keys. Query plans
+remain indexed without a temporary sort. Existing offline stacks retain their
+already downloaded cards; the change affects newly fetched batches. Production
+migration/deployment is separate from this local validation.
+
 ## 2026-09-28 — Preserve sibling identity and ranked slots when filtering
 
 A hidden proper-noun etymology can share its headword with a visible common-word

@@ -191,16 +191,20 @@ export async function getUserFeed(
         }
       });
     }
-    const cards = selected.filter((card): card is Card => !!card);
+    const gaps = selected.flatMap((card, index) => (card ? [] : [index]));
+    let filled = 0;
     // APP statistics outlive a DICT switch or rollback. Resolve the selected
     // IDs before filling through: missing or ineligible cards cannot consume slots.
     // Historical IDs can also be absent from this DICT, so seen.size is not a
     // count of unavailable dictionary rows. Only an actual scan proves that.
-    const delivered = new Set([...previous, ...cards.map(({ id }) => id)]);
+    const delivered = new Set([
+      ...previous,
+      ...selected.flatMap((card) => (card ? [card.id] : [])),
+    ]);
     const scanLimit = Math.min(pools.cardCount, 1000);
     let scanned = 0;
-    let cursor = cards.length < count ? randomPosition(pools.cardCount) : 1;
-    while (cards.length < count && scanned < scanLimit) {
+    let cursor = gaps.length ? randomPosition(pools.cardCount) : 1;
+    while (filled < gaps.length && scanned < scanLimit) {
       const size = Math.min(
         100,
         scanLimit - scanned,
@@ -218,17 +222,18 @@ export async function getUserFeed(
         if (!eligibleRow(row, includeProperNouns) || delivered.has(row.id))
           continue;
         delivered.add(row.id);
-        cards.push(toCard(row, 'wild'));
-        if (cards.length === count) break;
+        selected[gaps[filled++]] = toCard(row, 'wild');
+        if (filled === gaps.length) break;
       }
       scanned += size;
       cursor = ((cursor - 1 + size) % pools.cardCount) + 1;
     }
-    if (cards.length < count && scanned < pools.cardCount) {
+    if (filled < gaps.length && scanned < pools.cardCount) {
       // Do not report exhaustion to the offline client just because this
       // request reached its recovery budget. No served history is written.
       throw new FeedUnavailable('Feed recovery needs a retry.');
     }
+    const cards = selected.filter((card): card is Card => !!card);
     const counted = await withLikeCounts(env.APP, cards);
     rowsRead += counted.rowsRead;
     const nextWords = JSON.stringify(

@@ -53,17 +53,20 @@ export const wordStats = sqliteTable(
     prior: real('prior').notNull(),
     score: real('score').notNull(),
     updatedAt: integer('updated_at').notNull(),
+    // Stable random tie-breaker, assigned on insert before any pool LIMIT.
+    poolOrder: text('pool_order').notNull().default(sql`(hex(randomblob(8)))`),
   },
   (table) => [
     // Fresh lane: never-liked cards, fewest looks then best prior (§6.1).
     index('idx_word_stats_unrated').on(
       sql`(${table.likes} + ${table.dislikes})`,
       sql`${table.prior} DESC`,
+      table.poolOrder,
     ),
     // Confirmed lane: at or above average with five looks; the query narrows
     // to CONFIRM_SCORE. Partial, so it costs writes only for qualifying rows.
     index('idx_word_stats_rec')
-      .on(sql`${table.score} DESC`)
+      .on(sql`${table.score} DESC`, table.poolOrder)
       .where(
         sql`${table.likes} + ${table.dislikes} >= 5 AND ${table.score} >= 0.5`,
       ),
@@ -71,7 +74,7 @@ export const wordStats = sqliteTable(
     // nor parked (15 looks, score < 0.5). Parking waits for three times the
     // evidence because it is the irreversible call (§6.1).
     index('idx_word_stats_promising')
-      .on(sql`${table.score} DESC`)
+      .on(sql`${table.score} DESC`, table.poolOrder)
       .where(
         sql`${table.likes} > 0 AND (${table.likes} + ${table.dislikes} < 5 OR ${table.score} < 0.55) AND (${table.likes} + ${table.dislikes} < 15 OR ${table.score} >= 0.5)`,
       ),

@@ -1,5 +1,13 @@
 import { betaDraw, betaShapeParameters } from '@etymology-feed/shared/scoring';
 
+// Wrangler types config defaults as numeric literals; allow tuning those values
+// while retaining its generated binding types.
+export type FeedBindings = {
+  [K in keyof CloudflareBindings]: CloudflareBindings[K] extends number
+    ? number
+    : CloudflareBindings[K];
+};
+
 export type Candidate = [cardId: string, likes: number, dislikes: number];
 /**
  * Lanes by information state (§6.1). `confirmed` and `promising` carry their
@@ -16,14 +24,14 @@ export type Pools = {
 };
 type StatRow = { card_id: string; likes: number; dislikes: number };
 
-export const POOLS_KEY = 'pools:v3';
+export const POOLS_KEY = 'pools:v4';
 
-export function poolsKey(env: CloudflareBindings): string {
+export function poolsKey(env: FeedBindings): string {
   return `${POOLS_KEY}:${env.DICT_RELEASE}`;
 }
 
 export async function buildPools(
-  env: CloudflareBindings,
+  env: FeedBindings,
 ): Promise<Pools & { rowsRead: number }> {
   const confirmedSize = Number(env.CONFIRMED_POOL_SIZE);
   const promisingSize = Number(env.PROMISING_POOL_SIZE);
@@ -38,8 +46,8 @@ export async function buildPools(
   // needs new cost measurements.
   const confirmed = await env.APP.prepare(
     minRatings >= 5
-      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC LIMIT ?'
-      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC LIMIT ?',
+      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= 5 AND likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC, pool_order LIMIT ?'
+      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes + dislikes >= ? AND score >= 0.5 AND score >= ? ORDER BY score DESC, pool_order LIMIT ?',
   )
     .bind(minRatings, confirmScore, confirmedSize)
     .all<StatRow>();
@@ -52,8 +60,8 @@ export async function buildPools(
     minRatings === 5 && confirmScore === 0.55 && parkLooks === 15;
   const promising = await env.APP.prepare(
     defaultThresholds
-      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND (likes + dislikes < 5 OR score < 0.55) AND (likes + dislikes < 15 OR score >= 0.5) ORDER BY score DESC LIMIT ?'
-      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND (likes + dislikes < ? OR score < ?) AND (likes + dislikes < ? OR score >= 0.5) ORDER BY score DESC LIMIT ?',
+      ? 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND (likes + dislikes < 5 OR score < 0.55) AND (likes + dislikes < 15 OR score >= 0.5) ORDER BY score DESC, pool_order LIMIT ?'
+      : 'SELECT card_id, likes, dislikes FROM word_stats WHERE likes > 0 AND (likes + dislikes < ? OR score < ?) AND (likes + dislikes < ? OR score >= 0.5) ORDER BY score DESC, pool_order LIMIT ?',
   )
     .bind(
       ...(defaultThresholds
@@ -65,12 +73,12 @@ export async function buildPools(
     console.warn(
       'Non-default MIN_RATINGS/CONFIRM_SCORE/PARK_LOOKS: promising lane scans instead of using idx_word_stats_promising.',
     );
-  // idx_word_stats_unrated ((likes + dislikes), prior DESC): never-liked cards,
-  // fewest looks first, best prior first. Never-seen cards fill the lane until
-  // the frontier is exhausted; only then do cards passed over once get a second
-  // look. Reads freshSize rows plus any liked low-n rows the index range skips.
+  // idx_word_stats_unrated ((likes + dislikes), prior DESC, pool_order):
+  // fewest looks first, best prior first, random ties before LIMIT. Never-seen
+  // cards fill the lane until the frontier is exhausted; only then do cards
+  // passed over once get a second look. Reads freshSize rows plus any liked low-n rows the index range skips.
   const fresh = await env.APP.prepare(
-    'SELECT card_id FROM word_stats WHERE likes = 0 AND likes + dislikes < ? ORDER BY likes + dislikes ASC, prior DESC LIMIT ?',
+    'SELECT card_id FROM word_stats WHERE likes = 0 AND likes + dislikes < ? ORDER BY likes + dislikes ASC, prior DESC, pool_order LIMIT ?',
   )
     .bind(minRatings, freshSize)
     .all<{ card_id: string }>();
@@ -104,7 +112,7 @@ export async function buildPools(
   return { ...pools, rowsRead };
 }
 
-export async function getPools(env: CloudflareBindings): Promise<Pools> {
+export async function getPools(env: FeedBindings): Promise<Pools> {
   const cached = await env.CACHE.get<Pools>(poolsKey(env), 'json');
   return cached ?? buildPools(env);
 }
