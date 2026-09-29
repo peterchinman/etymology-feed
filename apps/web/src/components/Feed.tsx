@@ -765,7 +765,7 @@ export default function Feed() {
                   >
                     Wiktionary
                   </a>
-                  <Show when={shownLikeCount() !== undefined}>
+                  <Show when={(shownLikeCount() ?? 0) > 0}>
                     <span class="card-like-count caption-voice">
                       <svg aria-hidden="true" viewBox="0 0 256 256">
                         <path

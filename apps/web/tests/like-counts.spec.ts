@@ -28,7 +28,9 @@ test('local demo count changes the display without changing saved card totals', 
   });
   expect(storedCount).toBe(0);
   await page.goto('/');
-  await expect(card.locator('.card-like-count')).toHaveText('Liked by 0 users');
+  await expect(card.locator('.card-like-count')).toHaveCount(0);
+  await page.goto('/?demoLikes=0');
+  await expect(card.locator('.card-like-count')).toHaveCount(0);
 });
 
 test('subtle like totals survive offline reloads and old cards omit unknown totals', async ({
@@ -89,7 +91,7 @@ test('subtle like totals survive offline reloads and old cards omit unknown tota
   await page.keyboard.press('ArrowLeft');
   await expect(count).toHaveText('Liked by 1 user');
   await page.keyboard.press('ArrowLeft');
-  await expect(count).toHaveText('Liked by 0 users');
+  await expect(count).toHaveCount(0);
   await page.keyboard.press('ArrowLeft');
   await expect(count).toHaveCount(0);
   await expect(card.getByRole('link', { name: 'Wiktionary' })).toBeVisible();

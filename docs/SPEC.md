@@ -368,7 +368,7 @@ type Card = { id: string; word: string; etymNo: number | null; ipa: string | nul
               bucket?: 'confirmed' | 'promising' | 'fresh' | 'wild' }
 ```
 
-Feed, card, and word lookup responses include `likeCount` from the current per-card `word_stats.likes` total. Separate etymologies retain separate totals. Counts are snapshots taken when fetched and remain available offline; older cached cards without a count omit the indicator. The feed footer shows a muted outlined heart and a locale-formatted number, with a full label for screen readers. Each feed card adds one indexed APP read and no writes.
+Feed, card, and word lookup responses include `likeCount` from the current per-card `word_stats.likes` total. Separate etymologies retain separate totals. Counts are snapshots taken when fetched and remain available offline; older cached cards without a count omit the indicator. The feed footer shows a muted outlined heart and a locale-formatted number for positive totals, with a full label for screen readers; zero hides the indicator. Each feed card adds one indexed APP read and no writes.
 
 Errors: `{ error: { code, message } }` with matching status. Rate limits via the binding: `/api/feed` 1 req/s per user, `/api/sync` 2 req/s.
 
