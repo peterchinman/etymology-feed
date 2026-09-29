@@ -28,6 +28,6 @@ test('two origins of one headword stay separate in the offline stack and Liked',
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: 'bluff' })).toHaveCount(2);
   expect(
-    (await page.locator('.liked-etymology').allTextContents()).sort(),
+    (await page.locator('.liked-etymology p').allTextContents()).sort(),
   ).toEqual(cards.map(({ etymology }) => etymology).sort());
 });

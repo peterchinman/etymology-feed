@@ -479,15 +479,6 @@ a {
   margin: 0;
   overflow-wrap: anywhere;
 }
-.word-source {
-  position: relative;
-  text-decoration: none;
-}
-.word-source:hover {
-  text-decoration: underline;
-  text-decoration-thickness: var(--hairline);
-  text-underline-offset: var(--space-1);
-}
 /* The text scrolls only vertically. As its own scroll container it would
    otherwise take horizontal touches for itself, since a scroller does not
    inherit the card's touch-action, and the card could not be swiped. */
@@ -782,6 +773,9 @@ a {
 .liked-item {
   --voice-display-size: var(--type-display-compact);
   --voice-reading-size: var(--type-body);
+  --liked-etymology-lines: 7;
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   background: var(--color-surface);
   border: var(--stroke-card) solid var(--color-line);
@@ -793,11 +787,18 @@ a {
 .liked-item-main {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: var(--space-4);
+}
+.liked-item-main.word-head {
+  margin: var(--space-1) 0 var(--space-4);
 }
 .liked-item h2 {
   margin: 0;
   overflow-wrap: anywhere;
+}
+.liked-item .card-bottom {
+  margin-top: auto;
 }
 .remove-button {
   align-self: flex-start;
@@ -810,16 +811,63 @@ a {
   font-size: var(--icon-size);
   line-height: 1;
 }
+.liked-preview {
+  position: relative;
+  min-width: 0;
+}
+.liked-preview p {
+  margin: 0;
+}
+.liked-preview p.is-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--preview-lines);
+  overflow: hidden;
+}
+.liked-item .liked-preview .definition-toggle {
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: none;
+}
+.liked-item .liked-preview:not(.is-collapsed) .definition-toggle {
+  display: block;
+  margin-left: auto;
+}
+.liked-item .liked-preview.is-collapsed .definition-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  background: var(--preview-background);
+}
+.liked-item .liked-preview.is-collapsed .definition-toggle::before {
+  content: "";
+  position: absolute;
+  inset: 0 100% 0 auto;
+  width: 1.5em;
+  background: inherit;
+  mask-image: linear-gradient(to right, transparent, black);
+  pointer-events: none;
+}
+.liked-definition {
+  --preview-lines: var(--definition-lines);
+  --preview-background: linear-gradient(
+      var(--color-definition),
+      var(--color-definition)
+    )
+    var(--color-surface);
+}
 .liked-etymology {
+  --preview-lines: var(--liked-etymology-lines);
+  --preview-background: var(--color-surface);
+  margin: 0 0 var(--space-5);
   white-space: pre-line;
-  margin: var(--space-5) 0 var(--space-3);
-  max-height: 9em;
-  overflow-x: hidden;
-  overflow-y: auto;
-  touch-action: pan-y;
 }
 .liked-item .definition {
-  margin-top: var(--space-2);
+  margin: 0 0 var(--space-4);
+}
+.liked-item .definition .liked-preview p {
+  margin-top: var(--space-1);
 }
 .liked-empty {
   text-align: center;
@@ -960,6 +1008,9 @@ a {
   }
   .liked-list {
     grid-template-columns: 1fr;
+  }
+  .liked-item {
+    --liked-etymology-lines: 5;
   }
   .anon-banner {
     flex-direction: column;

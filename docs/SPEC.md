@@ -405,7 +405,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 ### 9.1 Routes & layout
 
 - `/` — **Feed**. Full-height card stack from the local `stack`; top card interactive, next one peeks behind it. Card shows the word, a two-line definition preview on desktop or three-line preview on mobile, and the etymology. Longer definitions have an inline "See more" control that expands only the current card. Buttons under the card on all sizes: ✕ and ♥.
-- `/liked/` — **Liked**. Reverse-chronological liked cards from local `swipes`, tap to expand (definition shown expanded here), swipe-to-remove on mobile / ✕ on desktop, client-side search, copy-all as text. Anonymous banner (§7.1); unsynced count when offline.
+- `/liked/` — **Liked**. Reverse-chronological liked cards from local `swipes`; use the Feed card order (word, paired definition, etymology, Wiktionary source and cached positive like count). Long definitions and etymologies have their own inline See more controls and expand the card in the page flow, with no nested etymology scroller. Swipe-to-remove on mobile / ✕ on desktop, client-side search, copy-all as text. Anonymous banner (§7.1); unsynced count when offline.
 - `/about/` — static: what it is, data/privacy, credits.
 - Navigation: **mobile (< 768 px)** — bottom dock, two items (Feed / Liked), safe-area aware (`env(safe-area-inset-bottom)`). **Desktop** — top bar with the same two items plus sign-in / avatar. Same component; CSS decides placement. Both carry the offline dot.
 - Empty stack while offline: a card that says so and how many swipes are waiting to sync.

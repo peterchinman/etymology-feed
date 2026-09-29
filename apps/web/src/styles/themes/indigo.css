@@ -207,9 +207,6 @@
     linear-gradient(var(--color-line), var(--color-line)) right /
     var(--hairline) 100% no-repeat;
 }
-:root.indigo .word-source:hover {
-  text-decoration-thickness: 0.125rem;
-}
 /* The definition is a dashed callout. */
 :root.indigo .definition {
   padding: var(--space-3)

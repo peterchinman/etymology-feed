@@ -76,7 +76,9 @@ for (const legacy of [false, true]) {
     });
     expect(remaining).toEqual([proper.id]);
     await page.goto('/liked/');
-    await expect(page.locator('.liked-etymology')).toHaveText(common.etymology);
+    await expect(page.locator('.liked-etymology p')).toHaveText(
+      common.etymology,
+    );
     await page.goto('/settings/');
     const toggle = page.getByRole('switch', { name: 'Include proper nouns' });
     await expect(toggle).toBeEnabled();
