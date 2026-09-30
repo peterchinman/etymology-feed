@@ -196,6 +196,49 @@ export async function undoSwipe(swipe: LocalSwipe): Promise<Card[]> {
   return nextStack;
 }
 
+/** Save a search result without requiring it to be the top feed card. */
+export async function saveSearchLike(card: Card): Promise<LocalSwipe> {
+  const db = await getDatabase();
+  const tx = db.transaction(['swipes', 'stack', 'served'], 'readwrite');
+  const store = tx.objectStore('swipes');
+  const previous = (await store.index('by-word').getAll(card.word))
+    .map(normalizeSwipe)
+    .filter((swipe) => swipe.cardId === card.id)
+    .sort((a, b) => b.swipedAt - a.swipedAt);
+  const latest = previous[0];
+  if (latest?.verdict === 1 && !latest.removed) {
+    await tx.done;
+    return latest;
+  }
+  const now = Date.now();
+  const swipe: LocalSwipe = {
+    id: crypto.randomUUID(),
+    cardId: card.id,
+    word: card.word,
+    verdict: 1,
+    bucket: undefined,
+    shownAt: now,
+    swipedAt: Math.max(now, (latest?.swipedAt ?? 0) + 1),
+    synced: false,
+    card,
+  };
+  for (const old of previous) await store.delete(old.id);
+  await store.put(swipe);
+  const stack = ((await tx.objectStore('stack').get('cards')) ?? []).map(
+    normalizeCard,
+  );
+  const nextStack = stack.filter((item) => item.id !== card.id);
+  await tx.objectStore('stack').put(nextStack, 'cards');
+  const served = (await tx.objectStore('served').get('words')) ?? [];
+  if (!served.includes(card.id)) {
+    served.push(card.id);
+    await tx.objectStore('served').put(served, 'words');
+  }
+  await tx.done;
+  cacheStackPreview(nextStack);
+  return swipe;
+}
+
 export async function getSwipes(): Promise<LocalSwipe[]> {
   return (await (await getDatabase()).getAll('swipes'))
     .map(normalizeSwipe)

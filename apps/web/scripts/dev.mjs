@@ -38,6 +38,8 @@ if (tables[0].results.length === 0) {
   d1('DICT', ['--file', 'fixtures/etymology-500.sql']);
 }
 
+d1('DICT', ['--file', 'dictionary/search-index.sql']);
+
 const migrated = spawnSync(
   wrangler,
   ['d1', 'migrations', 'apply', 'APP', '--local', '--persist-to', persist],

@@ -5,8 +5,10 @@ beforeAll(async () => {
   const testEnv = env as Cloudflare.Env & {
     TEST_MIGRATIONS: D1Migration[];
     APP_MIGRATIONS: D1Migration[];
+    SEARCH_MIGRATIONS: D1Migration[];
   };
   await applyD1Migrations(testEnv.DICT, testEnv.TEST_MIGRATIONS);
+  await applyD1Migrations(testEnv.DICT, testEnv.SEARCH_MIGRATIONS);
   await applyD1Migrations(testEnv.APP, testEnv.APP_MIGRATIONS);
   const words = await testEnv.DICT.prepare('SELECT id,prior FROM word').all<{
     id: string;

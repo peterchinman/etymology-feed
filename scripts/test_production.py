@@ -19,8 +19,8 @@ class ReleaseTests(unittest.TestCase):
         db.executescript("""
             CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT);
             INSERT INTO meta VALUES('source_published','true'),('row_count','2');
-            CREATE TABLE word(id TEXT PRIMARY KEY,prior REAL,shuffle INTEGER);
-            INSERT INTO word VALUES('bluff',0.6,1),('bluff::second',0.7,2);
+            CREATE TABLE word(id TEXT PRIMARY KEY,prior REAL,shuffle INTEGER,word TEXT);
+            INSERT INTO word VALUES('bluff',0.6,1,'bluff'),('bluff::second',0.7,2,'bluff');
         """)
         (self.path / 'etymology.sql').write_text('\n'.join(db.iterdump()))
         (self.path / 'etymology-report.txt').write_text('fixture')
@@ -116,11 +116,11 @@ class ReleaseRecoveryTests(unittest.TestCase):
                         db.executescript("""
                             CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT);
                             INSERT INTO meta VALUES('source_published','true');
-                            CREATE TABLE word(id TEXT PRIMARY KEY,prior REAL,shuffle INTEGER);
-                            INSERT INTO word VALUES('bluff',0.6,1),('bluff::second',0.7,2);
+                            CREATE TABLE word(id TEXT PRIMARY KEY,prior REAL,shuffle INTEGER,word TEXT);
+                            INSERT INTO word VALUES('bluff',0.6,1,'bluff'),('bluff::second',0.7,2,'bluff');
                         """)
                         if extra:
-                            db.execute("INSERT INTO word VALUES('new-card',0.8,3)")
+                            db.execute("INSERT INTO word VALUES('new-card',0.8,3,'new-card')")
                         db.execute("INSERT INTO meta VALUES('row_count',?)", (str(3 if extra else 2),))
                         (directory / "etymology.sql").write_text("\n".join(db.iterdump()))
                     (directory / "etymology-report.txt").write_text("fixture")
@@ -136,7 +136,10 @@ class ReleaseRecoveryTests(unittest.TestCase):
                 state = copy.deepcopy(previous)
                 deployed = copy.deepcopy(previous)
                 names = []
-                databases = {}
+                old_db = sqlite3.connect(":memory:")
+                self.addCleanup(old_db.close)
+                old_db.executescript((assets["feed-old"] / "etymology.sql").read_text())
+                databases = {previous["database_id"]: old_db}
                 failed = False
                 runtime = root / "runtime.json"
 
