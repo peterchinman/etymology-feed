@@ -1,6 +1,11 @@
 import type { Card } from '@etymology-feed/shared/card';
 import { expect, test } from '@playwright/test';
 
+test.afterEach(async ({ context }) => {
+  // Finish intercepted background refills before closing the browser context.
+  await context.unrouteAll({ behavior: 'wait' });
+});
+
 test('subtle like totals survive offline reloads and old cards omit unknown totals', async ({
   page,
   context,
