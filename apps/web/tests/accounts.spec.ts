@@ -1,6 +1,6 @@
 import type { Card } from '@etymology-feed/shared/card';
-import { expect, type Page, test } from '@playwright/test';
 import { putCardsOnStack, waitForSavedSwipes } from './helpers/cards';
+import { expect, type Page, test } from './helpers/test';
 
 async function signInWithMockProvider(page: Page) {
   await page.goto('/settings/#account');

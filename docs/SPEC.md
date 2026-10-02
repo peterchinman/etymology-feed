@@ -329,6 +329,7 @@ Change one parameter at a time, give it a week of data, and record the before-an
 ### 7.1 Anonymous by default (Better Auth `anonymous` plugin)
 
 - On first API call the client calls `authClient.signIn.anonymous()`. Better Auth creates a `user` row (`isAnonymous = 1`) and a session cookie (`HttpOnly; Secure; SameSite=Lax`, 30-day rolling expiry). All swipes and the `served` record are keyed to that user id. **This is what makes the product work**: anonymous dislikes are as valuable as likes.
+- Each anonymous user is a free identity that can rate every card once, so new anonymous sessions are capped per client network (`SESSION_RATE`: 10 per 60 seconds per IPv4 address or IPv6 /64, keyed on `CF-Connecting-IP`). A Better Auth before-hook applies the cap to both `/auth/sign-in/anonymous` and the API middleware's fallback sign-in. Existing sessions are never counted. A limited request gets 429, and the client retries on its next refill.
 - The client keeps its own copies of everything in IndexedDB (§7.4), so the Liked screen and the deck work offline and survive cookie loss.
 - The Liked screen shows a persistent, dismissable-per-session banner: *"You're not signed in. Your list is saved only on this device."* with a sign-in button. (Copy note: Safari deletes script-writable storage and cookies after 7 days without a visit. That's the honest reason to make an account.)
 - `/about/`: what's stored (a random id, swipes, no PII), that swipes are aggregated, CC BY-SA credit, how to delete data.
@@ -396,7 +397,7 @@ type Card = { id: string; word: string; etymNo: number | null; ipa: string | nul
 
 Feed, card, and word lookup responses include `likeCount` from the current per-card `word_stats.likes` total. Separate etymologies retain separate totals. Counts are snapshots taken when fetched and remain available offline; older cached cards without a count omit the indicator. The feed footer shows a muted outlined heart and a locale-formatted number for positive totals, with a full label for screen readers; zero hides the indicator. Each feed card adds one indexed APP read and no writes.
 
-Errors: `{ error: { code, message } }` with matching status. Rate limits via the binding: `/api/feed` 1 req/s per user, `/api/sync` 2 req/s.
+Errors: `{ error: { code, message } }` with matching status. Rate limits via the binding: `/api/feed` 1 req/s per user, `/api/sync` 2 req/s, and new anonymous sessions 10 per minute per client network (§7.1).
 
 ---
 

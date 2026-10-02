@@ -1,5 +1,5 @@
-import { expect, type Page, test } from '@playwright/test';
 import { THEME_COLORS } from '../src/lib/themes';
+import { expect, type Page, test } from './helpers/test';
 
 test('definitions appear beneath the title and expand beyond the responsive line limit', async ({
   page,

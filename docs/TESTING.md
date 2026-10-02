@@ -59,6 +59,10 @@ action and stored state before rerunning or changing a timeout:
 npx playwright show-trace path/to/trace.zip
 ```
 
+Browser specs import `test` and `expect` from `apps/web/tests/helpers/test.ts`.
+It gives each test its own `CF-Connecting-IP`; otherwise every test shares the
+loopback address and the suite exceeds the anonymous-session limit.
+
 One browser worker avoids collisions between tests sharing the local API and mock
 sign-in account. Separate browser contexts isolate each test's cookies and storage.
 Do not parallelize this suite without also isolating its server-side fixtures.

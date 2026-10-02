@@ -32,6 +32,12 @@ name = "SYNC_RATE"
 namespace_id = "102"
 simple = { limit = 20, period = 10 }
 
+# New anonymous sessions per client network (IPv4 address or IPv6 /64).
+[[ratelimits]]
+name = "SESSION_RATE"
+namespace_id = "103"
+simple = { limit = 10, period = 60 }
+
 [triggers]
 crons = ["*/5 * * * *"]
 

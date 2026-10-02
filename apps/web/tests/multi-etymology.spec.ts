@@ -1,6 +1,6 @@
 import type { Card } from '@etymology-feed/shared/card';
-import { expect, test } from '@playwright/test';
 import { putCardsOnStack, waitForSavedSwipes } from './helpers/cards';
+import { expect, test } from './helpers/test';
 
 test('two origins of one headword stay separate in the offline stack and Liked', async ({
   page,

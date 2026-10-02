@@ -1,6 +1,6 @@
 import type { Card } from '@etymology-feed/shared/card';
-import { expect, test } from '@playwright/test';
 import { putCardsOnStack, waitForSavedSwipes } from './helpers/cards';
+import { expect, test } from './helpers/test';
 
 test('proper nouns default off, toggle immediately, and remain available offline', async ({
   page,

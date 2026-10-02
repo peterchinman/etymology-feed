@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-10-02 — Keep anonymous ratings; cap new guests per network (§7.1)
+
+Anonymous swipes keep counting toward `word_stats` and public like totals.
+Most visitors never sign in, and gating ratings to accounts would starve the
+lanes. Free OAuth accounts would also only slow down vote stuffing. The real
+gap was that any request without a cookie minted a new guest, and the per-user
+feed and sync limits did nothing against discarded cookies. New anonymous
+sessions are now limited to 10 per 60 seconds per IPv4 address or IPv6 /64.
+A /64 is the usual allocation for one host. Busy shared networks see first
+visits, not every visit, against this cap. A Better Auth before-hook enforces it
+for both sign-in paths. Requests without `CF-Connecting-IP` are not limited;
+only direct test requests lack it. Pruning unreachable anonymous users is
+deferred until storage or write cost shows it is needed.
+
 ## 2026-09-27 — Start M5 with CI and launch prerequisites
 
 Peter has purchased `etymologyfeed.com`; use `https://etymologyfeed.com` as the

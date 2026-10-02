@@ -1,4 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
+import { isAPIError } from 'better-auth/api';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { deleteAccount, getAccountLikes } from './accounts';
@@ -71,10 +72,18 @@ app.use('/api/*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   let currentUser = session?.user;
   if (!currentUser) {
-    const created = await auth.api.signInAnonymous({
-      headers: c.req.raw.headers,
-      asResponse: true,
-    });
+    // The sign-in hook caps new guests per client network (auth.ts).
+    const created = await auth.api
+      .signInAnonymous({ headers: c.req.raw.headers, asResponse: true })
+      .catch((error: unknown) => {
+        if (isAPIError(error) && error.statusCode === 429) return null;
+        throw error;
+      });
+    if (!created || created.status === 429)
+      return c.json(
+        { error: { code: 'rate_limited', message: 'Try again shortly.' } },
+        429,
+      );
     const cookie = created.headers.get('set-cookie');
     if (cookie) c.header('Set-Cookie', cookie);
     const body = (await created.json()) as {

@@ -48,6 +48,14 @@
         "limit": 20,
         "period": 10
       }
+    },
+    {
+      "name": "SESSION_RATE",
+      "namespace_id": "103",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
     }
   ],
   "triggers": {
