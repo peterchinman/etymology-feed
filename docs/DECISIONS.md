@@ -713,3 +713,31 @@ second; the 200-swipe bank is unchanged.
 Liked totals include the user's own like only once it counts. A like that
 was over pace, or came from a flagged rater, shows without it after syncing.
 The client is not told whether a like counted.
+
+## 2026-10-03 — Keep each waiting card on one device
+
+A signed-in reader saw a card in the Feed that they had already liked. Each
+device prefetches up to 150 cards into its own stack, and the server only
+filters cards when it serves a batch. A card waiting in one device's stack could
+be liked or skipped on another device and still appear later. Its like count
+also showed the snapshot from before anyone liked it.
+
+The server cannot prevent this when it deals, because prefetching for offline
+use is the point, and push updates would be heavy and still miss offline
+devices. Instead each device checks its waiting cards against the account's
+ratings. The Feed checks only its next 12 cards, when it opens, every 10 swipes
+alongside the existing sync, on reconnect, and on becoming visible at most every
+30 seconds. That keeps each call small, stays current while a Feed is left
+open, and usually drops a card before it reaches the top. A guest is told once
+that it has no other devices, and stops asking.
+
+Dealing is account-wide after sign-in, so overlapping stacks come only from the
+guest period before a device joins. The merge remembers the cards served to both
+the guest and the account in KV for seven days, and the joining device drops
+them after the sign-in redirect. Without this, a card left on screen on one
+device could show again on the other without ever being rated. Reconciling
+likes on the Liked page also removes those cards from the stack, so the instant
+preview stays clean offline. Tabs on one device share the stored stack but each
+keeps its own copy in memory, so the Feed re-reads the stored stack whenever it
+becomes visible. A card rated elsewhere moments ago, or while this device was
+offline, can still appear once.

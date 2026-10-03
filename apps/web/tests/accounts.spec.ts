@@ -1,5 +1,9 @@
 import type { Card } from '@etymology-feed/shared/card';
-import { putCardsOnStack, waitForSavedSwipes } from './helpers/cards';
+import {
+  getStackIds,
+  putCardsOnStack,
+  waitForSavedSwipes,
+} from './helpers/cards';
 import { expect, type Page, test } from './helpers/test';
 
 async function signInWithMockProvider(page: Page) {
@@ -59,6 +63,11 @@ test('offline guest likes survive sign-in and union with a second device', async
   await expect(page.getByTestId('top-card')).toBeVisible();
   const bluffResponse = await page.request.get('/api/words/bluff/etymologies');
   const { cards: bluffs } = (await bluffResponse.json()) as { cards: Card[] };
+  // A card the feed dealt to this device, which becomes the account's.
+  const dealtHere = (await getStackIds(page)).find(
+    (id) => !bluffs.some((card) => card.id === id),
+  );
+  if (!dealtHere) throw new Error('The first device has no dealt card.');
   await putCardsOnStack(page, bluffs);
   await page.keyboard.press('ArrowRight');
   await waitForSavedSwipes(page, 1);
@@ -90,7 +99,20 @@ test('offline guest likes survive sign-in and union with a second device', async
       '/api/words/béarnaise%20sauce',
     );
     const extra = (await extraResponse.json()) as Card;
-    await putCardsOnStack(other, [extra]);
+    // As a guest, the feed also deals this device the first device's card.
+    await expect
+      .poll(async () => {
+        const known = encodeURIComponent(JSON.stringify([dealtHere]));
+        return (
+          await other.request.get(`/api/feed?n=1&known=${known}`)
+        ).status();
+      })
+      .toBe(200);
+    const shared = (await (
+      await other.request.get(`/api/cards/${encodeURIComponent(dealtHere)}`)
+    ).json()) as Card;
+    // It also holds a bluff card, which the account has already liked.
+    await putCardsOnStack(other, [extra, bluffs[0], shared]);
     await other.keyboard.press('ArrowRight');
     await waitForSavedSwipes(other, 1);
     await other.goto('/liked/');
@@ -99,6 +121,48 @@ test('offline guest likes survive sign-in and union with a second device', async
     await expect(
       other.getByRole('heading', { name: 'béarnaise sauce' }),
     ).toHaveCount(1);
+    // Joining drops cards the account already liked and cards another device
+    // was dealt first, so each waiting card lives on one device.
+    await expect.poll(() => getStackIds(other)).toEqual([]);
+
+    // Waiting cards leave once another device of the account rates them:
+    // checked when the Feed opens, and every 10 swipes while it stays open.
+    const batch = await other.request.get('/api/feed?n=100');
+    expect(batch.ok()).toBe(true);
+    const upcoming = ((await batch.json()) as { cards: Card[] }).cards.slice(
+      0,
+      14,
+    );
+    expect(upcoming).toHaveLength(14);
+    await putCardsOnStack(other, upcoming);
+    const likeOnFirstDevice = async (card: Card) => {
+      await putCardsOnStack(page, [card]);
+      await page.keyboard.press('ArrowRight');
+      await waitForSavedSwipes(page, 1, [card.id]);
+      await page.goto('/liked/');
+      await expect
+        .poll(async () => {
+          const response = await page.request.get('/api/me/likes?limit=200');
+          const { likes } = (await response.json()) as {
+            likes: { cardId: string }[];
+          };
+          return likes.some(({ cardId }) => cardId === card.id);
+        })
+        .toBe(true);
+    };
+    const top = other.getByTestId('top-card').locator('h2');
+    await likeOnFirstDevice(upcoming[0]);
+    await other.goto('/');
+    await expect(top).toHaveText(upcoming[1].word);
+    await likeOnFirstDevice(upcoming[12]);
+    for (const card of upcoming.slice(1, 11)) {
+      await expect(top).toHaveText(card.word);
+      await other.keyboard.press('ArrowRight');
+    }
+    await expect.poll(() => getStackIds(other)).not.toContain(upcoming[12].id);
+    await expect(top).toHaveText(upcoming[11].word);
+    await other.keyboard.press('ArrowRight');
+    await expect(top).toHaveText(upcoming[13].word);
 
     await other.goto('/settings/#account');
     await other.getByRole('button', { name: 'Sign out' }).click();

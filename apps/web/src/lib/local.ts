@@ -1,5 +1,10 @@
 import { type Card, isFeedEligible } from '@etymology-feed/shared/card';
-import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
+import {
+  type DBSchema,
+  type IDBPDatabase,
+  type IDBPTransaction,
+  openDB,
+} from 'idb';
 import { withRefreshedCount } from './likes';
 import {
   DEFAULT_THEME,
@@ -355,7 +360,7 @@ export async function replaceLikedFromServer(
   }[],
 ): Promise<LocalSwipe[]> {
   const db = await getDatabase();
-  const tx = db.transaction('swipes', 'readwrite');
+  const tx = db.transaction(['swipes', 'stack', 'served'], 'readwrite');
   const store = tx.objectStore('swipes');
   const existing = (await store.getAll()).map(normalizeSwipe);
   const serverCards = new Set(likes.map(({ cardId }) => cardId));
@@ -375,7 +380,10 @@ export async function replaceLikedFromServer(
       card: normalizeCard(like.card),
       countIncludesSelf: true,
     });
+  // A card liked on another device may already be waiting in this one's Feed.
+  const nextStack = await dropFromStack(tx, serverCards);
   await tx.done;
+  if (nextStack) cacheStackPreview(nextStack);
   return getSwipes();
 }
 
@@ -392,6 +400,41 @@ export async function saveLikeCounts(
     await tx.store.put(withRefreshedCount(swipe, count, counted));
   }
   await tx.done;
+}
+
+/**
+ * Remove cards the account has already rated elsewhere from the saved Feed
+ * stack, and record them as served so a later batch cannot add them back.
+ */
+export async function removeRatedFromStack(
+  cardIds: readonly string[],
+): Promise<void> {
+  const tx = (await getDatabase()).transaction(
+    ['stack', 'served'],
+    'readwrite',
+  );
+  const nextStack = await dropFromStack(tx, new Set(cardIds));
+  await tx.done;
+  if (nextStack) cacheStackPreview(nextStack);
+}
+
+/** Returns the new stack, or null when none of the cards were in it. */
+async function dropFromStack(
+  tx: IDBPTransaction<FeedDB, ('stack' | 'served' | 'swipes')[], 'readwrite'>,
+  cardIds: ReadonlySet<string>,
+): Promise<Card[] | null> {
+  const stack = ((await tx.objectStore('stack').get('cards')) ?? []).map(
+    normalizeCard,
+  );
+  const nextStack = stack.filter((card) => !cardIds.has(card.id));
+  if (nextStack.length === stack.length) return null;
+  const served = (await tx.objectStore('served').get('words')) ?? [];
+  const known = new Set(served);
+  for (const card of stack)
+    if (cardIds.has(card.id) && !known.has(card.id)) served.push(card.id);
+  await tx.objectStore('stack').put(nextStack, 'cards');
+  await tx.objectStore('served').put(served, 'words');
+  return nextStack;
 }
 
 export async function clearAccountData(): Promise<void> {

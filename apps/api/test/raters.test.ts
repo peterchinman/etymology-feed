@@ -65,10 +65,17 @@ function plus(
 
 describe('cards the feed did not deal', () => {
   it('counts search likes but never lefts on undealt cards, and keeps them out of the like rate', async () => {
-    const [dealt, searched, recovered, buried] = await cards(0, 4);
+    const [dealt, recovered, ...candidates] = [
+      ...(await cards(0, 4)),
+      ...(await cards(6, 1)),
+    ];
     const user = await raterWith([dealt]);
     // Cookie-loss history only prevents repeats; it does not deal cards.
-    await getUserFeed(env, user, 1, [recovered], true);
+    const feed = await getUserFeed(env, user, 1, [recovered], true);
+    // That call deals one card at random. A dislike on it would count, so
+    // take the undealt cards from those it did not deal.
+    const dealtNow = new Set(feed.cards.map(({ id }) => id));
+    const [searched, buried] = candidates.filter((id) => !dealtNow.has(id));
     const ids = [dealt, searched, recovered, buried];
     const before = await totals(ids);
     const result = await syncSwipes(env, user, [
