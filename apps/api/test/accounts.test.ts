@@ -3,10 +3,11 @@ import { expect, it } from 'vitest';
 import {
   deleteAccount,
   getAccountLikes,
+  getRatedCardIds,
   mergeAnonymousAccount,
 } from '../src/accounts';
 import { getWordEtymologies } from '../src/feed';
-import { syncSwipes } from '../src/sync';
+import { deleteLiked, syncSwipes } from '../src/sync';
 import { raterWith } from './helpers';
 
 it('merges newer anonymous verdicts, deduplicates served cards, and removes account ratings', async () => {
@@ -165,4 +166,46 @@ it('counts matching ratings once under weighted scoring after account linking', 
         .first<{ score: number }>(),
     ).toEqual({ score: 0.5 });
   }
+});
+
+it('reports which waiting cards an account already rated on any device', async () => {
+  const cards = await env.DICT.prepare(
+    'SELECT id FROM word ORDER BY shuffle LIMIT 5 OFFSET 8',
+  ).all<{ id: string }>();
+  const [liked, skipped, unliked, unrated, otherUsers] = cards.results.map(
+    ({ id }) => id,
+  );
+  if (!otherUsers) throw new Error('Fixture cards are missing.');
+  const member = crypto.randomUUID();
+  const stranger = crypto.randomUUID();
+  for (const id of [member, stranger])
+    await env.APP.prepare(
+      'INSERT INTO user(id,name,email,updated_at,is_anonymous) VALUES(?,?,?,?,0)',
+    )
+      .bind(id, 'Test', `${id}@test.local`, Date.now())
+      .run();
+  const swipe = (cardId: string, verdict: 1 | -1) => ({
+    id: crypto.randomUUID(),
+    cardId,
+    verdict,
+    shownAt: 1000,
+    swipedAt: 2000,
+  });
+  await syncSwipes(env, member, [
+    swipe(liked, 1),
+    swipe(skipped, -1),
+    swipe(unliked, 1),
+  ]);
+  await syncSwipes(env, stranger, [swipe(otherUsers, 1)]);
+  await deleteLiked(env, member, unliked);
+
+  const rated = await getRatedCardIds(env, member, [
+    liked,
+    skipped,
+    unliked,
+    unrated,
+    otherUsers,
+  ]);
+  expect(rated.sort()).toEqual([liked, skipped].sort());
+  expect(await getRatedCardIds(env, member, [])).toEqual([]);
 });

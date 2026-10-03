@@ -44,3 +44,27 @@ export async function fetchCards(): Promise<Card[]> {
   if (!('cards' in result)) throw new Error('The feed response has no cards.');
   return result.cards;
 }
+
+/**
+ * Ask which of the next waiting Feed cards the account already liked or
+ * skipped on another device. `guest` means this device is not signed in, so it
+ * has no other devices to hear from.
+ */
+export async function checkWaitingCards(
+  cardIds: readonly string[],
+): Promise<{ rated: string[]; guest: boolean }> {
+  // Like every API call, start the guest session here rather than letting the
+  // server mint one, so a lost cookie still sends the device's history.
+  await ensureAnonymousSession();
+  const response = await fetch('/api/me/rated', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'fetch',
+    },
+    body: JSON.stringify({ cardIds }),
+  });
+  if (!response.ok)
+    throw new Error(`Waiting-card check returned ${response.status}.`);
+  return (await response.json()) as { rated: string[]; guest: boolean };
+}
