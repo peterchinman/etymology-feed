@@ -47,6 +47,10 @@ step took about one minute and the whole suite about 40 seconds locally.
 
 ## Reliable fixtures
 
+Browser tests start past the first-run welcome card: the Playwright config seeds
+`etymology-welcome` in localStorage, and contexts created inside a test inherit it.
+`welcome.spec.ts` clears it to start as a new visitor.
+
 Use `putCardsOnStack` for a specific deck. It leaves the live Feed before replacing
 IndexedDB, intercepts background feed requests, updates both saved state and the
 display preview, then waits for the intended etymology to become interactive.

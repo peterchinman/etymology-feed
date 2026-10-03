@@ -610,6 +610,21 @@ and the mobile proper-noun persistence case is covered by the main proper-noun
 test. The diagonal swipe flaked when a web font finished loading after the test
 set `scrollTop`; it now waits for `document.fonts.ready` first.
 
+## 2026-10-03 — Welcome first-time visitors with a card
+
+A first visit opens on a welcome card in the Feed deck rather than an overlay,
+so the first thing a visitor does is the gesture the app is built on. Dismissing
+it never records a swipe. Touchscreens are told to swipe right to like a card;
+other devices are told to press the heart. The decision lives in localStorage: `pending` survives a
+reload or a visit to Liked until the card is dismissed. Visitors who used the app
+before this shipped already have a saved stack preview or theme choice, so they
+count as returning and skip it.
+
+The tagline is set in a true semibold italic, or bold italic for B612, which has
+no semibold. Each theme declares only that WOFF2 face of its reading font,
+because the service worker precaches every built file; the fontsource CSS would
+also have added WOFF fallbacks no target browser needs.
+
 ## 2026-10-03 — Show current like totals on Liked
 
 Liked cards showed the total captured when the card was fetched for the Feed,
