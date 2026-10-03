@@ -12,6 +12,7 @@ export default defineConfig({
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations('./fixtures'),
           APP_MIGRATIONS: await readD1Migrations('./drizzle'),
+          SEARCH_MIGRATIONS: await readD1Migrations('./dictionary'),
           BETTER_AUTH_SECRET: 'test-secret-at-least-thirty-two-characters-long',
         },
       },

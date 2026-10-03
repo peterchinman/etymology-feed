@@ -141,6 +141,8 @@ def deploy():
     cfg["vars"]["APP_COMMIT"] = commit
     RUNTIME.write_text(json.dumps(cfg, indent=2) + "\n")
     wrangler("d1", "migrations", "apply", "APP", "--remote")
+    wrangler("d1", "execute", "DICT", "--remote", "--file",
+             ROOT / "apps/api/dictionary/search-index.sql", "-y")
     wrangler("deploy")
     run("node", "scripts/smoke-production.mjs", "https://etymologyfeed.com", commit, state["release"])
 

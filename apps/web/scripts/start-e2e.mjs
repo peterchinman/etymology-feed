@@ -34,6 +34,24 @@ if (seed.status !== 0) {
   process.stderr.write(seed.stdout + seed.stderr);
   process.exit(seed.status ?? 1);
 }
+const indexed = spawnSync(
+  wrangler,
+  [
+    'd1',
+    'execute',
+    'DICT',
+    '--local',
+    '--persist-to',
+    persist,
+    '--file',
+    'dictionary/search-index.sql',
+  ],
+  { cwd: api, encoding: 'utf8' },
+);
+if (indexed.status !== 0) {
+  process.stderr.write(indexed.stdout + indexed.stderr);
+  process.exit(indexed.status ?? 1);
+}
 const migrated = spawnSync(
   wrangler,
   ['d1', 'migrations', 'apply', 'APP', '--local', '--persist-to', persist],
@@ -191,6 +209,8 @@ const server = spawn(
     '127.0.0.1',
     '--port',
     port,
+    '--inspector-port',
+    String(Number(port) + 2),
     '--persist-to',
     persist,
     '--var',
