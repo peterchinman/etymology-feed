@@ -30,6 +30,7 @@ const feedQuery = z.object({
 });
 const ratedInput = z.object({
   cardIds: z.array(z.string().min(1).max(500)).max(200),
+  joined: z.boolean().optional(),
 });
 const likesQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(200),
@@ -302,13 +303,13 @@ const routes = app
   })
   .post('/api/me/rated', zValidator('json', ratedInput), async (c) => {
     // A guest has no other device, so its own swipes already left its Feed.
-    if (c.get('isAnonymous')) return c.json({ rated: [] as string[] });
+    // Saying so lets the client stop asking.
+    if (c.get('isAnonymous'))
+      return c.json({ rated: [] as string[], guest: true });
+    const { cardIds, joined } = c.req.valid('json');
     return c.json({
-      rated: await getRatedCardIds(
-        c.env,
-        c.get('userId'),
-        c.req.valid('json').cardIds,
-      ),
+      rated: await getRatedCardIds(c.env, c.get('userId'), cardIds, joined),
+      guest: false,
     });
   })
   .delete('/api/me', async (c) => {

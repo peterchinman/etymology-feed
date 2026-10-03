@@ -8,7 +8,7 @@ import {
   onMount,
   Show,
 } from 'solid-js';
-import { fetchCards, fetchRatedCardIds } from '../lib/api';
+import { checkWaitingCards, fetchCards } from '../lib/api';
 import {
   appendCards,
   applyTheme,
@@ -351,6 +351,7 @@ export default function Feed() {
       if (swipesSinceSync >= 10) {
         swipesSinceSync = 0;
         void drainSync();
+        void checkUpcoming(true);
       }
       for (const { card } of pending) inFlight.delete(card.id);
       if (undoTimer) clearTimeout(undoTimer);
@@ -385,25 +386,38 @@ export default function Feed() {
     }
   }
 
-  /** When this Feed last asked which of its waiting cards were rated elsewhere. */
-  let ratedCheckedAt = 0;
+  /** How many upcoming cards each check covers; checks run every 10 swipes. */
+  const LOOKAHEAD = 12;
+  let upcomingCheckedAt = 0;
+  /** Cleared once the server says this device is a guest with no others. */
+  let checkUpcomingCards = true;
 
   /**
    * A device keeps a prefetched stack, so a card can be waiting here while the
-   * same account likes or skips it on another device. Drop those cards.
+   * same account likes or skips it on another device. Before the next few
+   * cards are shown, drop any the account has already rated. `force` skips the
+   * 30-second spacing used when the app returns to the foreground.
    */
-  async function pruneRated() {
-    if (!navigator.onLine || Date.now() - ratedCheckedAt < 60_000) return;
-    const ids = storedStack().map((card) => card.id);
+  async function checkUpcoming(force = false) {
+    if (!checkUpcomingCards || !navigator.onLine) return;
+    if (!force && Date.now() - upcomingCheckedAt < 30_000) return;
+    const ids = stack()
+      .slice(0, LOOKAHEAD)
+      .map((card) => card.id);
     if (!ids.length) return;
-    ratedCheckedAt = Date.now();
-    let rated: string[];
+    upcomingCheckedAt = Date.now();
+    let result: Awaited<ReturnType<typeof checkWaitingCards>>;
     try {
-      rated = await fetchRatedCardIds(ids.slice(0, 200));
+      result = await checkWaitingCards(ids);
     } catch {
-      ratedCheckedAt = 0;
+      upcomingCheckedAt = 0;
       return;
     }
+    if (result.guest) {
+      checkUpcomingCards = false;
+      return;
+    }
+    const { rated } = result;
     if (!rated.length) return;
     // Queue behind pending swipe writes so the stored stack stays in order.
     saveChain = saveChain.then(async () => {
@@ -680,7 +694,7 @@ export default function Feed() {
         setReady(true);
         void drainSync();
         void fillStack(true);
-        void pruneRated();
+        void checkUpcoming(true);
       } catch {
         setError(
           'Local storage is unavailable. Enable site storage to keep your words.',
@@ -692,7 +706,7 @@ export default function Feed() {
       setOnline(true);
       void drainSync();
       void fillStack(true);
-      void pruneRated();
+      void checkUpcoming(true);
     };
     const onOffline = () => setOnline(false);
     const onFeedSettings = async () => {
@@ -719,7 +733,7 @@ export default function Feed() {
       // Another tab may have swiped or liked cards from the shared stack.
       saveChain = saveChain.then(restoreStack);
       void drainSync();
-      void pruneRated();
+      void checkUpcoming();
       if (stack().length < 60) void fillStack();
     };
     window.addEventListener('online', onOnline);
