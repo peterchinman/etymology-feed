@@ -65,7 +65,12 @@ test('offline guest likes survive sign-in and union with a second device', async
   await page.context().setOffline(true);
   await expect(page.getByTestId('top-card')).toBeVisible();
   await page.keyboard.press('ArrowRight');
-  await waitForSavedSwipes(page, 2);
+  // Both origins of one headword must be saved under their own card IDs.
+  await waitForSavedSwipes(
+    page,
+    2,
+    bluffs.map(({ id }) => id),
+  );
   await page.context().setOffline(false);
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: 'bluff' })).toHaveCount(2);
