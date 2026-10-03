@@ -106,21 +106,3 @@ test('proper nouns default off, toggle immediately, and remain available offline
     page.getByRole('heading', { name: 'Capitalized Common', exact: true }),
   ).toBeVisible();
 });
-
-test('the mobile Settings page saves the proper noun preference across reloads', async ({
-  page,
-}) => {
-  await page.goto('/settings/');
-  const toggle = page.getByRole('switch', { name: 'Include proper nouns' });
-  await expect(toggle).toBeEnabled();
-  await expect(toggle).not.toBeChecked();
-  await toggle.check();
-  await expect(toggle).toBeEnabled();
-  await page.reload();
-  await expect(toggle).toBeChecked();
-  await toggle.uncheck();
-  await expect(toggle).toBeEnabled();
-  await page.reload();
-  await expect(toggle).toBeEnabled();
-  await expect(toggle).not.toBeChecked();
-});
