@@ -12,6 +12,7 @@ import { fetchCards } from '../lib/api';
 import {
   appendCards,
   applyTheme,
+  dismissWelcome,
   FEED_SETTINGS_CHANGED,
   getSettings,
   getStack,
@@ -19,6 +20,7 @@ import {
   type LocalSwipe,
   type PendingSwipe,
   saveSwipes,
+  shouldWelcome,
   undoSwipe,
 } from '../lib/local';
 import { hasSelectionIn, selectWordAt } from '../lib/select';
@@ -37,9 +39,20 @@ import {
 import { drainSync } from '../lib/sync';
 import CardFooter from './CardFooter';
 
+/**
+ * The first-run welcome rides on top of the deck so it swipes like a card,
+ * but it is never saved: swiping it away only dismisses it.
+ */
+const WELCOME = { id: ':welcome' } as const;
+type DeckCard = Card | typeof WELCOME;
+
+function isWelcome(card: DeckCard): card is typeof WELCOME {
+  return card === WELCOME;
+}
+
 /** A card that has been swiped and is still flying off-screen. */
 type Departing = {
-  card: Card;
+  card: DeckCard;
   direction: Direction;
   definitionOpen: boolean;
   animation: Animation | null;
@@ -55,7 +68,7 @@ type Release = {
 
 type Gesture = {
   id: number;
-  card: Card;
+  card: DeckCard;
   width: number;
   grab: Direction;
   startX: number;
@@ -129,6 +142,13 @@ export default function Feed() {
   const [definitionOpen, setDefinitionOpen] = createSignal(false);
   const [pendingUndo, setPendingUndo] = createSignal<LocalSwipe | null>(null);
   const [demoLikeCount, setDemoLikeCount] = createSignal<number | null>(null);
+  const [welcome, setWelcome] = createSignal(false);
+  /** A touchscreen is the primary input, so the welcome explains swiping. */
+  const [touchInput, setTouchInput] = createSignal(false);
+  /** The cards on screen, top first: the welcome while it is showing. */
+  const deckCards = createMemo<DeckCard[]>(() =>
+    welcome() ? [WELCOME, ...stack()] : stack(),
+  );
   let shownAt = Date.now();
   let filling = false;
   let exhaustedUntil = 0;
@@ -136,7 +156,7 @@ export default function Feed() {
   let deck: HTMLDivElement | undefined;
   let gesture: Gesture | null = null;
   /** Live DOM node for every rendered card, keyed by the card object. */
-  const elements = new Map<Card, HTMLElement>();
+  const elements = new Map<DeckCard, HTMLElement>();
   /** Words swiped in the UI whose local save has not finished yet. */
   const inFlight = new Set<string>();
   /** Swipes waiting to be written; a burst drains into one transaction. */
@@ -148,7 +168,7 @@ export default function Feed() {
   /** Departing cards first so their nodes keep the same list position. */
   const rendered = createMemo(() => [
     ...departing().map((entry) => entry.card),
-    ...stack().slice(0, 2),
+    ...deckCards().slice(0, 2),
   ]);
 
   /**
@@ -237,10 +257,10 @@ export default function Feed() {
   function commit(direction: Direction, release?: Release) {
     // The cached preview is display-only until IndexedDB confirms the stack.
     if (!ready()) return;
-    const card = stack()[0];
+    const card = deckCards()[0];
     if (!card || !deck) return;
     const element = elements.get(card);
-    const next = stack()[1];
+    const next = deckCards()[1];
     const nextElement = next ? elements.get(next) : undefined;
     const rect = deck.getBoundingClientRect();
     const entry: Departing = {
@@ -300,17 +320,23 @@ export default function Feed() {
       );
     }
 
-    inFlight.add(card.id);
-    queue.push({ card, verdict: direction, shownAt, entry });
+    const welcomed = isWelcome(card);
+    if (welcomed) {
+      dismissWelcome();
+    } else {
+      inFlight.add(card.id);
+      queue.push({ card, verdict: direction, shownAt, entry });
+    }
     batch(() => {
       if (element) setDeparting((current) => [...current, entry]);
-      setStack((current) => current.filter((item) => item.id !== card.id));
+      if (welcomed) setWelcome(false);
+      else setStack((current) => current.filter((item) => item.id !== card.id));
       setDefinitionOpen(false);
       setDragging(false);
     });
     resetDrag();
     shownAt = Date.now();
-    saveChain = saveChain.then(drainQueue);
+    if (!welcomed) saveChain = saveChain.then(drainQueue);
   }
 
   /** Write every queued swipe in one transaction, oldest first. */
@@ -359,9 +385,9 @@ export default function Feed() {
   }
 
   /** Let go short of the threshold: spring home, carrying the release velocity. */
-  function snapBack(card: Card, dx: number, vx: number) {
+  function snapBack(card: DeckCard, dx: number, vx: number) {
     const element = elements.get(card);
-    const next = stack()[1];
+    const next = deckCards()[1];
     const nextElement = next ? elements.get(next) : undefined;
     const from = element ? currentTransform(element) : null;
     const nextFrom = nextElement ? currentTransform(nextElement) : null;
@@ -386,7 +412,7 @@ export default function Feed() {
       const entry = departing().find((item) => item.card.id === swipe.cardId);
       const previousTop = stack()[0];
       const rect = deck.getBoundingClientRect();
-      const before = new Map<Card, string>();
+      const before = new Map<DeckCard, string>();
       for (const card of [entry?.card, previousTop]) {
         const element = card && elements.get(card);
         if (card && element) before.set(card, currentTransform(element));
@@ -421,7 +447,7 @@ export default function Feed() {
     if (!ready() || event.pointerType !== 'touch' || gesture || !deck) return;
     const target = event.target as HTMLElement;
     if (target.closest('button, a')) return;
-    const card = stack()[0];
+    const card = deckCards()[0];
     const top = card && elements.get(card);
     if (!card || !top?.contains(target)) return;
     // Selected text holds the card still; a tap elsewhere clears it.
@@ -544,7 +570,7 @@ export default function Feed() {
     const touch = event.changedTouches[0];
     touchStart = null;
     const target = event.target as HTMLElement;
-    const top = stack()[0] && elements.get(stack()[0]);
+    const top = deckCards()[0] && elements.get(deckCards()[0]);
     const onText =
       top?.contains(target) &&
       !!target.closest('.card-body') &&
@@ -604,6 +630,8 @@ export default function Feed() {
     }
     setOnline(navigator.onLine);
     setStack(getStackPreview());
+    setTouchInput(window.matchMedia('(pointer: coarse)').matches);
+    setWelcome(shouldWelcome());
     void (async () => {
       try {
         const [cards, settings] = await Promise.all([
@@ -688,7 +716,7 @@ export default function Feed() {
         <Show when={!ready() && !stack().length}>
           <div class="word-card" aria-hidden="true" />
         </Show>
-        <Show when={ready() && !stack().length}>
+        <Show when={ready() && !stack().length && !welcome()}>
           <div class="word-card empty-card">
             <h2 class="display-voice">
               {online()
@@ -715,9 +743,82 @@ export default function Feed() {
           {(card) => {
             const entry = () => departing().find((item) => item.card === card);
             const role = createMemo<'departing' | 'top' | 'next'>(() =>
-              entry() ? 'departing' : stack()[0] === card ? 'top' : 'next',
+              entry() ? 'departing' : deckCards()[0] === card ? 'top' : 'next',
             );
             const top = () => role() === 'top';
+            onCleanup(() => elements.delete(card));
+            if (isWelcome(card))
+              return (
+                <article
+                  ref={(element) => elements.set(card, element)}
+                  class={`word-card welcome-card is-${role()}`}
+                  data-testid={top() ? 'top-card' : undefined}
+                  aria-hidden={!top()}
+                >
+                  <div class="card-body">
+                    <h2 class="welcome-tagline reading-voice">
+                      <span class="welcome-line">
+                        Stories are made of words.
+                      </span>{' '}
+                      <span class="welcome-line">
+                        Words are made of stories.
+                      </span>
+                    </h2>
+                    <p class="welcome-text reading-voice">
+                      Etymologies are the stories of where words come from.
+                    </p>
+                    <p class="welcome-text reading-voice">
+                      {`Each card presents an etymology. If you like it, ${
+                        touchInput() ? 'swipe right' : 'press the heart'
+                      }.`}
+                    </p>
+                    <p class="welcome-text reading-voice">
+                      Liking an etymology will save it to your personal liked
+                      list, and will also promote that etymology in other users’
+                      feeds.
+                    </p>
+                  </div>
+                  <p class="welcome-credit source-credit caption-voice">
+                    This website was made by{' '}
+                    <a
+                      href="https://peterchinman.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      tabindex={top() ? undefined : -1}
+                    >
+                      Peter Chinman
+                    </a>
+                    , using data from{' '}
+                    <a
+                      href="https://en.wiktionary.org/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      tabindex={top() ? undefined : -1}
+                    >
+                      Wiktionary contributors
+                    </a>{' '}
+                    via{' '}
+                    <a
+                      href="https://kaikki.org/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      tabindex={top() ? undefined : -1}
+                    >
+                      kaikki.org
+                    </a>
+                    , under{' '}
+                    <a
+                      href="https://creativecommons.org/licenses/by-sa/4.0/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      tabindex={top() ? undefined : -1}
+                    >
+                      CC BY-SA 4.0
+                    </a>
+                    .
+                  </p>
+                </article>
+              );
             const shownLikeCount = () =>
               top() && demoLikeCount() !== null
                 ? demoLikeCount()
@@ -750,7 +851,6 @@ export default function Feed() {
               if (current === 'departing') return entry()?.definitionOpen;
               return false;
             };
-            onCleanup(() => elements.delete(card));
             return (
               <article
                 ref={(element) => elements.set(card, element)}
@@ -818,7 +918,7 @@ export default function Feed() {
         <button
           class={`swipe-button skip-button${armed() === -1 ? ' is-armed' : ''}`}
           type="button"
-          disabled={!ready() || !stack().length}
+          disabled={!ready() || !deckCards().length}
           aria-label="Not for me"
           onClick={() => commit(-1)}
         >
@@ -834,7 +934,7 @@ export default function Feed() {
         <button
           class={`swipe-button like-button${armed() === 1 ? ' is-armed' : ''}`}
           type="button"
-          disabled={!ready() || !stack().length}
+          disabled={!ready() || !deckCards().length}
           aria-label="Interesting"
           onClick={() => commit(1)}
         >
