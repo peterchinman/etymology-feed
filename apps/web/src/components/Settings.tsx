@@ -185,7 +185,15 @@ export default function Settings(props: Props) {
       </div>
       <AccountControls />
       <p class="source-credit caption-voice">
-        Etymologies and definitions are adapted from{' '}
+        This website was made by{' '}
+        <a
+          href="https://peterchinman.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Peter Chinman
+        </a>
+        . Etymologies and definitions are adapted from{' '}
         <a
           href="https://en.wiktionary.org/"
           target="_blank"
