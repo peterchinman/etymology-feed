@@ -413,6 +413,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 - `/about/` — static: what it is, data/privacy, credits.
 - Navigation: **mobile (≤ 768 px)** — bottom dock with Feed / Search / Liked / Settings, safe-area aware (`env(safe-area-inset-bottom)`). **Desktop** — top bar with the same links; Settings opens a dialog. On mobile, Search uses a magnifying glass icon; the desktop bar uses text links only.
 - Empty stack while offline: a card that says so and how many swipes are waiting to sync.
+- First visit: a welcome card sits on top of the Feed stack. Its heading is the tagline *Stories are made of words. / Words are made of stories.*, set larger on two lines, followed by what etymologies are and what the site is for, how to like a card, and that a like saves the etymology to the Liked list and promotes it in other readers' feeds, and a credit line linking the author and the Wiktionary/kaikki.org CC BY-SA source. On a touchscreen (`pointer: coarse`) it says to swipe right; otherwise it says to press the heart. Swiping it either way, a button, or an arrow key dismisses it without recording a swipe. localStorage `etymology-welcome` holds `pending` until dismissal, then `done`. A visitor with an existing saved stack or theme choice counts as returning and skips it.
 
 ### 9.2 Gesture spec
 

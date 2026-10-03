@@ -76,6 +76,52 @@ export function getStackPreview(): Card[] {
   }
 }
 
+const WELCOME_KEY = 'etymology-welcome';
+/** Keys that only exist after someone has used the app. */
+const RETURNING_KEYS = [
+  STACK_PREVIEW_KEY,
+  'etymology-theme',
+  'etymology-color-mode',
+];
+
+export type WelcomeState = 'pending' | 'done';
+
+/**
+ * A first visit keeps the welcome card until it is swiped away, across
+ * reloads. Someone who used the app before the welcome existed skips it.
+ */
+export function resolveWelcome(
+  stored: string | null,
+  returning: boolean,
+): WelcomeState {
+  if (stored === 'pending' || stored === 'done') return stored;
+  return returning ? 'done' : 'pending';
+}
+
+/** Whether to show the welcome card, recording the decision for next time. */
+export function shouldWelcome(): boolean {
+  try {
+    const stored = localStorage.getItem(WELCOME_KEY);
+    const returning = RETURNING_KEYS.some(
+      (key) => localStorage.getItem(key) !== null,
+    );
+    const state = resolveWelcome(stored, returning);
+    if (state !== stored) localStorage.setItem(WELCOME_KEY, state);
+    return state === 'pending';
+  } catch {
+    // Without localStorage a dismissal could not be remembered.
+    return false;
+  }
+}
+
+export function dismissWelcome(): void {
+  try {
+    localStorage.setItem(WELCOME_KEY, 'done');
+  } catch {
+    // shouldWelcome already declined to show it without localStorage.
+  }
+}
+
 function normalizeSwipe(swipe: LocalSwipe): LocalSwipe {
   return {
     ...swipe,
