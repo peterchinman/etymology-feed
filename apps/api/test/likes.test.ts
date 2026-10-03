@@ -1,8 +1,9 @@
 import { env, SELF } from 'cloudflare:test';
 import type { Card } from '@etymology-feed/shared/card';
 import { expect, it } from 'vitest';
+import { getAccountLikes } from '../src/accounts';
 import { getUserFeed } from '../src/feed';
-import { withLikeCounts } from '../src/likes';
+import { MAX_LIKE_COUNT_IDS, withLikeCounts } from '../src/likes';
 import { buildPools } from '../src/pools';
 import { deleteLiked, syncSwipes } from '../src/sync';
 import { raterWith } from './helpers';
@@ -44,6 +45,28 @@ it('exposes distinct user totals, updates after unlikes, and separates origins',
   ]);
   expect((await origins()).map((card) => card.likeCount)).toEqual([2, 0]);
 
+  // Liked refreshes totals by ID without a session; unknown IDs count 0.
+  const counted = await SELF.fetch(
+    `http://localhost/api/like-counts?${new URLSearchParams([
+      ['id', cards[0].id],
+      ['id', cards[1].id],
+      ['id', 'missing-stats'],
+    ])}`,
+  );
+  expect(counted.status).toBe(200);
+  expect(counted.headers.get('Cache-Control')).toBe('no-store');
+  expect(counted.headers.get('set-cookie')).toBeNull();
+  expect(await counted.json()).toEqual({
+    counts: { [cards[0].id]: 2, [cards[1].id]: 0, 'missing-stats': 0 },
+  });
+  const single = await SELF.fetch(
+    `http://localhost/api/like-counts?id=${encodeURIComponent(cards[0].id)}`,
+  );
+  expect(await single.json()).toEqual({ counts: { [cards[0].id]: 2 } });
+  // Signed-in Liked replaces local cards from the account, totals included.
+  const { likes } = await getAccountLikes(env, first, 10);
+  expect(likes.map(({ card }) => card.likeCount)).toEqual([2]);
+
   // Read fresh APP totals even when selection uses an older cached pool.
   const excluded = await env.DICT.prepare('SELECT id FROM word WHERE word <> ?')
     .bind('bluff')
@@ -74,6 +97,19 @@ it('exposes distinct user totals, updates after unlikes, and separates origins',
     },
   ]);
   expect((await origins())[0].likeCount).toBe(0);
+});
+
+it('rejects like-count requests without IDs or with too many', async () => {
+  const tooMany = Array.from({ length: MAX_LIKE_COUNT_IDS + 1 }, (_, index) => [
+    'id',
+    `card-${index}`,
+  ]);
+  for (const query of ['', 'id=', new URLSearchParams(tooMany).toString()]) {
+    const response = await SELF.fetch(
+      `http://localhost/api/like-counts?${query}`,
+    );
+    expect(response.status).toBe(400);
+  }
 });
 
 it('handles empty batches and cards without statistics', async () => {

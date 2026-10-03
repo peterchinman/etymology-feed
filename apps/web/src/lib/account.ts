@@ -1,6 +1,13 @@
 import type { Card } from '@etymology-feed/shared/card';
 import { authClient, ensureAnonymousSession, resetAuthSession } from './auth';
-import { clearAccountData, replaceLikedFromServer } from './local';
+import { countedLikeIds } from './likes';
+import {
+  clearAccountData,
+  getSwipes,
+  type LocalSwipe,
+  replaceLikedFromServer,
+  saveLikeCounts,
+} from './local';
 import { drainSync } from './sync';
 
 export type AccountInfo = {
@@ -79,4 +86,37 @@ export async function reconcileAccountLikes() {
     cursor = page.nextCursor;
   } while (cursor);
   return replaceLikedFromServer(likes);
+}
+
+/** Matches the API's per-request limit on card IDs. */
+const LIKE_COUNT_BATCH = 100;
+
+/**
+ * Refresh like totals for the cards on Liked and store them locally. Signed-in
+ * accounts get totals from reconcileAccountLikes instead.
+ */
+export async function refreshLikeCounts(): Promise<LocalSwipe[]> {
+  const swipes = await getSwipes();
+  const counted = countedLikeIds(swipes);
+  const ids = [
+    ...new Set(
+      swipes
+        .filter((swipe) => swipe.verdict === 1 && !swipe.removed)
+        .map((swipe) => swipe.cardId),
+    ),
+  ];
+  const counts: Record<string, number> = {};
+  for (let start = 0; start < ids.length; start += LIKE_COUNT_BATCH) {
+    const url = new URL('/api/like-counts', window.location.origin);
+    for (const id of ids.slice(start, start + LIKE_COUNT_BATCH))
+      url.searchParams.append('id', id);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Could not refresh like totals.');
+    Object.assign(
+      counts,
+      ((await response.json()) as { counts: Record<string, number> }).counts,
+    );
+  }
+  if (ids.length) await saveLikeCounts(counts, counted);
+  return getSwipes();
 }

@@ -10,7 +10,7 @@ import {
   getWord,
   getWordEtymologies,
 } from './feed';
-import { withLikeCounts } from './likes';
+import { getLikeCounts, MAX_LIKE_COUNT_IDS, withLikeCounts } from './likes';
 import { buildPools, poolsKey } from './pools';
 import { applyRequestedFlags } from './raters';
 import { searchWords } from './search';
@@ -60,6 +60,7 @@ app.use('/api/*', async (c, next) => {
   if (
     c.req.path.startsWith('/api/words/') ||
     c.req.path === '/api/search' ||
+    c.req.path === '/api/like-counts' ||
     c.req.path.startsWith('/api/cards/')
   )
     return next();
@@ -134,6 +135,39 @@ const routes = app
       const result = await searchWords(c.env.DICT, c.req.valid('query').q);
       c.header('Cache-Control', 'public, max-age=60');
       return c.json(result);
+    },
+  )
+  .get(
+    '/api/like-counts',
+    zValidator(
+      'query',
+      z.object({
+        // One ?id= arrives as a string, repeated ones as an array.
+        id: z
+          .union([z.string(), z.array(z.string())])
+          .transform((value) => [...new Set([value].flat())])
+          .pipe(
+            z.array(z.string().min(1).max(200)).min(1).max(MAX_LIKE_COUNT_IDS),
+          ),
+      }),
+      (result, c) => {
+        if (!result.success)
+          return c.json(
+            {
+              error: {
+                code: 'invalid_ids',
+                message: `Send 1–${MAX_LIKE_COUNT_IDS} card IDs.`,
+              },
+            },
+            400,
+          );
+      },
+    ),
+    async (c) => {
+      const counts = await getLikeCounts(c.env.APP, c.req.valid('query').id);
+      // Totals change with every sync; a cached copy would hide a fresh like.
+      c.header('Cache-Control', 'no-store');
+      return c.json({ counts });
     },
   )
   .get('/healthz', async (c) => {

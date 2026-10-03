@@ -6,7 +6,12 @@ import {
   onMount,
   Show,
 } from 'solid-js';
-import { getAccount, reconcileAccountLikes } from '../lib/account';
+import {
+  getAccount,
+  reconcileAccountLikes,
+  refreshLikeCounts,
+} from '../lib/account';
+import { likedTotal } from '../lib/likes';
 import { getSwipes, type LocalSwipe, removeSwipe } from '../lib/local';
 import { drainSync } from '../lib/sync';
 import CardFooter from './CardFooter';
@@ -62,7 +67,7 @@ function LikedCard(props: { swipe: LocalSwipe; onRemove: () => void }) {
       <CardFooter
         word={swipe.word}
         etymNo={swipe.card.etymNo}
-        likeCount={swipe.card.likeCount}
+        likeCount={likedTotal(swipe)}
       />
     </article>
   );
@@ -111,6 +116,17 @@ export default function Liked() {
     }
   }
 
+  // Guests: sync first so the refreshed totals include their own likes.
+  async function refreshGuestTotals() {
+    await drainSync();
+    if (!navigator.onLine) return;
+    try {
+      setSwipes(await refreshLikeCounts());
+    } catch {
+      // Keep the stored totals; the next visit or reconnection retries.
+    }
+  }
+
   onMount(() => {
     setOnline(navigator.onLine);
     void getSwipes()
@@ -128,7 +144,7 @@ export default function Liked() {
         setAccountLoaded(true);
         if (!account.user.isAnonymous && navigator.onLine)
           setSwipes(await reconcileAccountLikes());
-        else void drainSync();
+        else void refreshGuestTotals();
       })
       .catch(() => {
         if (navigator.onLine) setError('Could not refresh saved words.');
@@ -141,7 +157,7 @@ export default function Liked() {
           .catch(() => {
             setError('Could not refresh saved words.');
           });
-      else void drainSync();
+      else void refreshGuestTotals();
     };
     const onOffline = () => setOnline(false);
     window.addEventListener('online', onOnline);
