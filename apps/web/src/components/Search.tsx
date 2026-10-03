@@ -1,15 +1,15 @@
 import type { Card } from '@etymology-feed/shared/card';
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
-import { getSwipes, saveSearchLike } from '../lib/local';
+import { getSwipes, removeSearchLike, saveSearchLike } from '../lib/local';
 import { drainSync } from '../lib/sync';
 import CardFooter from './CardFooter';
 import ExpandableText from './ExpandableText';
+import HeartIcon from './HeartIcon';
 
 export default function Search() {
   const [query, setQuery] = createSignal('');
   const [words, setWords] = createSignal<string[]>([]);
   const [cards, setCards] = createSignal<Card[]>([]);
-  const [hasMore, setHasMore] = createSignal(false);
   const [loading, setLoading] = createSignal(false);
   const [searched, setSearched] = createSignal(false);
   const [error, setError] = createSignal('');
@@ -32,7 +32,6 @@ export default function Search() {
     request = controller;
     setQuery(word);
     setWords([]);
-    setHasMore(false);
     setCards([]);
     setLoading(true);
     setError('');
@@ -76,13 +75,9 @@ export default function Search() {
         { signal: controller.signal },
       );
       if (!response.ok) throw new Error('search');
-      const result = (await response.json()) as {
-        words: string[];
-        hasMore: boolean;
-      };
+      const result = (await response.json()) as { words: string[] };
       if (controller.signal.aborted) return;
       setWords(result.words);
-      setHasMore(result.hasMore);
       const exact = result.words.find(
         (word) => word.toLowerCase() === text.toLowerCase(),
       );
@@ -106,7 +101,6 @@ export default function Search() {
     setQuery(value);
     setWords([]);
     setCards([]);
-    setHasMore(false);
     setSearched(false);
     setError('');
     setSaveError('');
@@ -114,16 +108,27 @@ export default function Search() {
     if (value.trim() && online()) timer = setTimeout(() => void search(), 250);
   }
 
-  async function like(card: Card) {
-    if (liked().has(card.id) || saving().has(card.id)) return;
+  async function toggleLike(card: Card) {
+    if (saving().has(card.id)) return;
+    const wasLiked = liked().has(card.id);
     setSaving((current) => new Set([...current, card.id]));
     setSaveError('');
     try {
-      await saveSearchLike(card);
-      setLiked((current) => new Set([...current, card.id]));
+      if (wasLiked) await removeSearchLike(card);
+      else await saveSearchLike(card);
+      setLiked((current) => {
+        const next = new Set(current);
+        if (wasLiked) next.delete(card.id);
+        else next.add(card.id);
+        return next;
+      });
       void drainSync();
     } catch {
-      setSaveError('Could not save this word. Please try again.');
+      setSaveError(
+        wasLiked
+          ? 'Could not remove this word. Please try again.'
+          : 'Could not save this word. Please try again.',
+      );
     } finally {
       setSaving(
         (current) => new Set([...current].filter((id) => id !== card.id)),
@@ -174,7 +179,6 @@ export default function Search() {
   return (
     <section class="search-page page-wrap">
       <h1 class="display-voice search-heading">Search</h1>
-      <p class="search-intro body-voice">Find the story behind a word.</p>
       <search>
         <form
           class="search-tools"
@@ -223,18 +227,20 @@ export default function Search() {
       </search>
       <Show when={!online()}>
         <p class="offline-note body-voice" role="status">
-          Connect to the internet to search. You can still save words already
-          open here.
+          Connect to the internet to search.
         </p>
       </Show>
       <div class="search-status body-voice" role="status" aria-live="polite">
         <Show when={loading()}>Searching…</Show>
         <Show when={!loading() && searched() && !error() && online()}>
-          {cards().length
-            ? `${cards().length} ${cards().length === 1 ? 'origin' : 'origins'} found.`
-            : words().length
-              ? 'Choose a word to explore its origins.'
-              : 'No matching words. Try another spelling.'}
+          {/* Counts are announced to screen readers only; the list shows them. */}
+          {cards().length ? (
+            <span class="sr-only">{`${cards().length} ${cards().length === 1 ? 'origin' : 'origins'} found.`}</span>
+          ) : words().length ? (
+            <span class="sr-only">{`${words().length} matching ${words().length === 1 ? 'word' : 'words'}.`}</span>
+          ) : (
+            'No matching words.'
+          )}
         </Show>
       </div>
       <Show when={words().length}>
@@ -255,11 +261,6 @@ export default function Search() {
             )}
           </For>
         </ul>
-        <Show when={hasMore()}>
-          <p class="search-intro body-voice">
-            Keep typing to narrow the results.
-          </p>
-        </Show>
       </Show>
       <div class="liked-list search-results" aria-busy={loading()}>
         <For each={cards()}>
@@ -286,25 +287,26 @@ export default function Search() {
                 label="etymology"
                 className="liked-etymology"
               />
-              <button
-                type="button"
-                class="search-save label-voice"
-                disabled={
-                  !likesReady() || liked().has(card.id) || saving().has(card.id)
-                }
-                aria-label={`${liked().has(card.id) ? 'Saved' : 'Save'} ${card.word}${card.etymNo ? ` origin ${card.etymNo}` : ''} to Liked`}
-                onClick={() => void like(card)}
-              >
-                {liked().has(card.id)
-                  ? 'Saved to Liked'
-                  : saving().has(card.id)
-                    ? 'Saving…'
-                    : 'Save to Liked'}
-              </button>
               <CardFooter
                 word={card.word}
                 etymNo={card.etymNo}
                 likeCount={card.likeCount}
+                action={
+                  <button
+                    type="button"
+                    class="heart-toggle"
+                    classList={{ 'is-liked': liked().has(card.id) }}
+                    disabled={!likesReady()}
+                    aria-pressed={liked().has(card.id)}
+                    aria-label={`Save ${card.word}${card.etymNo ? ` origin ${card.etymNo}` : ''} to Liked`}
+                    onClick={() => void toggleLike(card)}
+                  >
+                    <HeartIcon
+                      class="heart-icon"
+                      filled={liked().has(card.id)}
+                    />
+                  </button>
+                }
               />
             </article>
           )}

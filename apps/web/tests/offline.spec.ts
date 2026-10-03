@@ -486,7 +486,7 @@ test('mobile dock tabs are centered, evenly spaced, and underline only the label
     const dockBox = await dock.boundingBox();
     if (!dockBox) throw new Error('Dock has no visible bounds.');
     const links = await dock.getByRole('link').all();
-    expect(links).toHaveLength(3);
+    expect(links).toHaveLength(4);
     for (const [index, link] of links.entries()) {
       const linkBox = await link.boundingBox();
       const iconBox = await link.locator('svg').boundingBox();
@@ -494,7 +494,7 @@ test('mobile dock tabs are centered, evenly spaced, and underline only the label
         throw new Error('Dock tab has no visible bounds.');
       const center = linkBox.x + linkBox.width / 2;
       expect(center).toBeCloseTo(
-        dockBox.x + (dockBox.width * (index + 0.5)) / 3,
+        dockBox.x + (dockBox.width * (index + 0.5)) / links.length,
         0,
       );
       expect(iconBox.x + iconBox.width / 2).toBeCloseTo(center, 0);

@@ -1,13 +1,18 @@
-import { Show } from 'solid-js';
+import { children, type JSX, Show } from 'solid-js';
+import HeartIcon from './HeartIcon';
 
 type Props = {
   word: string;
   etymNo: number | null;
   likeCount?: number;
   tabIndex?: number;
+  /** A control at the right end of the row, such as a like button. */
+  action?: JSX.Element;
 };
 
 export default function CardFooter(props: Props) {
+  // Resolve once: reading a JSX prop twice would create its element twice.
+  const action = children(() => props.action);
   return (
     <div class="card-bottom">
       <a
@@ -20,25 +25,22 @@ export default function CardFooter(props: Props) {
       >
         Wiktionary
       </a>
-      <Show when={(props.likeCount ?? 0) > 0}>
-        <span class="card-like-count caption-voice">
-          <svg aria-hidden="true" viewBox="0 0 256 256">
-            <path
-              d="M128,224l89.36-90.64a50,50,0,1,0-70.72-70.72L128,80,109.36,62.64a50,50,0,0,0-70.72,70.72Z"
-              fill="none"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="16"
-            />
-          </svg>
-          <span class="sr-only">Liked by </span>
-          <span>{props.likeCount?.toLocaleString()}</span>
-          <span class="sr-only">
-            {props.likeCount === 1 ? ' user' : ' users'}
+      <div class="card-bottom-end">
+        <Show when={(props.likeCount ?? 0) > 0}>
+          <span class="card-like-count caption-voice">
+            {/* A heart action beside the total already shows what it counts. */}
+            <Show when={!action()}>
+              <HeartIcon />
+            </Show>
+            <span class="sr-only">Liked by </span>
+            <span>{props.likeCount?.toLocaleString()}</span>
+            <span class="sr-only">
+              {props.likeCount === 1 ? ' user' : ' users'}
+            </span>
           </span>
-        </span>
-      </Show>
+        </Show>
+        {action()}
+      </div>
     </div>
   );
 }

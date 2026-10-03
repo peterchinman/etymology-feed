@@ -205,7 +205,7 @@ export default function Settings(props: Props) {
         >
           CC BY-SA 4.0
         </a>
-        . Select a word to open its original entry.
+        .
       </p>
       <Show when={error()}>
         <p class="inline-error body-voice" role="alert">

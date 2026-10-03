@@ -94,8 +94,7 @@
   line-height: 1.45;
 }
 /* Small tracked labels take the theme's caps treatment. */
-.definition-label,
-.card-kicker {
+.definition-label {
   --voice-label-tracking: var(--tracking-caps);
   --voice-label-case: var(--case-caps);
 }
@@ -217,14 +216,6 @@ a {
 .top-nav a[aria-current="page"] {
   color: var(--color-bar-ink);
   border-bottom-color: var(--color-nav-mark);
-}
-.top-nav .search-nav {
-  display: flex;
-  gap: var(--space-2);
-}
-.search-nav svg {
-  width: var(--icon-size);
-  height: var(--icon-size);
 }
 .bottom-nav {
   display: none;
@@ -541,6 +532,11 @@ a {
   gap: var(--space-4);
   margin-top: var(--space-3);
 }
+.card-bottom-end {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 .card-like-count {
   display: inline-flex;
   align-items: center;
@@ -676,19 +672,17 @@ a {
   position: relative;
   align-items: center;
   justify-content: center;
+  gap: var(--space-4);
   text-align: center;
   padding: var(--space-6);
 }
-.card-kicker {
-  margin: 0;
-  color: var(--color-accent);
-}
 .empty-card h2 {
   --voice-display-size: var(--type-display-compact);
-  margin: var(--space-4) 0 0;
+  margin: 0;
 }
 .empty-card p {
   max-width: var(--panel-width);
+  margin: 0;
   color: var(--color-muted);
 }
 .primary-button {
@@ -713,7 +707,6 @@ a {
   --voice-display-size: var(--type-display-compact);
   margin: 0;
 }
-.search-intro,
 .search-status {
   color: var(--color-muted);
 }
@@ -767,14 +760,36 @@ a {
   margin-top: 0;
   color: var(--color-muted);
 }
-.search-save {
-  align-self: flex-start;
-  margin-block: var(--space-3) var(--space-4);
-  padding: var(--space-2) var(--space-3);
-  border: var(--stroke-control) solid var(--color-line);
+/* Like toggle at the end of a card footer: an outline heart until the card
+   is liked, then filled in the theme's like color; tapping again unlikes. The tap target stays
+   touch-sized; negative margins keep it from heightening the row and line the
+   icon up with the card's content edge. */
+.heart-toggle {
+  --heart-overhang: calc((var(--icon-size) - var(--field-height)) / 2);
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--field-height);
+  height: var(--field-height);
+  margin-block: var(--heart-overhang);
+  margin-inline-end: var(--heart-overhang);
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--color-inset);
+  background: transparent;
+  color: var(--color-muted);
+  transition: color var(--motion-quick) var(--ease-standard);
+}
+.heart-toggle svg {
+  display: block;
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+.heart-toggle:not(.is-liked):hover:not(:disabled) {
   color: var(--color-ink);
+}
+.heart-toggle.is-liked {
+  color: var(--color-like);
 }
 
 /* Liked list. */
@@ -967,9 +982,6 @@ a {
   color: var(--color-ink);
   margin: var(--space-3) 0 0;
 }
-.liked-empty a {
-  color: var(--color-accent);
-}
 
 @media (min-width: 48.0625rem) {
   .feed-page {
@@ -1045,8 +1057,9 @@ a {
     width: var(--icon-size);
     height: var(--icon-size);
   }
+  /* The accent marks the current tab, icon and label alike. */
   .bottom-nav a[aria-current="page"] {
-    color: var(--color-bar-ink);
+    color: var(--color-accent);
   }
   /* Only the label is underlined; the icon above it stays clean. */
   .bottom-nav a[aria-current="page"] .nav-label {

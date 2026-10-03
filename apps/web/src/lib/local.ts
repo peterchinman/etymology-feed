@@ -239,6 +239,23 @@ export async function saveSearchLike(card: Card): Promise<LocalSwipe> {
   return swipe;
 }
 
+/**
+ * Unlike a search result. Marks its current like removed, as the Liked page
+ * does, so the next sync deletes it on the server.
+ */
+export async function removeSearchLike(card: Card): Promise<void> {
+  const db = await getDatabase();
+  const tx = db.transaction('swipes', 'readwrite');
+  const store = tx.objectStore('swipes');
+  const latest = (await store.index('by-word').getAll(card.word))
+    .map(normalizeSwipe)
+    .filter((swipe) => swipe.cardId === card.id)
+    .sort((a, b) => b.swipedAt - a.swipedAt)[0];
+  if (latest?.verdict === 1 && !latest.removed)
+    await store.put({ ...latest, removed: true });
+  await tx.done;
+}
+
 export async function getSwipes(): Promise<LocalSwipe[]> {
   return (await (await getDatabase()).getAll('swipes'))
     .map(normalizeSwipe)
