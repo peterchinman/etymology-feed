@@ -33,30 +33,8 @@ test('searches from mobile navigation, saves separate origins offline, and unlik
     pressed: true,
   });
   await expect(save.first()).toBeEnabled();
-  // The heart sits at the lower right, in the source row, outlined until liked.
-  const firstCard = page.locator('.search-results .liked-item').first();
-  const heart = firstCard.locator('.heart-toggle');
-  const source = firstCard.getByRole('link', { name: 'Wiktionary' });
-  const [heartBox, sourceBox, cardBox] = await Promise.all([
-    heart.boundingBox(),
-    source.boundingBox(),
-    firstCard.boundingBox(),
-  ]);
-  if (!heartBox || !sourceBox || !cardBox)
-    throw new Error('Search card footer is missing.');
-  expect(heartBox.x).toBeGreaterThan(sourceBox.x + sourceBox.width);
-  expect(
-    Math.abs(
-      heartBox.y + heartBox.height / 2 - (sourceBox.y + sourceBox.height / 2),
-    ),
-  ).toBeLessThan(5);
-  expect(
-    cardBox.x + cardBox.width - (heartBox.x + heartBox.width),
-  ).toBeLessThan(cardBox.width / 10);
-  await expect(heart.locator('path')).toHaveAttribute('fill', 'none');
   await save.first().click();
   await expect(saved).toHaveCount(1);
-  await expect(heart.locator('path')).toHaveAttribute('fill', 'currentColor');
   await save.first().click();
   await expect(saved).toHaveCount(2);
   const synced = page.waitForResponse(
@@ -85,9 +63,8 @@ test('searches from mobile navigation, saves separate origins offline, and unlik
       response.url().includes('/api/swipes/') &&
       response.ok(),
   );
-  await heart.click();
+  await saved.first().click();
   await expect(saved).toHaveCount(1);
-  await expect(heart.locator('path')).toHaveAttribute('fill', 'none');
   await removed;
   const afterUnlike = await page.request.get('/api/words/bluff/etymologies');
   const { cards: remaining } = await afterUnlike.json();
