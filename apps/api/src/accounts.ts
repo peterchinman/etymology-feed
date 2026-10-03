@@ -1,9 +1,25 @@
 import { getCardsByIds } from './feed';
+import {
+  demote,
+  promote,
+  type RaterStatus,
+  raterRules,
+  statusGuard,
+} from './raters';
 
-type ServedRow = { card_ids: string };
+type ServedRow = { card_ids: string; dealt_ids: string };
 
 function unionServed(first: string[], second: string[], cap: number): string[] {
   return [...new Set([...first, ...second])].slice(-cap);
+}
+
+/** Flagged wins, then trusted: earned trust survives signing in elsewhere. */
+function mergedStatus(
+  ...statuses: (RaterStatus | undefined)[]
+): 'flagged' | 'trusted' | 'pending' {
+  if (statuses.some((status) => status === 'flagged' || status === 'flagging'))
+    return 'flagged';
+  return statuses.includes('trusted') ? 'trusted' : 'pending';
 }
 
 /** Move an anonymous history into an account before Better Auth deletes the guest. */
@@ -13,30 +29,61 @@ export async function mergeAnonymousAccount(
   accountId: string,
 ): Promise<void> {
   if (anonymousId === accountId) return;
-  // Both lookups use served.user_id PK. Keep the account's order first, then
-  // append cards first seen on this device.
-  const served = await env.APP.batch([
-    env.APP.prepare('SELECT card_ids FROM served WHERE user_id=?').bind(
-      accountId,
-    ),
-    env.APP.prepare('SELECT card_ids FROM served WHERE user_id=?').bind(
+  // served.user_id and rater.user_id PKs: four row reads. Keep the account's
+  // order first, then append cards first seen on this device.
+  const reads = await env.APP.batch([
+    env.APP.prepare(
+      'SELECT card_ids, dealt_ids FROM served WHERE user_id=?',
+    ).bind(accountId),
+    env.APP.prepare(
+      'SELECT card_ids, dealt_ids FROM served WHERE user_id=?',
+    ).bind(anonymousId),
+    env.APP.prepare('SELECT status FROM rater WHERE user_id=?').bind(accountId),
+    env.APP.prepare('SELECT status FROM rater WHERE user_id=?').bind(
       anonymousId,
     ),
   ]);
-  const accountIds = JSON.parse(
-    (served[0].results[0] as ServedRow | undefined)?.card_ids ?? '[]',
-  ) as string[];
-  const anonymousIds = JSON.parse(
-    (served[1].results[0] as ServedRow | undefined)?.card_ids ?? '[]',
-  ) as string[];
-  const merged = unionServed(accountIds, anonymousIds, Number(env.SERVED_CAP));
+  const [account, guest] = [0, 1].map(
+    (i) => reads[i].results[0] as ServedRow | undefined,
+  );
+  const ids = (row: ServedRow | undefined, column: keyof ServedRow) =>
+    JSON.parse(row?.[column] ?? '[]') as string[];
+  const cap = Number(env.SERVED_CAP);
+  const merged = unionServed(
+    ids(account, 'card_ids'),
+    ids(guest, 'card_ids'),
+    cap,
+  );
+  const dealt = unionServed(
+    ids(account, 'dealt_ids'),
+    ids(guest, 'dealt_ids'),
+    cap,
+  );
+  const base = mergedStatus(
+    ...[2, 3].map(
+      (i) =>
+        (reads[i].results[0] as { status: RaterStatus } | undefined)?.status,
+    ),
+  );
+  const rules = raterRules(env);
   const dislikeWeight = Number(env.DISLIKE_WEIGHT);
   const now = Date.now();
-  // One loser per conflicting card disappears from the aggregate. The target
-  // row remains when it is newer; otherwise the guest row replaces it below.
-  // idx_swipe_user_card serves both sides of the join; word_stats.card_id PK
-  // serves the update. All writes run in one D1 transaction.
+  // One loser per conflicting card disappears from the aggregate, if it was
+  // counted. The target row remains when it is newer; otherwise the guest
+  // row replaces it below. idx_swipe_user_card serves both sides of the join;
+  // word_stats.card_id PK serves the update. All writes run in one D1
+  // transaction.
   const writes = [
+    // The account inherits the guest's pace credit when it has no record yet.
+    env.APP.prepare(`
+      INSERT INTO rater (user_id, credit, credit_at, updated_at)
+      SELECT ?, credit, credit_at, ? FROM rater WHERE user_id = ?
+      ON CONFLICT DO NOTHING
+    `).bind(accountId, now, anonymousId),
+    env.APP.prepare(`
+      INSERT INTO rater (user_id, credit_at, updated_at)
+      SELECT id, created_at, ? FROM user WHERE id = ? ON CONFLICT DO NOTHING
+    `).bind(now, accountId),
     env.APP.prepare(`
       UPDATE word_stats AS stats SET
         likes=stats.likes-(loser.verdict=1),
@@ -46,11 +93,14 @@ export async function mergeAnonymousAccount(
            (stats.dislikes-(loser.verdict=-1))*?+2.0),
         updated_at=?
       FROM (
-        SELECT guest.card_id,
-          CASE WHEN guest.swiped_at>member.swiped_at THEN member.verdict ELSE guest.verdict END AS verdict
-        FROM swipe AS guest
-        JOIN swipe AS member ON member.user_id=? AND member.card_id=guest.card_id
-        WHERE guest.user_id=?
+        SELECT card_id, verdict FROM (
+          SELECT guest.card_id,
+            CASE WHEN guest.swiped_at>member.swiped_at THEN member.verdict ELSE guest.verdict END AS verdict,
+            CASE WHEN guest.swiped_at>member.swiped_at THEN member.tally ELSE guest.tally END AS tally
+          FROM swipe AS guest
+          JOIN swipe AS member ON member.user_id=? AND member.card_id=guest.card_id
+          WHERE guest.user_id=?
+        ) WHERE tally=1
       ) AS loser
       WHERE stats.card_id=loser.card_id
     `).bind(dislikeWeight, now, accountId, anonymousId),
@@ -60,7 +110,7 @@ export async function mergeAnonymousAccount(
       UPDATE swipe AS member SET
         verdict=guest.verdict, bucket=guest.bucket,
         shown_at=guest.shown_at, swiped_at=guest.swiped_at,
-        received_at=guest.received_at
+        received_at=guest.received_at, dealt=guest.dealt, tally=guest.tally
       FROM swipe AS guest
       WHERE member.user_id=? AND guest.user_id=?
         AND member.card_id=guest.card_id
@@ -73,11 +123,45 @@ export async function mergeAnonymousAccount(
     `).bind(accountId, anonymousId, accountId),
     env.APP.prepare('DELETE FROM swipe WHERE user_id=?').bind(anonymousId),
     env.APP.prepare(`
-      INSERT INTO served(user_id,card_ids,count,updated_at) VALUES(?,?,?,?)
+      INSERT INTO served(user_id,card_ids,count,updated_at,dealt_ids) VALUES(?,?,?,?,?)
       ON CONFLICT(user_id) DO UPDATE SET
-        card_ids=excluded.card_ids,count=excluded.count,updated_at=excluded.updated_at
-    `).bind(accountId, JSON.stringify(merged), merged.length, now),
+        card_ids=excluded.card_ids,count=excluded.count,updated_at=excluded.updated_at,
+        dealt_ids=excluded.dealt_ids
+    `).bind(
+      accountId,
+      JSON.stringify(merged),
+      merged.length,
+      now,
+      JSON.stringify(dealt),
+    ),
     env.APP.prepare('DELETE FROM served WHERE user_id=?').bind(anonymousId),
+    // Recount the merged history, then judge it as one rater (§6.6). A new
+    // revision makes any sync that read either history retry.
+    env.APP.prepare(`
+      UPDATE rater SET
+        rated = (SELECT count(*) FROM swipe WHERE user_id = ?1 AND dealt = 1),
+        liked = (SELECT count(*) FROM swipe WHERE user_id = ?1 AND dealt = 1 AND verdict = 1),
+        revision = ?2, updated_at = ?3
+      WHERE user_id = ?1
+    `).bind(accountId, crypto.randomUUID(), now),
+    // Same rules as nextStatus in raters.ts, on the merged counts.
+    env.APP.prepare(`
+      UPDATE rater SET status = CASE
+        WHEN ?2 = 'flagged' OR (rated >= ?3 AND liked > ?4 * rated) THEN 'flagged'
+        WHEN ?2 = 'trusted' OR rated >= ?5 THEN 'trusted'
+        ELSE 'pending'
+      END
+      WHERE user_id = ?1
+    `).bind(
+      accountId,
+      base,
+      rules.judgeSwipes,
+      rules.maxLikeRate,
+      rules.holdSwipes,
+    ),
+    // Settle tallies for the final status. Each pair no-ops otherwise.
+    ...promote(env, accountId, statusGuard(accountId, 'trusted'), now),
+    ...demote(env, accountId, statusGuard(accountId, 'flagged'), now),
   ];
   await env.APP.batch(writes);
 }
@@ -161,6 +245,7 @@ export async function deleteAccount(
            (stats.dislikes-(swipe.verdict=-1))*?+2.0),
         updated_at=?
       FROM swipe WHERE swipe.user_id=? AND swipe.card_id=stats.card_id
+        AND swipe.tally=1
     `).bind(dislikeWeight, now, userId),
     env.APP.prepare('DELETE FROM user WHERE id=? AND is_anonymous=0').bind(
       userId,

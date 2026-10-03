@@ -56,6 +56,17 @@ SERVED_CAP = 30000
 CONFIRMED_POOL_SIZE = 3000
 PROMISING_POOL_SIZE = 3000
 FRESH_POOL_SIZE = 3000
+# Rater trust (§6.6): new raters' swipes are held until they have HOLD dealt
+# swipes (0 counts from the first). From JUDGE dealt swipes on, a like rate
+# above the ceiling flags the rater. At most one swipe per pace interval
+# counts, banking up to the burst. COUNT_UNDEALT_LIKES = 1 also counts likes
+# on cards the feed did not deal, such as search likes; 0 ignores them.
+RATER_HOLD_SWIPES = 0
+RATER_JUDGE_SWIPES = 20
+RATER_MAX_LIKE_RATE = 0.5
+RATER_PACE_SECONDS = 1
+RATER_PACE_BURST = 200
+RATER_COUNT_UNDEALT_LIKES = 1
 
 [observability]
 enabled = true

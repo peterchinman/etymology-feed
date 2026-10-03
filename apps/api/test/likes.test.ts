@@ -5,15 +5,11 @@ import { getUserFeed } from '../src/feed';
 import { withLikeCounts } from '../src/likes';
 import { buildPools } from '../src/pools';
 import { deleteLiked, syncSwipes } from '../src/sync';
+import { raterWith } from './helpers';
 
+/** A trusted rater who was dealt both bluff origins. */
 async function newUser() {
-  const id = crypto.randomUUID();
-  await env.APP.prepare(
-    'INSERT INTO user (id,name,email,updated_at,is_anonymous) VALUES (?,?,?,?,1)',
-  )
-    .bind(id, 'Test', `${id}@test.local`, Date.now())
-    .run();
-  return id;
+  return raterWith((await origins()).map(({ id }) => id));
 }
 
 async function origins() {
@@ -54,7 +50,7 @@ it('exposes distinct user totals, updates after unlikes, and separates origins',
     .all<{ id: string }>();
   const feed = await getUserFeed(
     env,
-    await newUser(),
+    await raterWith(),
     2,
     excluded.results.map(({ id }) => id),
   );

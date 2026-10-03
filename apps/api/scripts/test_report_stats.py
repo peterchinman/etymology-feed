@@ -37,13 +37,29 @@ class ReportStatsTest(unittest.TestCase):
                 return int((now - timedelta(days=days_ago)).timestamp() * 1000)
 
             swipes = root / "swipes.sql"
+            rows = [
+                f"('a','u','alpha',1,'confirmed',0,0,{stamp(0)}",
+                f"('b','u','beta',-1,'fresh',0,0,{stamp(1)}",
+                f"('c','v','alpha',1,'wild',0,0,{stamp(10)}",
+                f"('d','v','beta',1,'wild',0,0,{stamp(40)}",
+                f"('e','v','missing',1,'promising',0,0,{stamp(0)}",
+            ]
+            if current_schema:
+                # Counted swipes add dealt=1, tally=1. A held like and an
+                # ignored like from a pending rater stay out of every rate.
+                rows = [row + ",1,1" for row in rows] + [
+                    f"('f','w','alpha',1,'fresh',0,0,{stamp(0)},1,2",
+                    f"('g','w','beta',1,NULL,0,120000,{stamp(0)},0,0",
+                ]
             swipes.write_text(
-                "INSERT INTO swipe VALUES "
-                f"('a','u','alpha',1,'confirmed',0,0,{stamp(0)}),"
-                f"('b','u','beta',-1,'fresh',0,0,{stamp(1)}),"
-                f"('c','v','alpha',1,'wild',0,0,{stamp(10)}),"
-                f"('d','v','beta',1,'wild',0,0,{stamp(40)}),"
-                f"('e','v','missing',1,'promising',0,0,{stamp(0)});",
+                "INSERT INTO swipe VALUES " + ",".join(row + ")" for row in rows) + ";",
+                encoding="utf-8",
+            )
+            raters = root / "raters.sql"
+            raters.write_text(
+                "INSERT INTO rater VALUES "
+                "('u','trusted',2,1,0,0,'r',0),('v','trusted',3,3,0,0,'r',0),"
+                "('w','pending',1,1,0,0,'r',0);",
                 encoding="utf-8",
             )
             stats = root / "word-stats.sql"
@@ -68,6 +84,7 @@ class ReportStatsTest(unittest.TestCase):
                     str(stats),
                     "--dict-db",
                     str(dictionary),
+                    *(["--raters-sql", str(raters)] if current_schema else []),
                 ],
                 capture_output=True,
                 text=True,
@@ -95,7 +112,30 @@ class ReportStatsTest(unittest.TestCase):
         self.assertEqual(report["suggestedDislikeWeight"], 3.0)
         self.assertEqual(report["periods"]["7"]["bucket"]["promising"]["total"], 1)
         self.assertEqual(report["missingDictionaryRows"], 1)
-        self.assertEqual(report["swipesPerDay"][0]["count"], 2)
+        self.assertEqual(
+            report["swipesPerDay"][0],
+            {"date": now.date().isoformat(), "count": 4 if current_schema else 2, "counted": 2},
+        )
+        raters = report["raters"]
+        self.assertEqual(raters["countedSwipes"], 4)
+        top = {item["userId"]: item for item in raters["top"]}
+        self.assertEqual([item["userId"] for item in raters["top"]][:2], ["u", "v"])
+        self.assertEqual(top["u"]["counted"], 2)
+        self.assertEqual(top["u"]["shareOfCounted"], 0.5)
+        self.assertEqual(top["u"]["dealtLikeRate"], 0.5)
+        self.assertEqual(top["u"]["peakPerMinute"], 2)
+        if current_schema:
+            self.assertEqual(raters["status"], {"pending": 1, "trusted": 2})
+            self.assertEqual(top["u"]["status"], "trusted")
+            self.assertEqual(
+                {key: top["w"][key] for key in ("status", "received", "counted", "dealt")},
+                {"status": "pending", "received": 2, "counted": 0, "dealt": 1},
+            )
+            self.assertEqual(top["w"]["peakPerMinute"], 1)
+        else:
+            self.assertEqual(raters["status"], {})
+            self.assertIsNone(top["u"]["status"])
+            self.assertNotIn("w", top)
 
 
 if __name__ == "__main__":

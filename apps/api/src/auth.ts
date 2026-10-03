@@ -90,6 +90,9 @@ export function createAuth(env: CloudflareBindings, origin: string) {
     },
     plugins: [
       anonymous({
+        // Deleting a guest would cascade its swipes while word_stats kept
+        // their counts, leaving nothing to reverse if the guest is flagged.
+        disableDeleteAnonymousUser: true,
         onLinkAccount: async ({ anonymousUser, newUser }) => {
           await mergeAnonymousAccount(
             env,

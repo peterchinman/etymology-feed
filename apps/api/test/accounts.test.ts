@@ -7,6 +7,7 @@ import {
 } from '../src/accounts';
 import { getWordEtymologies } from '../src/feed';
 import { syncSwipes } from '../src/sync';
+import { raterWith } from './helpers';
 
 it('merges newer anonymous verdicts, deduplicates served cards, and removes account ratings', async () => {
   const [bluffing, bank] = await getWordEtymologies(
@@ -20,17 +21,9 @@ it('merges newer anonymous verdicts, deduplicates served cards, and removes acco
     .first<{ id: string }>();
   if (!third) throw new Error('Fixture is missing a third card.');
   const thirdId = third.id;
-  const guest = crypto.randomUUID();
-  const member = crypto.randomUUID();
-  for (const [id, isAnonymous] of [
-    [guest, 1],
-    [member, 0],
-  ] as const)
-    await env.APP.prepare(
-      'INSERT INTO user(id,name,email,updated_at,is_anonymous) VALUES(?,?,?,?,?)',
-    )
-      .bind(id, 'Test', `${id}@test.local`, Date.now(), isAnonymous)
-      .run();
+  // Trusted raters, each dealt the cards they swipe below.
+  const guest = await raterWith([bluffing.id, bank.id, thirdId]);
+  const member = await raterWith([bluffing.id, bank.id], { anonymous: false });
   const swipe = (cardId: string, verdict: 1 | -1, swipedAt: number) => ({
     id: crypto.randomUUID(),
     cardId,
@@ -136,17 +129,8 @@ it('counts matching ratings once under weighted scoring after account linking', 
   if (cards.results.length !== 2) throw new Error('Fixture cards are missing.');
   for (const [index, verdict] of ([1, -1] as const).entries()) {
     const card = cards.results[index];
-    const guest = crypto.randomUUID();
-    const member = crypto.randomUUID();
-    for (const [id, anonymous] of [
-      [guest, 1],
-      [member, 0],
-    ] as const)
-      await env.APP.prepare(
-        'INSERT INTO user(id,name,email,updated_at,is_anonymous) VALUES(?,?,?,?,?)',
-      )
-        .bind(id, 'Test', `${id}@test.local`, Date.now(), anonymous)
-        .run();
+    const guest = await raterWith([card.id]);
+    const member = await raterWith([card.id], { anonymous: false });
     for (const [id, swipedAt] of [
       [guest, 2000],
       [member, 1000],

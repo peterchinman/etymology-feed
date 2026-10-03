@@ -1,5 +1,63 @@
 # Decisions
 
+## 2026-10-03 — Count search likes; ceiling 0.5; one swipe per second (§6.6)
+
+Search likes now count, reversing the 2026-10-02 choice. They arrive as likes
+on cards the feed did not deal, which the server cannot tell apart from any
+other undealt like, so `RATER_COUNT_UNDEALT_LIKES` (1) counts all of those.
+Recovered likes after cookie loss count too. Lefts on undealt cards still never
+count, so no one can bury a chosen card. Undealt likes stay out of the like
+rate, which would otherwise penalize readers who search. The cost is that a
+script can like a chosen card once per fresh guest, bounded by the session
+limit, and a guest that only sends undealt likes is limited only by pace.
+Setting the variable to 0 reverses this for new swipes. Each swipe's `dealt`
+flag identifies the undealt likes that already counted, for a removal migration.
+
+The like-rate ceiling drops from 0.8 to 0.5. A rater above half likes after 20
+dealt swipes is flagged permanently and silently. Pace rises to one swipe per
+second; the 200-swipe bank is unchanged.
+
+## 2026-10-03 — Count new raters from their first swipe (§6.6)
+
+This supersedes the 20-swipe hold decided on 2026-10-02. Holding every new
+rater discarded all ratings from visitors who leave early, when the lanes most
+need data. Reversing bad counts never depended on the hold: every swipe keeps
+its tally, so a flagged rater's counts are removed after the fact.
+`RATER_HOLD_SWIPES` (default 0) now sets the hold. `RATER_JUDGE_SWIPES` (20)
+sets the evidence needed before the like-rate ceiling applies. A rater judged
+to like nearly everything is flagged whether or not they were still held, so
+batching swipes into syncs cannot change the outcome. The remaining exposure is
+short-lived guests that like a few dealt cards and leave before being judged.
+Raise the hold if the report shows them.
+
+## 2026-10-02 — Count only dealt, paced swipes from trusted raters (§6.6)
+
+A guest could previously rate any card ID at hundreds of swipes per request,
+so a few scripted guests could fill the confirmed lane or park a card. Every
+swipe is still stored, but `word_stats` now changes only for cards the feed
+dealt to that user, within a pace budget, from raters who have earned trust.
+The feed records its batches in `served.dealt_ids`. Search results do not count:
+the search and card endpoints are public and cached, so the server cannot tell
+who looked up a card, and a sought-out like says little about a random feed
+reader. Making search count would reopen targeting. It would need a per-user
+record of search results.
+
+New raters are held until they rate 20 dealt cards at a like rate of 0.8 or
+below; their held swipes then apply at once. A trusted rater who passes the
+ceiling is flagged and their counted swipes are removed. Flagging is one-way so
+that crossing the line repeatedly cannot multiply writes. Pace credit accrues
+at one swipe per two seconds from user creation, banked to 200 so an offline
+stack still counts. Swipes beyond the credit are ignored rather than flagged,
+so a fast skimmer only loses influence. Sync uses a compare-and-swap on a rater
+revision so parallel requests cannot spend credit twice.
+
+The 30-day report now computes rates from counted swipes and lists top raters.
+Setting `status = 'flagging'` asks the five-minute cron to undo a rater. Guest
+self-deletion is disabled because the cascade would remove swipes while keeping
+their counts. Existing swipes are migrated as dealt and counted, and their users
+as trusted. A counted 100-swipe sync measured 601 rows written against 600
+before; an uncounted one writes 351.
+
 ## 2026-10-02 — Keep anonymous ratings; cap new guests per network (§7.1)
 
 Anonymous swipes keep counting toward `word_stats` and public like totals.

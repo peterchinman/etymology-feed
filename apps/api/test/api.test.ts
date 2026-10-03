@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { getUserFeed, getWildFeed } from '../src/feed';
 import { buildPools, poolsKey } from '../src/pools';
 import { deleteLiked, syncSwipes } from '../src/sync';
+import { raterWith } from './helpers';
 
 // These scoring/rollback regressions exercise the full dictionary. Preference
 // filtering and its additional scan budget are covered in proper-nouns.test.ts.
@@ -109,12 +110,7 @@ describe('dictionary and persistent feed API', () => {
       new Set(cards.map(({ id }) => id)),
     );
 
-    const user = crypto.randomUUID();
-    await env.APP.prepare(
-      'INSERT INTO user (id,name,email,updated_at,is_anonymous) VALUES (?,?,?,?,1)',
-    )
-      .bind(user, 'Test', `${user}@test.local`, Date.now())
-      .run();
+    const user = await raterWith(cards.map(({ id }) => id));
     const results = await syncSwipes(
       env,
       user,
@@ -191,21 +187,14 @@ describe('dictionary and persistent feed API', () => {
   });
 
   it('promotes on one like, survives lefts, and confirms only clearly above average', async () => {
-    const newUser = async () => {
-      const user = crypto.randomUUID();
-      await env.APP.prepare(
-        'INSERT INTO user (id,name,email,updated_at,is_anonymous) VALUES (?,?,?,?,1)',
-      )
-        .bind(user, 'Test', `${user}@test.local`, Date.now())
-        .run();
-      return user;
-    };
-    const rater = await newUser();
     // Other scenarios share APP: choose unrated cards for this scoring exercise.
     const unrated = await env.APP.prepare(
       'SELECT card_id AS id FROM word_stats WHERE likes = 0 AND dislikes = 0 ORDER BY card_id LIMIT 3',
     ).all<{ id: string }>();
     const [liked, disliked, average] = unrated.results;
+    // Trusted raters who were dealt all three cards, so every swipe counts.
+    const newUser = () => raterWith(unrated.results.map(({ id }) => id));
+    const rater = await newUser();
     const swipe = (cardId: string, verdict: 1 | -1) => ({
       id: crypto.randomUUID(),
       cardId,
@@ -252,7 +241,7 @@ describe('dictionary and persistent feed API', () => {
     expect(pools.confirmed).toHaveLength(0);
 
     // Another user sees the liked card in a promising slot on their next fetch.
-    const reader = await newUser();
+    const reader = await raterWith();
     const { cards } = await getUnfilteredFeed(env, reader, 20);
     // Wild draws happen first and may legitimately pick a rated card.
     expect(['promising', 'wild']).toContain(
@@ -278,7 +267,7 @@ describe('dictionary and persistent feed API', () => {
     expect(await scoreOf(liked.id)).toBeCloseTo(4 / 5.5);
     expect(await scoreOf(average.id)).toBeCloseTo(0.5);
     expect(pools.promising).toContainEqual([average.id, 1, 4]);
-    const third = await newUser();
+    const third = await raterWith();
     const confirmedFeed = await getUnfilteredFeed(env, third, 20);
     expect(['confirmed', 'wild']).toContain(
       confirmedFeed.cards.find((card) => card.id === liked.id)?.bucket,
@@ -291,7 +280,7 @@ describe('dictionary and persistent feed API', () => {
     pools = await buildPools(env);
     expect(await scoreOf(average.id)).toBeCloseTo(2 / 6.5);
     expect(laneOf(pools, average.id)).toBe('parked');
-    const fourth = await newUser();
+    const fourth = await raterWith();
     const laterFeed = await getUnfilteredFeed(env, fourth, 20);
     const parked = laterFeed.cards.find((card) => card.id === average.id);
     if (parked) expect(parked.bucket).toBe('wild');
@@ -318,12 +307,8 @@ describe('dictionary and persistent feed API', () => {
   });
 
   it('syncs 100 swipes and keeps repeats idempotent', async () => {
-    const user = crypto.randomUUID();
-    await env.APP.prepare(
-      'INSERT INTO user (id,name,email,updated_at,is_anonymous) VALUES (?,?,?,?,1)',
-    )
-      .bind(user, 'Test', `${user}@test.local`, Date.now())
-      .run();
+    // A trusted rater; the feed deals the cards below.
+    const user = await raterWith();
     const cards = (await getUnfilteredFeed(env, user, 100)).cards;
     const swipes = cards.map((card, i) => ({
       id: crypto.randomUUID(),

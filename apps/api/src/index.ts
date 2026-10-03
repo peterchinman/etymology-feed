@@ -12,7 +12,8 @@ import {
 } from './feed';
 import { withLikeCounts } from './likes';
 import { buildPools, poolsKey } from './pools';
-import { deleteLiked, syncInput, syncSwipes } from './sync';
+import { applyRequestedFlags } from './raters';
+import { deleteLiked, SyncConflict, syncInput, syncSwipes } from './sync';
 
 type Variables = {
   userId: string;
@@ -292,6 +293,11 @@ app.onError((error, c) => {
       { error: { code: 'dictionary_unavailable', message: error.message } },
       503,
     );
+  if (error instanceof SyncConflict)
+    return c.json(
+      { error: { code: 'sync_conflict', message: error.message } },
+      503,
+    );
   console.error(error);
   return c.json(
     { error: { code: 'internal_error', message: 'Internal server error.' } },
@@ -307,6 +313,7 @@ export default {
     env: CloudflareBindings,
     ctx: ExecutionContext,
   ) {
-    if (controller.cron === '*/5 * * * *') ctx.waitUntil(buildPools(env));
+    if (controller.cron === '*/5 * * * *')
+      ctx.waitUntil(Promise.all([buildPools(env), applyRequestedFlags(env)]));
   },
 };

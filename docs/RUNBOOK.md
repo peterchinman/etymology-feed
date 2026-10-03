@@ -251,16 +251,18 @@ operation, then revoke the old token. Local secret files stay ignored.
 ## Local stats report
 
 Resolve current bindings with `python3 scripts/production.py render`, then export
-only APP's `swipe` and `word_stats` tables using
+only APP's `swipe`, `word_stats` and `rater` tables using
 `--config apps/api/.wrangler.production-runtime.json`, `--remote`, `--table`, and
 `--no-schema`. Use the selected release's local dictionary:
 
 ```sh
-python3 apps/api/scripts/report_stats.py --swipes-sql /private/tmp/ef-swipes.sql --word-stats-sql /private/tmp/ef-word-stats.sql --dict-db data/dictionary/etymology.db > /private/tmp/ef-report.json
+python3 apps/api/scripts/report_stats.py --swipes-sql /private/tmp/ef-swipes.sql --word-stats-sql /private/tmp/ef-word-stats.sql --raters-sql /private/tmp/ef-raters.sql --dict-db data/dictionary/etymology.db > /private/tmp/ef-report.json
 ```
 
 The report reads no deployed DICT data. Keep private exports outside git and
 remove them when finished. SPEC §6.5 describes interpretation and tuning.
+SPEC §6.6 describes the `raters` section and how to flag a rater; the README
+has the command.
 
 ## References
 
