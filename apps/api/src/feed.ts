@@ -76,7 +76,7 @@ export function randomPosition(maximum: number): number {
   return (random[0] % maximum) + 1;
 }
 
-const SERVED_KEY = 'SELECT card_ids FROM served WHERE user_id = ?';
+const SERVED_KEY = 'SELECT card_ids, dealt_ids FROM served WHERE user_id = ?';
 
 export async function getUserFeed(
   env: CloudflareBindings,
@@ -101,8 +101,9 @@ export async function getUserFeed(
     // served.user_id PK: one row read.
     const record = await env.APP.prepare(SERVED_KEY)
       .bind(userId)
-      .all<{ card_ids: string }>();
+      .all<{ card_ids: string; dealt_ids: string }>();
     const oldWords = record.results[0]?.card_ids;
+    const oldDealt: string[] = JSON.parse(record.results[0]?.dealt_ids ?? '[]');
     const previous: string[] = oldWords ? JSON.parse(oldWords) : [];
     const previousSet = new Set(previous);
     for (const id of known)
@@ -239,22 +240,34 @@ export async function getUserFeed(
     const nextWords = JSON.stringify(
       [...previous, ...cards.map(({ id }) => id)].slice(-cap),
     );
+    // Only cards the feed itself hands out can carry a counted swipe (§6.6);
+    // `known` history from the client is excluded above but never dealt.
+    const nextDealt = JSON.stringify(
+      [...oldDealt, ...cards.map(({ id }) => id)].slice(-cap),
+    );
     const now = Date.now();
     // CAS on the JSON value prevents concurrent fetches from losing updates.
     const write =
       oldWords === undefined
         ? await env.APP.prepare(
-            'INSERT INTO served (user_id, card_ids, count, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+            'INSERT INTO served (user_id, card_ids, count, updated_at, dealt_ids) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING',
           )
-            .bind(userId, nextWords, JSON.parse(nextWords).length, now)
+            .bind(
+              userId,
+              nextWords,
+              JSON.parse(nextWords).length,
+              now,
+              nextDealt,
+            )
             .run()
         : await env.APP.prepare(
-            'UPDATE served SET card_ids = ?, count = ?, updated_at = ? WHERE user_id = ? AND card_ids = ?',
+            'UPDATE served SET card_ids = ?, count = ?, updated_at = ?, dealt_ids = ? WHERE user_id = ? AND card_ids = ?',
           )
             .bind(
               nextWords,
               JSON.parse(nextWords).length,
               now,
+              nextDealt,
               userId,
               oldWords,
             )

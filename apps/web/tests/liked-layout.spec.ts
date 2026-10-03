@@ -1,6 +1,6 @@
 import type { Card } from '@etymology-feed/shared/card';
-import { expect, test } from '@playwright/test';
 import { putCardsOnStack, waitForSavedSwipes } from './helpers/cards';
+import { expect, test } from './helpers/test';
 
 test('Liked cards expand text in the page flow and show current like totals', async ({
   page,

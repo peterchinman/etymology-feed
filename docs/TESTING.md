@@ -60,6 +60,13 @@ navigating away. Await `document.fonts.ready` before setting or measuring scroll
 positions: a late web font reflows card text, and scroll anchoring then moves
 `scrollTop` by a pixel or two.
 
+API tests that expect a swipe to change `word_stats` create the user with
+`raterWith` in `apps/api/test/helpers.ts`: a trusted rater, with a full pace
+burst, who was dealt the cards. A bare user row is a brand-new guest with no
+pace credit, so its swipes are ignored (SPEC §6.6). Feed-only readers need
+`raterWith()` with no cards, since dealt cards are also excluded from their
+feed. To test holding, pass `syncSwipes` an env with `RATER_HOLD_SWIPES` set.
+
 Use `context.route` when a real service worker is involved: page routes do not
 intercept its network requests. See [Playwright's service-worker routing guide](https://playwright.dev/docs/service-workers#network-events-and-routing).
 Keep real service workers in offline tests. A focused test that explicitly blocks
@@ -72,6 +79,14 @@ action and stored state before rerunning or changing a timeout:
 ```sh
 npx playwright show-trace path/to/trace.zip
 ```
+
+The browser harness runs with `RATER_PACE_SECONDS` at 0.01, so swipes made
+within a test's first second still count toward card totals. API tests pin the
+real pace.
+
+Browser specs import `test` and `expect` from `apps/web/tests/helpers/test.ts`.
+It gives each test its own `CF-Connecting-IP`; otherwise every test shares the
+loopback address and the suite exceeds the anonymous-session limit.
 
 One browser worker avoids collisions between tests sharing the local API and mock
 sign-in account. Separate browser contexts isolate each test's cookies and storage.

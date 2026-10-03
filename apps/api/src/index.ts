@@ -1,4 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
+import { isAPIError } from 'better-auth/api';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { deleteAccount, getAccountLikes } from './accounts';
@@ -11,8 +12,9 @@ import {
 } from './feed';
 import { getLikeCounts, MAX_LIKE_COUNT_IDS, withLikeCounts } from './likes';
 import { buildPools, poolsKey } from './pools';
+import { applyRequestedFlags } from './raters';
 import { searchWords } from './search';
-import { deleteLiked, syncInput, syncSwipes } from './sync';
+import { deleteLiked, SyncConflict, syncInput, syncSwipes } from './sync';
 
 type Variables = {
   userId: string;
@@ -74,10 +76,18 @@ app.use('/api/*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   let currentUser = session?.user;
   if (!currentUser) {
-    const created = await auth.api.signInAnonymous({
-      headers: c.req.raw.headers,
-      asResponse: true,
-    });
+    // The sign-in hook caps new guests per client network (auth.ts).
+    const created = await auth.api
+      .signInAnonymous({ headers: c.req.raw.headers, asResponse: true })
+      .catch((error: unknown) => {
+        if (isAPIError(error) && error.statusCode === 429) return null;
+        throw error;
+      });
+    if (!created || created.status === 429)
+      return c.json(
+        { error: { code: 'rate_limited', message: 'Try again shortly.' } },
+        429,
+      );
     const cookie = created.headers.get('set-cookie');
     if (cookie) c.header('Set-Cookie', cookie);
     const body = (await created.json()) as {
@@ -343,6 +353,11 @@ app.onError((error, c) => {
       { error: { code: 'dictionary_unavailable', message: error.message } },
       503,
     );
+  if (error instanceof SyncConflict)
+    return c.json(
+      { error: { code: 'sync_conflict', message: error.message } },
+      503,
+    );
   console.error(error);
   return c.json(
     { error: { code: 'internal_error', message: 'Internal server error.' } },
@@ -358,6 +373,7 @@ export default {
     env: CloudflareBindings,
     ctx: ExecutionContext,
   ) {
-    if (controller.cron === '*/5 * * * *') ctx.waitUntil(buildPools(env));
+    if (controller.cron === '*/5 * * * *')
+      ctx.waitUntil(Promise.all([buildPools(env), applyRequestedFlags(env)]));
   },
 };

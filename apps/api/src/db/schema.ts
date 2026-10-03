@@ -25,6 +25,12 @@ export const swipe = sqliteTable(
     shownAt: integer('shown_at').notNull(),
     swipedAt: integer('swiped_at').notNull(),
     receivedAt: integer('received_at').notNull(),
+    // 1 when the feed itself dealt this card to the user before the swipe.
+    // Search results and recovered cookie-loss history are never dealt.
+    dealt: integer('dealt').notNull().default(0),
+    // Whether word_stats includes this verdict: 0 ignored, 1 counted, 2 held
+    // until the user's rater record is trusted (see raters.ts).
+    tally: integer('tally').notNull().default(0),
   },
   (table) => [
     uniqueIndex('idx_swipe_user_card').on(table.userId, table.cardId),
@@ -39,10 +45,50 @@ export const served = sqliteTable('served', {
   userId: text('user_id')
     .primaryKey()
     .references(() => user.id, { onDelete: 'cascade' }),
+  // Exclusion list: dealt cards plus client-reported history after cookie loss.
   cardIds: text('card_ids').notNull(),
   count: integer('count').notNull(),
   updatedAt: integer('updated_at').notNull(),
+  // Only the feed writes this list. A swipe can count only on these cards.
+  dealtIds: text('dealt_ids').notNull().default('[]'),
 });
+
+/**
+ * Whether a user's swipes count toward word_stats (§6.6). One row per user who
+ * has synced. Every writer of a user's swipe rows replaces `revision`, so a
+ * sync that read stale state fails its compare-and-swap and retries.
+ */
+export const rater = sqliteTable(
+  'rater',
+  {
+    userId: text('user_id')
+      .primaryKey()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    status: text('status', {
+      enum: ['pending', 'trusted', 'flagging', 'flagged'],
+    })
+      .notNull()
+      .default('pending'),
+    // Swipes on dealt cards, and how many of those are likes.
+    rated: integer('rated').notNull().default(0),
+    liked: integer('liked').notNull().default(0),
+    // Pace credit: one swipe per RATER_PACE_SECONDS, banked up to the burst.
+    credit: real('credit').notNull().default(0),
+    creditAt: integer('credit_at').notNull(),
+    revision: text('revision').notNull().default(''),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    // The cron applies manual flags; the partial index holds only those rows.
+    index('idx_rater_flagging')
+      .on(table.userId)
+      .where(sql`${table.status} = 'flagging'`),
+    check(
+      'rater_status_check',
+      sql`${table.status} IN ('pending', 'trusted', 'flagging', 'flagged')`,
+    ),
+  ],
+);
 
 export const wordStats = sqliteTable(
   'word_stats',

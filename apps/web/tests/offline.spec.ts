@@ -1,6 +1,6 @@
-import { expect, type Page, test } from '@playwright/test';
 import { THEME_COLORS } from '../src/lib/themes';
 import { waitForSavedSwipes } from './helpers/cards';
+import { expect, type Page, test } from './helpers/test';
 
 test('long definitions expand and collapse, and short ones have no toggle', async ({
   page,

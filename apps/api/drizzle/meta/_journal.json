@@ -15,6 +15,13 @@
       "when": 1790645771957,
       "tag": "0001_random_pool_ties",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790986523230,
+      "tag": "0002_rater_trust",
+      "breakpoints": true
     }
   ]
 }

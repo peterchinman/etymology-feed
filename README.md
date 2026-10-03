@@ -114,18 +114,30 @@ artifact (no deployed reads):
 sqlite3 data/dictionary/etymology.db "SELECT round(prior,2), count(*) FROM word GROUP BY 1 ORDER BY 1 DESC"
 ```
 
-Use the feed release's `etymology.db` as `--dict-db`, then export only the two APP tables needed for analysis. From
+Use the feed release's `etymology.db` as `--dict-db`, then export only the three APP tables needed for analysis. From
 `apps/api/` after running `python3 scripts/production.py render` from the repo root:
 
 ```sh
 npx wrangler d1 export APP --config .wrangler.production-runtime.json --remote --table=swipe --no-schema --output=/tmp/ef-swipes.sql
 npx wrangler d1 export APP --config .wrangler.production-runtime.json --remote --table=word_stats --no-schema --output=/tmp/ef-word-stats.sql
-python3 scripts/report_stats.py --swipes-sql /tmp/ef-swipes.sql --word-stats-sql /tmp/ef-word-stats.sql --dict-db ../../data/dictionary/etymology.db > /tmp/ef-report.json
+npx wrangler d1 export APP --config .wrangler.production-runtime.json --remote --table=rater --no-schema --output=/tmp/ef-raters.sql
+python3 scripts/report_stats.py --swipes-sql /tmp/ef-swipes.sql --word-stats-sql /tmp/ef-word-stats.sql --raters-sql /tmp/ef-raters.sql --dict-db ../../data/dictionary/etymology.db > /tmp/ef-report.json
 ```
 
 The script uses only Python's standard library. The report covers the last
 7 and 30 UTC calendar days, including today's partial data, and its rates
-describe current stored verdicts rather than every historical swipe. Keep
+describe current counted verdicts rather than every historical swipe.
+Swipes count toward the ranking and like totals on cards the feed dealt,
+plus likes on other cards such as search results, within a pace budget, from
+raters not flagged for liking more than half of what they are dealt (Spec §6.6). Its
+`raters` section lists the top contributors for review. To undo one, mark it
+for the cron, which removes its counted swipes within five minutes:
+
+```sh
+npx wrangler d1 execute APP --config .wrangler.production-runtime.json --remote --command "UPDATE rater SET status = 'flagging' WHERE user_id IN ('USER_ID') AND status <> 'flagged'"
+```
+
+Flagging is one-way. Keep
 the exports and release database outside git. A D1 export can temporarily
 block other database requests, so run it during a quiet period. The separate
 five-minute cron keeps feed candidate pools fresh; it does not produce this

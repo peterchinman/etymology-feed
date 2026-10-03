@@ -219,6 +219,10 @@ const server = spawn(
     'BETTER_AUTH_SECRET:e2e-only-secret-at-least-thirty-two-characters',
     '--var',
     `BETTER_AUTH_URL:http://127.0.0.1:${port}`,
+    // Browser tests swipe far faster than a reader. A fast pace lets their
+    // swipes count; the API suite pins the real pace (SPEC §6.6).
+    '--var',
+    'RATER_PACE_SECONDS:0.01',
   ],
   {
     cwd: api,

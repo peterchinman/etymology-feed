@@ -1,5 +1,5 @@
 import type { Card } from '@etymology-feed/shared/card';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/test';
 
 test.afterEach(async ({ context }) => {
   // Finish intercepted background refills before closing the browser context.

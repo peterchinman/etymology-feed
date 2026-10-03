@@ -1,6 +1,6 @@
 import type { Card } from '@etymology-feed/shared/card';
-import { expect, test } from '@playwright/test';
 import { putCardsOnStack, waitForSavedSwipes } from './helpers/cards';
+import { expect, test } from './helpers/test';
 
 // This fixture routes feed requests; service-worker fetches bypass page routes.
 // The offline suite separately exercises the real service worker.

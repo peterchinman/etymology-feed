@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
 import { waitForSavedSwipes } from './helpers/cards';
+import { expect, test } from './helpers/test';
 
 const firstVisit = { cookies: [], origins: [] };
 // Every other spec starts past the welcome; this one starts as a new visitor.

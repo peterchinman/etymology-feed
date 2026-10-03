@@ -202,6 +202,8 @@ CREATE TABLE swipe (
   shown_at    INTEGER NOT NULL,         -- client clock: when the card was actually displayed
   swiped_at   INTEGER NOT NULL,         -- client clock
   received_at INTEGER NOT NULL,         -- server clock
+  dealt       INTEGER NOT NULL DEFAULT 0, -- 1 when the feed dealt this card to the user first (§6.6)
+  tally       INTEGER NOT NULL DEFAULT 0, -- in word_stats? 0 ignored, 1 counted, 2 held until trusted (§6.6)
   UNIQUE (user_id, card_id)
 );
 CREATE INDEX idx_swipe_user_liked ON swipe(user_id, swiped_at DESC, id DESC) WHERE verdict = 1;
@@ -210,8 +212,21 @@ CREATE TABLE served (                   -- every card ever sent to this user: th
   user_id     TEXT PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
   card_ids    TEXT NOT NULL,            -- JSON array of card IDs, oldest first, capped at 30,000
   count       INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL,
+  dealt_ids   TEXT NOT NULL DEFAULT '[]' -- JSON array, same cap: only cards the feed itself dealt (§6.6)
+) WITHOUT ROWID;
+
+CREATE TABLE rater (                    -- whether a user's swipes count (§6.6); one row per user who has synced
+  user_id     TEXT PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
+  status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','trusted','flagging','flagged')),
+  rated       INTEGER NOT NULL DEFAULT 0, -- swipes on dealt cards
+  liked       INTEGER NOT NULL DEFAULT 0, -- of which likes
+  credit      REAL NOT NULL DEFAULT 0,    -- pace credit banked at credit_at
+  credit_at   INTEGER NOT NULL,
+  revision    TEXT NOT NULL DEFAULT '',   -- replaced by every writer of the user's swipes
   updated_at  INTEGER NOT NULL
 ) WITHOUT ROWID;
+CREATE INDEX idx_rater_flagging ON rater(user_id) WHERE status = 'flagging';
 
 CREATE TABLE word_stats (               -- denormalized aggregate, upserted on every swipe
   card_id     TEXT PRIMARY KEY,
@@ -233,9 +248,9 @@ CREATE INDEX idx_word_stats_promising ON word_stats(score DESC, pool_order)
 The two partial indexes cost writes only for rows that qualify, so at launch they are nearly free; the general score index was dropped because no lane needs a full-table order.
 
 Notes:
-- **`served` is one row per user, not one per card.** With offline prefetching of 100 cards at a time, a per-card impressions table would cost 100 D1 writes per fetch; a JSON blob costs 1 read + 1 write. 30k entries ≈ 400 KB, under D1's 2 MB row limit. Past the cap the oldest entries roll off and a very small chance of a repeat is accepted (documented in `/about/`).
+- **`served` is one row per user, not one per card.** With offline prefetching of 100 cards at a time, a per-card impressions table would cost 100 D1 writes per fetch; a JSON blob costs 1 read + 1 write. 30k entries ≈ 400 KB per list; both lists together stay under D1's 2 MB row limit. Past the cap the oldest entries roll off and a very small chance of a repeat is accepted (documented in `/about/`).
 - Anonymous visitors are real `user` rows (`isAnonymous = 1`), so `user_id` is always present.
-- A re-swipe of the same card by the same user **updates** the verdict (UPSERT on `(user_id, card_id)`) and adjusts `word_stats` by the delta. The `(user_id, card_id)` unique index serves this lookup and user-ordered pagination; the partial index serves Liked.
+- A re-swipe of the same card by the same user **updates** the verdict (UPSERT on `(user_id, card_id)`) and adjusts `word_stats` by the delta between the counted verdicts (§6.6). The `(user_id, card_id)` unique index serves this lookup and user-ordered pagination; the partial index serves Liked.
 - `word_stats` is seeded from `DICT` by the release script (155,032 rows in the rebuilt preview; run on the paid plan or spread over multiple days on free), inserting only missing rows.
 - There is no per-card "times served" counter (it would cost a write per card). Lane membership uses ratings, and fresh-lane order uses the prior (§6.1).
 
@@ -308,7 +323,7 @@ All tunable via `wrangler.toml` vars: `CONFIRMED_SLOTS`, `PROMISING_SLOTS`, `FRE
 
 ### 6.5 Measure it — this is how the §4.1 thresholds get revisited
 
-Every swipe carries `bucket`, and the pinned `DICT` release gives `etym_band`, `shape`, `tier`, `has_signal`. Run `apps/api/scripts/report_stats.py` locally on demand using data-only D1 exports of APP's `swipe` and `word_stats` tables and the release's `etymology.db` (never vendored). It reports like-rates for the last 7 and 30 UTC calendar days, including the current partial day: global, by lane (`bucket`), **by `etym_band`**, **by `shape`**, by tier, and by `has_signal`; the count of cards with `n >= 5` and each lane's population (confirmed, promising, fresh, never seen, parked); and current swipe rows by day. The script joins the two datasets in local SQLite. There is no nightly stats cron, KV snapshot, or admin stats endpoint. The table stores one current verdict per user and word, so this report cannot reconstruct earlier verdicts or deleted likes; `received_at` places offline swipes on the sync day. Export and local scan costs are incurred only when a report is requested.
+Every swipe carries `bucket`, and the pinned `DICT` release gives `etym_band`, `shape`, `tier`, `has_signal`. Run `apps/api/scripts/report_stats.py` locally on demand using data-only D1 exports of APP's `swipe`, `word_stats` and `rater` tables and the release's `etymology.db` (never vendored). It reports like-rates for the last 7 and 30 UTC calendar days, including the current partial day, from counted swipes only (§6.6): global, by lane (`bucket`), **by `etym_band`**, **by `shape`**, by tier, and by `has_signal`; the count of cards with `n >= 5` and each lane's population (confirmed, promising, fresh, never seen, parked); received and counted swipes by day; and the top raters for review (§6.6). The script joins the two datasets in local SQLite. There is no nightly stats cron, KV snapshot, or admin stats endpoint. The table stores one current verdict per user and word, so this report cannot reconstruct earlier verdicts or deleted likes; `received_at` places offline swipes on the sync day. Export and local scan costs are incurred only when a report is requested.
 
 Decision rules to apply once there are ≥ 2,000 swipes per band: if `lt40` like-rate is below half of `80_120`, raise the length floor for un-signalled stories; if a shape's like-rate is below half the plain rate, add it as a default-off filter rather than removing it. Also report the global like-rate and the `DISLIKE_WEIGHT` it implies, `p / (1 - p)`, so the weight can be re-centered on it (§4.3, §6.2). Record the outcome in `docs/DECISIONS.md`.
 
@@ -322,15 +337,33 @@ Decision rules to apply once there are ≥ 2,000 swipes per band: if `lt40` like
 
 Change one parameter at a time, give it a week of data, and record the before-and-after per-lane like-rates in `docs/DECISIONS.md`.
 
+### 6.6 What counts toward `word_stats`
+
+Every valid swipe is stored, so Liked lists and account sync never depend on this section. A swipe changes `word_stats` only when all three hold:
+
+1. **The feed dealt the card, or the swipe is a like.** `GET /api/feed` appends each batch to `served.dealt_ids`. Nothing else does: not `known` history after cookie loss, not cards recovered by sync, not search results or card lookups, which are public and cached and carry no session. With `RATER_COUNT_UNDEALT_LIKES` (1), a like on a card the feed did not deal also counts. That is how search likes count, since the server cannot tell them apart from other undealt likes. Recovered likes after cookie loss count the same way. A left on an undealt card never counts, so nobody can bury a card they chose. Setting it to 0 ignores undealt likes again. Every swipe records `dealt`, so the undealt likes that counted while it was on stay identifiable and can be removed by a later migration.
+2. **The swipe is within pace.** Credit accrues at one swipe per `RATER_PACE_SECONDS` (1) of server time from the user's creation, banked up to `RATER_PACE_BURST` (200). Each eligible swipe spends one credit, earliest `swiped_at` first, so an offline backlog keeps its earliest swipes. A swipe without credit is stored as ignored and never counts; the rater is not flagged for it.
+3. **The user's rater record is trusted.** New raters count from their first swipe. They start `pending` and become `trusted` once they have `RATER_HOLD_SWIPES` swipes on dealt cards, which defaults to 0. While a rater is pending, their dealt, paced swipes are held, and promotion applies every held swipe at once. Once a rater has `RATER_JUDGE_SWIPES` (20) swipes on dealt cards, a like rate above `RATER_MAX_LIKE_RATE` (0.5) flags them, whether or not they were still held, so batching cannot change the outcome. Their counted swipes are removed and nothing they do counts again. Flagging is one-way, so a rater cannot flip back and forth to multiply writes.
+
+The rater counts include only swipes on dealt cards. A search like is a like by construction, so counting it would push readers who search toward the ceiling. Sync reads the rater record first and ends its write batch with a compare-and-swap on `revision`. Every writer of a user's swipes replaces the revision, so parallel syncs cannot spend the same credit twice; the loser retries with fresh reads. Each swipe's `word_stats` change still reads the current row inside the transaction.
+
+**Undoing a rater by hand.** The §6.5 report's `raters` section lists the top contributors over 30 days with status, received and counted swipes, share of all counted swipes, like rate on dealt cards, and the most swipes in any 60-second span of client time. To flag one, set `status = 'flagging'` (README). The five-minute cron removes their counted swipes, ignores their held ones and marks them `flagged`, using `idx_rater_flagging` so it reads only those rows. Their sync applies the same change sooner if they are still active.
+
+Costs: a 100-swipe sync on dealt cards by a trusted rater writes 601 rows, one more than before for the rater record. If nothing counts it writes 351. A user's first sync writes one more row to create the record. Promotion and flagging each touch the user's rows once.
+
+These rules bound what one identity can do; they do not stop a patient script that paces itself, mixes in lefts and stays under the ceiling. With undealt likes counting, a script can also choose a card and like it once per fresh guest, limited by `SESSION_RATE` (§7.1). A guest that only sends undealt likes is never judged, because the like rate covers dealt cards, so pace is its only limit. Lefts still cannot reach a chosen card, and the report is the backstop. Turning `RATER_COUNT_UNDEALT_LIKES` off closes both. With no hold, a guest that likes a few dealt cards and leaves before it can be judged still counts. If the report shows many short-lived guests with near-total like rates, raise `RATER_HOLD_SWIPES`; until then the hold would discard every early visitor's ratings.
+
 ---
 
 ## 7. Accounts, anonymous users, offline, and sync
 
 ### 7.1 Anonymous by default (Better Auth `anonymous` plugin)
 
-- On first API call the client calls `authClient.signIn.anonymous()`. Better Auth creates a `user` row (`isAnonymous = 1`) and a session cookie (`HttpOnly; Secure; SameSite=Lax`, 30-day rolling expiry). All swipes and the `served` record are keyed to that user id. **This is what makes the product work**: anonymous dislikes are as valuable as likes.
+- On first API call the client calls `authClient.signIn.anonymous()`. Better Auth creates a `user` row (`isAnonymous = 1`) and a session cookie (`HttpOnly; Secure; SameSite=Lax`, 30-day rolling expiry). All swipes and the `served` record are keyed to that user id. **This is what makes the product work**: anonymous dislikes are as valuable as likes. They count under the same rules as everyone's (§6.6).
+- Each anonymous user is a free identity that can rate every card once, so new anonymous sessions are capped per client network (`SESSION_RATE`: 10 per 60 seconds per IPv4 address or IPv6 /64, keyed on `CF-Connecting-IP`). A Better Auth before-hook applies the cap to both `/auth/sign-in/anonymous` and the API middleware's fallback sign-in. Existing sessions are never counted. A limited request gets 429. A limited first visit shows the feed's load error with its Try again button; loading also retries when the tab becomes visible.
 - The client keeps its own copies of everything in IndexedDB (§7.4), so the Liked screen and the deck work offline and survive cookie loss.
 - The Liked screen shows a persistent, dismissable-per-session banner: *"You're not signed in. Your list is saved only on this device."* with a sign-in button. (Copy note: Safari deletes script-writable storage and cookies after 7 days without a visit. That's the honest reason to make an account.)
+- Guests cannot delete themselves (`disableDeleteAnonymousUser`): the cascade would remove their swipes while `word_stats` kept the counts, leaving nothing to reverse (§6.6).
 - `/about/`: what's stored (a random id, swipes, no PII), that swipes are aggregated, CC BY-SA credit, how to delete data.
 
 ### 7.2 Sign-in: Google and GitHub
@@ -341,7 +374,8 @@ Better Auth `socialProviders: { google, github }`, both in Milestone 4. Routes a
 
 1. **Server** — the anonymous plugin's `onLinkAccount({ anonymousUser, newUser })` hook, in one D1 `batch()`:
    - `swipe`: keep the newer `swiped_at` for each card. Each duplicate card loses one aggregate rating, even when both users had the same verdict; unique anonymous cards retain their rating. Move the anonymous rows before the plugin deletes the user.
-   - `served`: union of both blobs, ordered by first appearance, trimmed to the cap.
+   - `served`: union of both blobs, ordered by first appearance, trimmed to the cap. `dealt_ids` merges the same way, so cards dealt to the guest stay countable.
+   - `rater` (§6.6): the account keeps its pace credit, or inherits the guest's if it has none. `rated` and `liked` are recounted from the merged rows. The merged status is flagged if either was flagged or flagging, otherwise trusted if either was trusted, and then judged once more on the merged counts. Held swipes are applied if the result is trusted; everything is removed if it is flagged. A losing duplicate leaves `word_stats` only if it was counted.
    - Better Auth then deletes the anonymous user (default), cascading its rows.
 2. **Client** — after redirect, `POST /api/sync` with every unsynced swipe from IndexedDB (idempotent on `swipe.id`), then `GET /api/me/likes` and replace the local liked list with the server's. From here the server is the source of truth and IndexedDB is a cache.
 
@@ -375,8 +409,8 @@ Types flow to the frontend through `hc<AppType>()`. All bodies validated with zo
 | Method & path | Session | Purpose |
 |---|---|---|
 | `GET /api/feed?n=100&known=` | any (creates anon) | Next batch (§6.4). Updates `served`. `known` (optional, JSON array, ≤ 30k) seeds `served` after cookie loss. |
-| `POST /api/sync` | any | Array of swipes (≤ 500): `{id, cardId, verdict, bucket, shownAt, swipedAt}`. Idempotent on `id`; per-item status. Updates `word_stats`; adds card IDs to `served`. |
-| `DELETE /api/swipes/{cardId}` | any | Remove one card from liked list: delete its row and decrement its stats. |
+| `POST /api/sync` | any | Array of swipes (≤ 500): `{id, cardId, verdict, bucket, shownAt, swipedAt}`. Idempotent on `id`; per-item status. Stores every valid swipe and updates `word_stats` for those that count (§6.6); adds card IDs to `served` but never to `dealt_ids`. The per-item status never says whether a swipe counted. A sync that keeps losing its rater compare-and-swap returns 503 `sync_conflict` and the client retries. |
+| `DELETE /api/swipes/{cardId}` | any | Remove one card from liked list: delete its row, decrement its stats if it was counted, and drop it from the rater's counts. |
 | `GET /api/me` | any | `{ user: { id, isAnonymous, name, image }, providers: ['google','github'] }`. |
 | `GET /api/me/likes?cursor=&limit=200` | any | Liked cards, newest first, full card payload with current `likeCount`. |
 | `DELETE /api/me` | signed-in | Delete account and all rows. |
@@ -400,7 +434,7 @@ type Card = { id: string; word: string; etymNo: number | null; ipa: string | nul
 
 Feed, card, and word lookup responses include `likeCount` from the current per-card `word_stats.likes` total. Separate etymologies retain separate totals. Counts are snapshots taken when fetched and remain available offline; older cached cards without a count omit the indicator. The feed footer shows a muted outlined heart and a locale-formatted number for positive totals, with a full label for screen readers; zero hides the indicator. Each feed card adds one indexed APP read and no writes.
 
-Errors: `{ error: { code, message } }` with matching status. Rate limits via the binding: `/api/feed` 1 req/s per user, `/api/sync` 2 req/s.
+Errors: `{ error: { code, message } }` with matching status. Rate limits via the binding: `/api/feed` 1 req/s per user, `/api/sync` 2 req/s, and new anonymous sessions 10 per minute per client network (§7.1).
 
 ---
 
@@ -410,7 +444,7 @@ Errors: `{ error: { code, message } }` with matching status. Rate limits via the
 
 - `/` — **Feed**. Full-height card stack from the local `stack`; top card interactive, next one peeks behind it. Card shows the word, a two-line definition preview on desktop or three-line preview on mobile, and the etymology. Longer definitions have an inline "See more" control that expands only the current card. Buttons under the card on all sizes: ✕ and ♥.
 - `/search/` — **Search**. Prefix suggestions as you type; Enter opens an exact match, or choose a suggestion to read every retained origin, including proper nouns. A heart in each card's footer saves that origin to Liked through the offline swipe queue, independently of the feed stack. Tapping a filled heart removes the like, as on the Liked page. New lookups require a connection; already-open results can be saved offline.
-- `/liked/` — **Liked**. Reverse-chronological liked cards from local `swipes`; use the Feed card order (word, paired definition, etymology, Wiktionary source and total like count). Each card shows its current total, which always includes the user's own like: guests refresh totals through `GET /api/like-counts` after syncing, signed-in accounts receive them with `GET /api/me/likes`, and the last totals stay available offline. Long definitions and etymologies have their own inline See more controls and expand the card in the page flow, with no nested etymology scroller. Swipe-to-remove on mobile / ✕ on desktop, client-side search, copy-all as text. Anonymous banner (§7.1); unsynced count when offline.
+- `/liked/` — **Liked**. Reverse-chronological liked cards from local `swipes`; use the Feed card order (word, paired definition, etymology, Wiktionary source and total like count). Each card shows its current total. Until the user's like reaches the server one is added for it; after that the total includes it only if it counted (§6.6). Guests refresh totals through `GET /api/like-counts` after syncing, signed-in accounts receive them with `GET /api/me/likes`, and the last totals stay available offline. Long definitions and etymologies have their own inline See more controls and expand the card in the page flow, with no nested etymology scroller. Swipe-to-remove on mobile / ✕ on desktop, client-side search, copy-all as text. Anonymous banner (§7.1); unsynced count when offline.
 - `/about/` — static: what it is, data/privacy, credits.
 - Navigation: **mobile (≤ 768 px)** — bottom dock with Feed / Search / Liked / Settings, safe-area aware (`env(safe-area-inset-bottom)`). **Desktop** — top bar with the same links; Settings opens a dialog. On mobile, Search uses a magnifying glass icon; the desktop bar uses text links only.
 - Empty stack while offline: a card that says so and how many swipes are waiting to sync.
