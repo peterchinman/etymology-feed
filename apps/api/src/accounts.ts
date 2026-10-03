@@ -1,4 +1,5 @@
 import { getCardsByIds } from './feed';
+import { getLikeCounts } from './likes';
 
 type ServedRow = { card_ids: string };
 
@@ -114,12 +115,15 @@ export async function getAccountLikes(
     )
     .all<LikedRow>();
   const page = rows.results.slice(0, limit);
-  const cards = await getCardsByIds(
-    env.DICT,
-    page.map((row) => row.card_id),
-  );
+  const ids = page.map((row) => row.card_id);
+  // Totals are read after this user's likes are stored, so they include them.
+  const [cards, counts] = await Promise.all([
+    getCardsByIds(env.DICT, ids),
+    getLikeCounts(env.APP, ids),
+  ]);
   const likes = page.flatMap((row) => {
-    const card = cards.get(row.card_id);
+    const found = cards.get(row.card_id);
+    const card = found && { ...found, likeCount: counts[row.card_id] ?? 0 };
     return card
       ? [
           {

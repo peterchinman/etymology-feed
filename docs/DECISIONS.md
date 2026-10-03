@@ -610,3 +610,15 @@ and the mobile proper-noun persistence case is covered by the main proper-noun
 test. The diagonal swipe flaked when a web font finished loading after the test
 set `scrollTop`; it now waits for `document.fonts.ready` first.
 
+## 2026-10-03 — Show current like totals on Liked
+
+Liked cards showed the total captured when the card was fetched for the Feed,
+before the user liked it. Cards nobody else had liked showed no count, and
+signed-in reconciliation replaced cards with payloads that had no totals at all.
+Liked now refreshes totals when online: guests sync their swipes, then fetch
+`GET /api/like-counts` in batches of 100 IDs; signed-in accounts get totals in
+`GET /api/me/likes`. Totals are stored on the local liked swipes for offline
+display. A stored total read before the user's like reached the server gets one
+added for that like, so every Liked card shows at least 1. Whether a total
+includes the like is decided from the likes synced before the totals request
+starts, because a like that syncs mid-request is not in the returned total.

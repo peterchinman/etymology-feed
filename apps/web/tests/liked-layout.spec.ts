@@ -2,7 +2,7 @@ import type { Card } from '@etymology-feed/shared/card';
 import { expect, test } from '@playwright/test';
 import { putCardsOnStack, waitForSavedSwipes } from './helpers/cards';
 
-test('Liked cards expand text in the page flow and share the Feed footer', async ({
+test('Liked cards expand text in the page flow and show current like totals', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 600 });
@@ -27,7 +27,16 @@ test('Liked cards expand text in the page flow and share the Feed footer', async
     2,
     cards.map(({ id }) => id),
   );
+  const refreshed = page.waitForResponse(
+    (response) => response.url().includes('/api/like-counts') && response.ok(),
+  );
   await page.goto('/liked/');
+  await refreshed;
+  // Liked replaces the stale feed snapshots (1,234 and 0) with server totals.
+  const totals = await page.request.get('/api/words/bluff/etymologies');
+  const { cards: current } = (await totals.json()) as { cards: Card[] };
+  const label = (count = 0) =>
+    `Liked by ${count.toLocaleString('en-US')} ${count === 1 ? 'user' : 'users'}`;
 
   const items = page.locator('.liked-item');
   await expect(items).toHaveCount(2);
@@ -37,9 +46,11 @@ test('Liked cards expand text in the page flow and share the Feed footer', async
   await expect(longCard.locator('.liked-etymology p')).toHaveText(
     etymology.trim(),
   );
-  await expect(shortCard.locator('.card-like-count')).toHaveCount(0);
+  await expect(shortCard.locator('.card-like-count')).toHaveText(
+    label(current[1].likeCount),
+  );
   await expect(longCard.locator('.card-like-count')).toHaveText(
-    'Liked by 1,234 users',
+    label(current[0].likeCount),
   );
   await expect(
     longCard.getByRole('link', { name: 'Wiktionary' }),
