@@ -1,5 +1,6 @@
 import { type Card, isFeedEligible } from '@etymology-feed/shared/card';
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb';
+import { withRefreshedCount } from './likes';
 import {
   DEFAULT_THEME,
   isTheme,
@@ -21,6 +22,11 @@ export type LocalSwipe = {
   synced: boolean;
   removed?: boolean;
   card: Card;
+  /**
+   * True when card.likeCount was read from the server after this like synced,
+   * so the total already counts it. Feed and search snapshots predate the like.
+   */
+  countIncludesSelf?: boolean;
 };
 
 interface FeedDB extends DBSchema {
@@ -367,9 +373,25 @@ export async function replaceLikedFromServer(
       swipedAt: like.swipedAt,
       synced: true,
       card: normalizeCard(like.card),
+      countIncludesSelf: true,
     });
   await tx.done;
   return getSwipes();
+}
+
+/** Store fresh server totals on liked cards so Liked shows them offline too. */
+export async function saveLikeCounts(
+  counts: Readonly<Record<string, number>>,
+  counted: ReadonlySet<string>,
+): Promise<void> {
+  const db = await getDatabase();
+  const tx = db.transaction('swipes', 'readwrite');
+  for (const swipe of await tx.store.getAll()) {
+    const count = counts[swipe.cardId];
+    if (swipe.verdict !== 1 || swipe.removed || count === undefined) continue;
+    await tx.store.put(withRefreshedCount(swipe, count, counted));
+  }
+  await tx.done;
 }
 
 export async function clearAccountData(): Promise<void> {
