@@ -1,5 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { THEME_COLORS } from '../src/lib/themes';
+import { waitForSavedSwipes } from './helpers/cards';
 
 test('long definitions expand and collapse, and short ones have no toggle', async ({
   page,
@@ -58,29 +59,7 @@ test('a right swipe adds a word to Liked and survives reload', async ({
   const word = await page.getByTestId('top-card').locator('h2').innerText();
   await page.getByRole('button', { name: 'Interesting' }).click();
   await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(word);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          new Promise<number>((resolve, reject) => {
-            const request = indexedDB.open('etymology-feed');
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-              const database = request.result;
-              const count = database
-                .transaction('swipes')
-                .objectStore('swipes')
-                .count();
-              count.onsuccess = () => {
-                database.close();
-                resolve(count.result);
-              };
-              count.onerror = () => reject(count.error);
-            };
-          }),
-      ),
-    )
-    .toBeGreaterThan(0);
+  await waitForSavedSwipes(page, 1);
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: word })).toBeVisible();
   await page.reload();
@@ -224,29 +203,7 @@ test('Feed and Liked navigate without reloading the shared header', async ({
   ).toBe(true);
 
   await page.getByRole('button', { name: 'Interesting' }).click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          new Promise<number>((resolve, reject) => {
-            const request = indexedDB.open('etymology-feed');
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-              const database = request.result;
-              const count = database
-                .transaction('swipes')
-                .objectStore('swipes')
-                .count();
-              count.onsuccess = () => {
-                database.close();
-                resolve(count.result);
-              };
-              count.onerror = () => reject(count.error);
-            };
-          }),
-      ),
-    )
-    .toBeGreaterThan(0);
+  await waitForSavedSwipes(page, 1);
   await page.evaluate(() => {
     const state = window as typeof window & { likedEmptySeen?: boolean };
     state.likedEmptySeen = false;
@@ -303,20 +260,7 @@ test('one fetched batch supports 100 offline swipes and survives reconnection', 
     );
   }
   // The deck moves on before storage catches up; wait for every write to land.
-  await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const open = indexedDB.open('etymology-feed');
-        const db = await new Promise<IDBDatabase>((resolve) => {
-          open.onsuccess = () => resolve(open.result);
-        });
-        const count = db.transaction('swipes').objectStore('swipes').count();
-        return new Promise<number>((resolve) => {
-          count.onsuccess = () => resolve(count.result);
-        });
-      }),
-    )
-    .toBe(100);
+  await waitForSavedSwipes(page, 100);
   await page.goto('/liked/');
   await expect(page.locator('.liked-item')).toHaveCount(100);
   await expect(page.getByText('100 swipes waiting to sync')).toBeVisible();
@@ -757,12 +701,13 @@ test('a drag past the commit point arms its button until it is pulled back', asy
   const touch = await finger(page);
 
   await touch.down(x, y);
-  await touch.move(x + box.width * 0.5, y, { steps: 12, wait: 40 });
+  await touch.move(x + box.width * 0.5, y, { steps: 12 });
   await expect(like).toHaveClass(/is-armed/);
   await expect(skip).not.toHaveClass(/is-armed/);
+  // Pull back slowly: a fast pull-back reads as a flick the other way.
   await touch.move(x + box.width * 0.05, y, { steps: 12, wait: 40 });
   await expect(like).not.toHaveClass(/is-armed/);
-  await touch.move(x - box.width * 0.5, y, { steps: 12, wait: 40 });
+  await touch.move(x - box.width * 0.5, y, { steps: 12 });
   await expect(skip).toHaveClass(/is-armed/);
   await expect(like).not.toHaveClass(/is-armed/);
   await touch.up();
