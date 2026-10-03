@@ -668,6 +668,24 @@ a {
 .like-button.is-armed {
   --arm-glow: color-mix(in srgb, var(--color-like) 35%, transparent);
 }
+/* First-run welcome card. The tagline is its heading, one sentence per
+   line, and the credit sits at the foot of the card like a card footer. */
+.welcome-tagline {
+  --voice-reading-size: calc(var(--type-reading) * 1.35);
+  margin: 0 0 var(--space-5);
+  font-style: italic;
+  /* Each theme loads a semibold italic; B612 has only bold, which matches. */
+  font-weight: 600;
+}
+.welcome-line {
+  display: block;
+}
+.welcome-text {
+  margin: 0 0 var(--space-4);
+}
+.welcome-credit {
+  margin: var(--space-3) 0 0;
+}
 .empty-card {
   position: relative;
   align-items: center;
@@ -1004,7 +1022,8 @@ a {
   .feed-page .word-head h2 {
     --voice-display-size: calc(var(--type-display) * 0.85);
   }
-  .feed-page .etymology {
+  .feed-page .etymology,
+  .feed-page .welcome-text {
     --voice-reading-size: max(1.0625rem, calc(var(--type-reading) * 0.9));
   }
 }
