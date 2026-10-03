@@ -76,6 +76,10 @@ action and stored state before rerunning or changing a timeout:
 npx playwright show-trace path/to/trace.zip
 ```
 
+The browser harness runs with `RATER_PACE_SECONDS` at 0.01, so swipes made
+within a test's first second still count toward card totals. API tests pin the
+real pace.
+
 Browser specs import `test` and `expect` from `apps/web/tests/helpers/test.ts`.
 It gives each test its own `CF-Connecting-IP`; otherwise every test shares the
 loopback address and the suite exceeds the anonymous-session limit.
