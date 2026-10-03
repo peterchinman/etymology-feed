@@ -13,6 +13,7 @@ import {
 import { withLikeCounts } from './likes';
 import { buildPools, poolsKey } from './pools';
 import { applyRequestedFlags } from './raters';
+import { searchWords } from './search';
 import { deleteLiked, SyncConflict, syncInput, syncSwipes } from './sync';
 
 type Variables = {
@@ -58,6 +59,7 @@ app.all('/auth/*', (c) =>
 app.use('/api/*', async (c, next) => {
   if (
     c.req.path.startsWith('/api/words/') ||
+    c.req.path === '/api/search' ||
     c.req.path.startsWith('/api/cards/')
   )
     return next();
@@ -110,6 +112,30 @@ app.use('/api/*', async (c, next) => {
 });
 
 const routes = app
+  .get(
+    '/api/search',
+    zValidator(
+      'query',
+      z.object({ q: z.string().trim().min(1).max(200) }),
+      (result, c) => {
+        if (!result.success)
+          return c.json(
+            {
+              error: {
+                code: 'invalid_query',
+                message: 'Enter a word of up to 200 characters.',
+              },
+            },
+            400,
+          );
+      },
+    ),
+    async (c) => {
+      const result = await searchWords(c.env.DICT, c.req.valid('query').q);
+      c.header('Cache-Control', 'public, max-age=60');
+      return c.json(result);
+    },
+  )
   .get('/healthz', async (c) => {
     // PK probes: DICT 1 row; APP 0-1 row; KV one read.
     const [dict] = await Promise.all([

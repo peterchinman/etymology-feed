@@ -16,11 +16,13 @@ local D1 directory; none of these tests read the deployed database.
 
 ## Coverage and cost
 
-- Linux runs lint, type checks, all unit/API/data/release tests, the browser suite,
-  and development/production Worker packaging checks.
-- macOS runs the one `@native` browser test for native long-press selection,
-  double-tap selection, and suppressing swipes while text is selected. Linux Chrome
-  does not provide native touch long-press selection.
+- CI runs on Linux only: lint, type checks, all unit/API/data/release tests, the
+  browser suite, and development/production Worker packaging checks.
+- Linux Chrome does not provide native touch long-press selection, so the
+  selection test exercises long-press only when run on a Mac. CI covers its
+  double-tap selection and swipe suppression. Check long-press selection by hand
+  on a real phone after changing gesture or selection code; desktop Chrome is not
+  a substitute for iOS Safari or Android Chrome.
 - PRs run App checks. A merge runs the same reusable checks through Deploy
   production before deployment; App checks does not also trigger on that push.
   Dictionary releases still check the exact main commit they will deploy.
@@ -28,14 +30,20 @@ local D1 directory; none of these tests read the deployed database.
 Keep browser tests for saved data, offline reload/reconnection, account merging,
 settings, and actual browser input behavior. Use fast unit tests for gesture and
 selection algorithms. Avoid browser assertions about exact animation duration,
-easing strings, decorative spacing, or development-only demos. The existing swipe
-and selection unit tests are included in `test:unit`, alongside shared tests.
+easing strings, decorative spacing, or development-only demos. Do not pin exact
+colors, fonts, or pixel positions, and do not assert that removed UI stays absent.
+Extend an existing browser test before adding a new one: each case pays for a fresh
+page load. The existing swipe and selection unit tests are included in
+`test:unit`, alongside shared tests.
 
 The September 29 baseline ran 31 browser cases on each OS, twice per main merge
 (standalone App checks and Deploy production). One successful PR run took 2m43s
 on Linux and 3m06s on macOS; Chrome reinstallation alone took 34–38 seconds.
 The cleanup runs 27 browser cases on Linux and one on macOS, once per main merge,
 reuses a working installed Chrome, and seeds APP with one fixture statement.
+On October 2 the macOS job and five decorative or duplicate browser cases were
+removed, leaving 25 cases on Linux only. Before that change the Linux browser
+step took about one minute and the whole suite about 40 seconds locally.
 
 ## Reliable fixtures
 
@@ -44,7 +52,9 @@ IndexedDB, intercepts background feed requests, updates both saved state and the
 display preview, then waits for the intended etymology to become interactive.
 Do not write a fixture underneath a running feed or equate headwords with card IDs.
 Wait for stored swipes, including their card IDs where identity matters, before
-navigating away.
+navigating away. Await `document.fonts.ready` before setting or measuring scroll
+positions: a late web font reflows card text, and scroll anchoring then moves
+`scrollTop` by a pixel or two.
 
 API tests that expect a swipe to change `word_stats` create the user with
 `raterWith` in `apps/api/test/helpers.ts`: a trusted rater, with a full pace

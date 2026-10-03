@@ -38,17 +38,6 @@ test('subtle like totals survive offline reloads and old cards omit unknown tota
         ),
       );
   });
-  for (const width of [320, 390, 1280]) {
-    await page.setViewportSize({ width, height: 844 });
-    const countBox = await count.boundingBox();
-    const sourceBox = await card
-      .getByRole('link', { name: 'Wiktionary' })
-      .boundingBox();
-    if (!countBox || !sourceBox) throw new Error('Missing card footer.');
-    expect(sourceBox.x + sourceBox.width).toBeLessThan(countBox.x);
-    expect(Math.abs(countBox.y - sourceBox.y)).toBeLessThan(5);
-  }
-  await page.setViewportSize({ width: 390, height: 844 });
   await context.setOffline(true);
   await page.reload();
   await expect(count).toHaveText('Liked by 1,234 users');

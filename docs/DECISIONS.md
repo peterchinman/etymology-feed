@@ -666,3 +666,19 @@ etymology text with separate inline See more controls. Expanding text grows its
 Liked card in the page flow. Use the Feed footer component for the Wiktionary
 source and cached positive like count, preserving per-etymology source links and
 older offline cards without count snapshots.
+
+## 2026-10-02 — Run CI on Linux only and trim browser assertions
+
+Drop the macOS CI job. It ran one test whose only macOS-specific coverage was
+desktop Chrome's native long-press selection, which is not the iOS Safari or
+Android Chrome behavior users see, and no macOS-only failure led to an app fix.
+The test still exercises long-press when run on a Mac; real phones are checked by
+hand.
+
+Remove browser assertions that pinned colors, fonts, pixel positions, or the
+absence of removed UI, and remove duplicated cases: the two-origin spec is folded
+into the account test's card-ID check, the diagonal swipe runs in one direction,
+and the mobile proper-noun persistence case is covered by the main proper-noun
+test. The diagonal swipe flaked when a web font finished loading after the test
+set `scrollTop`; it now waits for `document.fonts.ready` first.
+

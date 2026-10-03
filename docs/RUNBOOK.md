@@ -77,7 +77,7 @@ Dictionary release jobs resolve main once, run the full checks on that SHA, and
 refuse the switch if main advances before the mutation step.
 
 A push to main runs the local fixture tests, browser tests, and packaging checks
-on Linux and macOS, then deploys. A stale main run is skipped. All production
+on Linux, then deploys. A stale main run is skipped. All production
 mutations share the `etymology-production` Actions concurrency group.
 
 The durable desired dictionary is the private R2 object

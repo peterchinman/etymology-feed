@@ -690,7 +690,6 @@ export default function Feed() {
         </Show>
         <Show when={ready() && !stack().length}>
           <div class="word-card empty-card">
-            <span class="card-kicker label-voice">THE NEXT WORD</span>
             <h2 class="display-voice">
               {online()
                 ? fetching()
@@ -698,11 +697,9 @@ export default function Feed() {
                   : 'You’re all caught up.'
                 : 'Offline for now.'}
             </h2>
-            <p class="body-voice">
-              {online()
-                ? 'Your next story is on its way.'
-                : `Your saved stack is empty. Reconnect for more words; your swipes are safe on this device.`}
-            </p>
+            <Show when={!online()}>
+              <p class="body-voice">Reconnect for more words.</p>
+            </Show>
             <Show when={online() && !fetching()}>
               <button
                 class="primary-button label-voice"

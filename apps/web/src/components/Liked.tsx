@@ -210,16 +210,8 @@ export default function Liked() {
                 />
               </svg>
               <h2 class="display-voice">
-                {query() ? 'No matching words.' : 'Your list begins here.'}
+                {query() ? 'No matching words.' : 'No liked words yet.'}
               </h2>
-              <p class="body-voice">
-                {query()
-                  ? 'Try another search.'
-                  : 'Swipe right on a word that stays with you.'}
-              </p>
-              <a class="label-voice" href="/">
-                Explore the feed →
-              </a>
             </div>
           </Show>
         }

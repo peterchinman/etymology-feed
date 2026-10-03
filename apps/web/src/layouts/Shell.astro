@@ -11,7 +11,7 @@ import technicalLabelFont from '@fontsource/b612-mono/files/b612-mono-latin-400-
 import technicalHeadingFont from '@fontsource/b612-mono/files/b612-mono-latin-700-normal.woff2?url';
 import technicalBodyFont from '@fontsource/b612/files/b612-latin-400-normal.woff2?url';
 
-type Props = { title: string; page: 'feed' | 'liked' | 'settings' };
+type Props = { title: string; page: 'feed' | 'search' | 'liked' | 'settings' };
 const { title, page } = Astro.props;
 const themeIds = THEMES.map((option) => option.id);
 const settingsFonts =
@@ -99,6 +99,7 @@ const settingsFonts =
         </a>
         <nav class="top-nav label-voice" aria-label="Main navigation">
           <a href="/" aria-current={page === 'feed' ? 'page' : undefined}>Feed</a>
+          <a href="/search/" aria-current={page === 'search' ? 'page' : undefined}>Search</a>
           <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}>Liked</a>
           <a href="/settings/" data-settings-dialog-trigger aria-current={page === 'settings' ? 'page' : undefined}>Settings</a>
         </nav>
@@ -112,6 +113,13 @@ const settingsFonts =
           <path d="M76 88h104M76 128h104M76 168h64" stroke="currentColor" stroke-linecap="round" stroke-width="16" />
         </svg>
         <span class="nav-label">Feed</span>
+      </a>
+      <a href="/search/" aria-current={page === 'search' ? 'page' : undefined}>
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+          <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.5" />
+          <path d="m15.5 15.5 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+        </svg>
+        <span class="nav-label">Search</span>
       </a>
       <a href="/liked/" aria-current={page === 'liked' ? 'page' : undefined}>
         <svg class="heart-icon" aria-hidden="true" viewBox="0 0 256 256">
