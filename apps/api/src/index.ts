@@ -2,7 +2,7 @@ import { zValidator } from '@hono/zod-validator';
 import { isAPIError } from 'better-auth/api';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { deleteAccount, getAccountLikes } from './accounts';
+import { deleteAccount, getAccountLikes, getRatedCardIds } from './accounts';
 import { configuredProviders, createAuth } from './auth';
 import {
   FeedUnavailable,
@@ -27,6 +27,9 @@ const feedQuery = z.object({
   n: z.coerce.number().int().min(1).max(100).default(100),
   known: z.string().optional(),
   includeProperNouns: z.enum(['true', 'false']).default('false'),
+});
+const ratedInput = z.object({
+  cardIds: z.array(z.string().min(1).max(500)).max(200),
 });
 const likesQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(200),
@@ -296,6 +299,17 @@ const routes = app
         decoded ?? undefined,
       ),
     );
+  })
+  .post('/api/me/rated', zValidator('json', ratedInput), async (c) => {
+    // A guest has no other device, so its own swipes already left its Feed.
+    if (c.get('isAnonymous')) return c.json({ rated: [] as string[] });
+    return c.json({
+      rated: await getRatedCardIds(
+        c.env,
+        c.get('userId'),
+        c.req.valid('json').cardIds,
+      ),
+    });
   })
   .delete('/api/me', async (c) => {
     if (c.get('isAnonymous'))

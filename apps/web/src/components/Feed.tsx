@@ -8,7 +8,7 @@ import {
   onMount,
   Show,
 } from 'solid-js';
-import { fetchCards } from '../lib/api';
+import { fetchCards, fetchRatedCardIds } from '../lib/api';
 import {
   appendCards,
   applyTheme,
@@ -19,6 +19,7 @@ import {
   getStackPreview,
   type LocalSwipe,
   type PendingSwipe,
+  removeRatedFromStack,
   saveSwipes,
   shouldWelcome,
   undoSwipe,
@@ -384,6 +385,41 @@ export default function Feed() {
     }
   }
 
+  /** When this Feed last asked which of its waiting cards were rated elsewhere. */
+  let ratedCheckedAt = 0;
+
+  /**
+   * A device keeps a prefetched stack, so a card can be waiting here while the
+   * same account likes or skips it on another device. Drop those cards.
+   */
+  async function pruneRated() {
+    if (!navigator.onLine || Date.now() - ratedCheckedAt < 60_000) return;
+    const ids = storedStack().map((card) => card.id);
+    if (!ids.length) return;
+    ratedCheckedAt = Date.now();
+    let rated: string[];
+    try {
+      rated = await fetchRatedCardIds(ids.slice(0, 200));
+    } catch {
+      ratedCheckedAt = 0;
+      return;
+    }
+    if (!rated.length) return;
+    // Queue behind pending swipe writes so the stored stack stays in order.
+    saveChain = saveChain.then(async () => {
+      // A card under the finger or still being saved waits for the next check.
+      const held = gesture?.card.id;
+      const drop = rated.filter((id) => id !== held && !inFlight.has(id));
+      if (!drop.length) return;
+      try {
+        await removeRatedFromStack(drop);
+        await restoreStack();
+      } catch {
+        // Keep the stack; the next check retries.
+      }
+    });
+  }
+
   /** Let go short of the threshold: spring home, carrying the release velocity. */
   function snapBack(card: DeckCard, dx: number, vx: number) {
     const element = elements.get(card);
@@ -644,6 +680,7 @@ export default function Feed() {
         setReady(true);
         void drainSync();
         void fillStack(true);
+        void pruneRated();
       } catch {
         setError(
           'Local storage is unavailable. Enable site storage to keep your words.',
@@ -655,6 +692,7 @@ export default function Feed() {
       setOnline(true);
       void drainSync();
       void fillStack(true);
+      void pruneRated();
     };
     const onOffline = () => setOnline(false);
     const onFeedSettings = async () => {
@@ -677,9 +715,12 @@ export default function Feed() {
       }
     };
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void drainSync();
-      if (document.visibilityState === 'visible' && stack().length < 60)
-        void fillStack();
+      if (document.visibilityState !== 'visible') return;
+      // Another tab may have swiped or liked cards from the shared stack.
+      saveChain = saveChain.then(restoreStack);
+      void drainSync();
+      void pruneRated();
+      if (stack().length < 60) void fillStack();
     };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);

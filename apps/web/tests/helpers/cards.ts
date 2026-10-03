@@ -87,3 +87,26 @@ export async function waitForSavedSwipes(
     { count, cardIds },
   );
 }
+
+/** Card IDs in the saved Feed stack, in order. */
+export async function getStackIds(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('etymology-feed');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const cards = await new Promise<{ id: string }[] | undefined>(
+      (resolve, reject) => {
+        const request = database
+          .transaction('stack')
+          .objectStore('stack')
+          .get('cards');
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      },
+    );
+    database.close();
+    return (cards ?? []).map(({ id }) => id);
+  });
+}

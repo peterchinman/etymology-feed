@@ -175,6 +175,26 @@ type LikedRow = {
   swiped_at: number;
 };
 
+/**
+ * Which of these cards the user has already liked or skipped, on any device.
+ * A device asks about the cards waiting in its own Feed.
+ */
+export async function getRatedCardIds(
+  env: CloudflareBindings,
+  userId: string,
+  cardIds: readonly string[],
+): Promise<string[]> {
+  if (!cardIds.length) return [];
+  // idx_swipe_user_card: one indexed lookup per card through one JSON-array
+  // parameter, so a full stack stays well under D1's bound-parameter limit.
+  const rows = await env.APP.prepare(
+    'SELECT card_id FROM swipe WHERE user_id=? AND card_id IN (SELECT value FROM json_each(?))',
+  )
+    .bind(userId, JSON.stringify(cardIds))
+    .all<{ card_id: string }>();
+  return rows.results.map(({ card_id }) => card_id);
+}
+
 export async function getAccountLikes(
   env: CloudflareBindings,
   userId: string,

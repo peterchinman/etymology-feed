@@ -394,11 +394,11 @@ Better Auth `socialProviders: { google, github }`, both in Milestone 4. Routes a
 **Sync:**
 - Each swipe is written locally first, then the queue drains: `POST /api/sync` with up to 500 unsynced swipes, on `online` events, app start, visibility change, and after every 10 local swipes. Success marks them `synced`. Failures retry with backoff; nothing blocks the UI.
 - `POST /api/sync` returns per-item results, so partial failures don't re-send the whole batch.
-- The Liked list never waits on the network: signed-in users see local data immediately and a background `GET /api/me/likes` reconciles (server wins on conflicts).
+- The Liked list never waits on the network: signed-in users see local data immediately and a background `GET /api/me/likes` reconciles (server wins on conflicts). Reconciled likes also leave the local `stack` and join the local `served` set.
 
 **Shell:** service worker precaches Astro's `dist/` (HTML, CSS, JS, fonts); network-first for HTML so deploys propagate, cache-first for hashed assets. API responses are never cached by the SW. Offline indicator: a small dot in the dock/top bar plus the unsynced count on the Liked screen.
 
-**Repeats:** the server's `served` record is authoritative; the local `served` set is the belt to its braces. Together they guarantee a user never sees a card twice (until the 30k cap rolls).
+**Repeats:** the server's `served` record is authoritative; the local `served` set is the belt to its braces. Together they keep a fetch from repeating a card (until the 30k cap rolls). A signed-in account's other devices can rate a card while it waits in this device's prefetched `stack`, so the Feed also asks `POST /api/me/rated` about its waiting cards on open, on reconnect, and when it becomes visible (at most once a minute) and drops any already rated. Becoming visible also re-reads the stored `stack`, since another tab on the same device may have swiped from it.
 
 ---
 
@@ -413,6 +413,7 @@ Types flow to the frontend through `hc<AppType>()`. All bodies validated with zo
 | `DELETE /api/swipes/{cardId}` | any | Remove one card from liked list: delete its row, decrement its stats if it was counted, and drop it from the rater's counts. |
 | `GET /api/me` | any | `{ user: { id, isAnonymous, name, image }, providers: ['google','github'] }`. |
 | `GET /api/me/likes?cursor=&limit=200` | any | Liked cards, newest first, full card payload with current `likeCount`. |
+| `POST /api/me/rated` | any | `{ cardIds }` (≤ 200) → `{ rated }`: which of a device's waiting Feed cards the signed-in account already liked or skipped. One `idx_swipe_user_card` lookup per card; guests get `[]` without a read. |
 | `DELETE /api/me` | signed-in | Delete account and all rows. |
 | `GET /api/search?q=` | none | Up to 12 distinct headwords starting with the query, plus `hasMore`. ASCII case-insensitive, literal punctuation; 1–200 characters. Indexed by `idx_word_search`; no account or rating writes. |
 | `GET /api/like-counts?id=&id=` | none | Current `word_stats.likes` totals for 1–100 card IDs, as `{ counts: { [id]: number } }`; unknown IDs count 0. One indexed query; `Cache-Control: no-store`. |

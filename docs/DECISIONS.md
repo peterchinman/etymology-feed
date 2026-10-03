@@ -713,3 +713,20 @@ second; the 200-swipe bank is unchanged.
 Liked totals include the user's own like only once it counts. A like that
 was over pace, or came from a flagged rater, shows without it after syncing.
 The client is not told whether a like counted.
+
+## 2026-10-03 — Drop Feed cards already rated on another device
+
+A signed-in reader saw a card in the Feed that they had already liked. Each
+device prefetches up to 150 cards into its own stack, and the server only
+filters cards when it serves a batch. A card waiting in one device's stack could
+be liked or skipped on another device and still appear later. Its like count
+also showed the snapshot from before anyone liked it.
+
+The Feed now asks `POST /api/me/rated` which of its waiting cards the account
+has rated, on open, reconnect, and becoming visible, at most once a minute, and
+drops them from the stored stack and preview. Guests skip the database read,
+since their only device already removed its own swipes. Reconciling likes on the
+Liked page also removes those cards from the stack, so the instant preview stays
+clean offline. A card under the finger or mid-save is left for the next check.
+Tabs on one device share the stored stack but each keeps its own copy in memory,
+so the Feed re-reads the stored stack whenever it becomes visible.

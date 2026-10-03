@@ -44,3 +44,19 @@ export async function fetchCards(): Promise<Card[]> {
   if (!('cards' in result)) throw new Error('The feed response has no cards.');
   return result.cards;
 }
+
+/** Which of these Feed cards the signed-in account already rated elsewhere. */
+export async function fetchRatedCardIds(
+  cardIds: readonly string[],
+): Promise<string[]> {
+  const response = await fetch('/api/me/rated', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'fetch',
+    },
+    body: JSON.stringify({ cardIds }),
+  });
+  if (!response.ok) throw new Error(`Rated check returned ${response.status}.`);
+  return ((await response.json()) as { rated: string[] }).rated;
+}
