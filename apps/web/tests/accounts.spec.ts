@@ -63,11 +63,6 @@ test('offline guest likes survive sign-in and union with a second device', async
   await expect(page.getByTestId('top-card')).toBeVisible();
   const bluffResponse = await page.request.get('/api/words/bluff/etymologies');
   const { cards: bluffs } = (await bluffResponse.json()) as { cards: Card[] };
-  // A card the feed dealt to this device, which becomes the account's.
-  const dealtHere = (await getStackIds(page)).find(
-    (id) => !bluffs.some((card) => card.id === id),
-  );
-  if (!dealtHere) throw new Error('The first device has no dealt card.');
   await putCardsOnStack(page, bluffs);
   await page.keyboard.press('ArrowRight');
   await waitForSavedSwipes(page, 1);
@@ -99,20 +94,8 @@ test('offline guest likes survive sign-in and union with a second device', async
       '/api/words/béarnaise%20sauce',
     );
     const extra = (await extraResponse.json()) as Card;
-    // As a guest, the feed also deals this device the first device's card.
-    await expect
-      .poll(async () => {
-        const known = encodeURIComponent(JSON.stringify([dealtHere]));
-        return (
-          await other.request.get(`/api/feed?n=1&known=${known}`)
-        ).status();
-      })
-      .toBe(200);
-    const shared = (await (
-      await other.request.get(`/api/cards/${encodeURIComponent(dealtHere)}`)
-    ).json()) as Card;
-    // It also holds a bluff card, which the account has already liked.
-    await putCardsOnStack(other, [extra, bluffs[0], shared]);
+    // This device also holds a bluff card, which the account already liked.
+    await putCardsOnStack(other, [extra, bluffs[0]]);
     await other.keyboard.press('ArrowRight');
     await waitForSavedSwipes(other, 1);
     await other.goto('/liked/');
@@ -121,8 +104,7 @@ test('offline guest likes survive sign-in and union with a second device', async
     await expect(
       other.getByRole('heading', { name: 'béarnaise sauce' }),
     ).toHaveCount(1);
-    // Joining drops cards the account already liked and cards another device
-    // was dealt first, so each waiting card lives on one device.
+    // Loading the account's likes takes them out of this device's Feed.
     await expect.poll(() => getStackIds(other)).toEqual([]);
 
     // Waiting cards leave once another device of the account rates them:

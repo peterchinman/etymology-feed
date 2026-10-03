@@ -29,8 +29,7 @@ const feedQuery = z.object({
   includeProperNouns: z.enum(['true', 'false']).default('false'),
 });
 const ratedInput = z.object({
-  cardIds: z.array(z.string().min(1).max(500)).max(200),
-  joined: z.boolean().optional(),
+  cardIds: z.array(z.string().min(1).max(500)).max(50),
 });
 const likesQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(200),
@@ -306,9 +305,12 @@ const routes = app
     // Saying so lets the client stop asking.
     if (c.get('isAnonymous'))
       return c.json({ rated: [] as string[], guest: true });
-    const { cardIds, joined } = c.req.valid('json');
     return c.json({
-      rated: await getRatedCardIds(c.env, c.get('userId'), cardIds, joined),
+      rated: await getRatedCardIds(
+        c.env,
+        c.get('userId'),
+        c.req.valid('json').cardIds,
+      ),
       guest: false,
     });
   })

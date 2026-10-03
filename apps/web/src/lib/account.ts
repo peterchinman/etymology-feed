@@ -1,13 +1,10 @@
 import type { Card } from '@etymology-feed/shared/card';
-import { checkWaitingCards } from './api';
 import { authClient, ensureAnonymousSession, resetAuthSession } from './auth';
 import { countedLikeIds } from './likes';
 import {
   clearAccountData,
-  getStack,
   getSwipes,
   type LocalSwipe,
-  removeRatedFromStack,
   replaceLikedFromServer,
   saveLikeCounts,
 } from './local';
@@ -30,18 +27,10 @@ export async function getAccount(): Promise<AccountInfo> {
   return (await response.json()) as AccountInfo;
 }
 
-/** Set while this device signs in, until it has dropped shared cards. */
-const JOINING_KEY = 'etymology-joining';
-
 export async function startSignIn(
   provider: 'google' | 'github' | 'mock',
 ): Promise<void> {
   await ensureAnonymousSession();
-  try {
-    localStorage.setItem(JOINING_KEY, '1');
-  } catch {
-    // Without localStorage this device may keep cards another one holds.
-  }
   const result = await authClient.signIn.social({
     provider,
     callbackURL: '/liked/',
@@ -96,28 +85,7 @@ export async function reconcileAccountLikes() {
     likes.push(...page.likes);
     cursor = page.nextCursor;
   } while (cursor);
-  const swipes = await replaceLikedFromServer(likes);
-  void dropCardsServedElsewhere();
-  return swipes;
-}
-
-/**
- * As a guest, this device was served separately from the account's other
- * devices, so both may hold the same waiting cards. Once after signing in,
- * give those cards up so each waiting card lives on one device.
- */
-async function dropCardsServedElsewhere(): Promise<void> {
-  try {
-    if (localStorage.getItem(JOINING_KEY) !== '1') return;
-    const ids = (await getStack()).map(({ id }) => id).slice(0, 200);
-    if (ids.length) {
-      const { rated } = await checkWaitingCards(ids, true);
-      if (rated.length) await removeRatedFromStack(rated);
-    }
-    localStorage.removeItem(JOINING_KEY);
-  } catch {
-    // Keep the flag; the next reconcile retries.
-  }
+  return replaceLikedFromServer(likes);
 }
 
 /** Matches the API's per-request limit on card IDs. */

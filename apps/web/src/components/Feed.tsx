@@ -369,6 +369,19 @@ export default function Feed() {
     }
   }
 
+  /**
+   * Re-read the stored stack after another tab or device changed it. If that
+   * replaced the card on top, the new one starts fresh: definition closed and
+   * its shown time starting now.
+   */
+  async function refreshStack() {
+    const top = deckCards()[0];
+    await restoreStack();
+    if (deckCards()[0] === top) return;
+    setDefinitionOpen(false);
+    shownAt = Date.now();
+  }
+
   /** Re-read the local stack, the source of truth, after a failed write. */
   async function restoreStack() {
     try {
@@ -427,7 +440,7 @@ export default function Feed() {
       if (!drop.length) return;
       try {
         await removeRatedFromStack(drop);
-        await restoreStack();
+        await refreshStack();
       } catch {
         // Keep the stack; the next check retries.
       }
@@ -731,7 +744,7 @@ export default function Feed() {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       // Another tab may have swiped or liked cards from the shared stack.
-      saveChain = saveChain.then(restoreStack);
+      saveChain = saveChain.then(refreshStack);
       void drainSync();
       void checkUpcoming();
       if (stack().length < 60) void fillStack();

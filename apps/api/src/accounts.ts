@@ -165,47 +165,6 @@ export async function mergeAnonymousAccount(
     ...demote(env, accountId, statusGuard(accountId, 'flagged'), now),
   ];
   await env.APP.batch(writes);
-  try {
-    await rememberJoinOverlap(
-      env,
-      accountId,
-      ids(guest, 'card_ids'),
-      ids(account, 'card_ids'),
-    );
-  } catch {
-    // At worst the joining device shows a card another device also holds.
-  }
-}
-
-const JOIN_OVERLAP_MAX = 1000;
-const JOIN_OVERLAP_TTL = 7 * 24 * 60 * 60;
-const joinOverlapKey = (accountId: string) => `join-overlap:${accountId}`;
-
-/**
- * Before a device joins an account, its guest and the account's other devices
- * are served separately, so both can hold the same waiting cards. Remember the
- * cards served to both; the joining device drops them so that each waiting
- * card lives on one device. Its stack is the newest part of its history.
- */
-async function rememberJoinOverlap(
-  env: CloudflareBindings,
-  accountId: string,
-  guestIds: readonly string[],
-  accountIds: readonly string[],
-): Promise<void> {
-  const served = new Set(accountIds);
-  const overlap = guestIds
-    .slice(-JOIN_OVERLAP_MAX)
-    .filter((id) => served.has(id));
-  if (!overlap.length) return;
-  const key = joinOverlapKey(accountId);
-  const previous = (await env.CACHE.get<string[]>(key, 'json')) ?? [];
-  const remembered = [...new Set([...previous, ...overlap])].slice(
-    -JOIN_OVERLAP_MAX,
-  );
-  await env.CACHE.put(key, JSON.stringify(remembered), {
-    expirationTtl: JOIN_OVERLAP_TTL,
-  });
 }
 
 type LikedRow = {
@@ -217,34 +176,23 @@ type LikedRow = {
 };
 
 /**
- * Which of these waiting Feed cards a device should drop: the user already
- * liked or skipped them on any device, or, for a device that just joined the
- * account, another device was served them first.
+ * Which of these cards the user has already liked or skipped, on any device.
+ * A device asks about the cards waiting next in its own Feed.
  */
 export async function getRatedCardIds(
   env: CloudflareBindings,
   userId: string,
   cardIds: readonly string[],
-  joined = false,
 ): Promise<string[]> {
   if (!cardIds.length) return [];
   // idx_swipe_user_card: one indexed lookup per card through one JSON-array
-  // parameter, so a full stack stays well under D1's bound-parameter limit.
+  // parameter, so the request stays well under D1's bound-parameter limit.
   const rows = await env.APP.prepare(
     'SELECT card_id FROM swipe WHERE user_id=? AND card_id IN (SELECT value FROM json_each(?))',
   )
     .bind(userId, JSON.stringify(cardIds))
     .all<{ card_id: string }>();
-  const drop = new Set(rows.results.map(({ card_id }) => card_id));
-  // A device that just joined also drops cards the account's other devices
-  // were served before it joined. One KV read.
-  if (joined) {
-    const overlap = new Set(
-      (await env.CACHE.get<string[]>(joinOverlapKey(userId), 'json')) ?? [],
-    );
-    for (const id of cardIds) if (overlap.has(id)) drop.add(id);
-  }
-  return [...drop];
+  return rows.results.map(({ card_id }) => card_id);
 }
 
 export async function getAccountLikes(

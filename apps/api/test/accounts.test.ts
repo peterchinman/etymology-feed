@@ -209,19 +209,3 @@ it('reports which waiting cards an account already rated on any device', async (
   expect(rated.sort()).toEqual([liked, skipped].sort());
   expect(await getRatedCardIds(env, member, [])).toEqual([]);
 });
-
-it('lets a device joining an account drop cards another device was served first', async () => {
-  const cards = await env.DICT.prepare(
-    'SELECT id FROM word ORDER BY shuffle LIMIT 3 OFFSET 20',
-  ).all<{ id: string }>();
-  const [shared, guestOnly, accountOnly] = cards.results.map(({ id }) => id);
-  if (!accountOnly) throw new Error('Fixture cards are missing.');
-  const member = await raterWith([accountOnly, shared], { anonymous: false });
-  const guest = await raterWith([guestOnly, shared]);
-  await mergeAnonymousAccount(env, guest, member);
-
-  const waiting = [shared, guestOnly];
-  // Only the joining device asks with `joined`; the other keeps the card.
-  expect(await getRatedCardIds(env, member, waiting, true)).toEqual([shared]);
-  expect(await getRatedCardIds(env, member, waiting)).toEqual([]);
-});
