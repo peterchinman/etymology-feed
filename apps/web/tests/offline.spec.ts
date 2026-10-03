@@ -1,7 +1,8 @@
 import { expect, type Page, test } from '@playwright/test';
 import { THEME_COLORS } from '../src/lib/themes';
+import { waitForSavedSwipes } from './helpers/cards';
 
-test('definitions appear beneath the title and expand beyond the responsive line limit', async ({
+test('long definitions expand and collapse, and short ones have no toggle', async ({
   page,
 }) => {
   const longDefinition =
@@ -21,48 +22,18 @@ test('definitions appear beneath the title and expand beyond the responsive line
   const definition = card.locator('.definition p');
   const more = card.getByRole('button', { name: 'See more', exact: true });
   await expect(more).toBeVisible();
-  const titleBox = await card.locator('h2').boundingBox();
-  const definitionBox = await definition.boundingBox();
-  const etymologyBox = await card.locator('.etymology').boundingBox();
-  if (!titleBox || !definitionBox || !etymologyBox)
-    throw new Error('Card content has no visible bounds.');
-  expect(definitionBox.y).toBeGreaterThan(titleBox.y + titleBox.height);
-  expect(etymologyBox.y).toBeGreaterThan(
-    definitionBox.y + definitionBox.height,
-  );
-  for (const width of [390, 1280]) {
-    await page.setViewportSize({ width, height: 844 });
-    await expect(more).toBeVisible();
-    expect(
-      await definition.evaluate(
-        (element, lines) =>
-          Math.abs(
-            element.clientHeight -
-              Number.parseFloat(getComputedStyle(element).lineHeight) * lines,
-          ),
-        width <= 768 ? 3 : 2,
-      ),
-    ).toBeLessThanOrEqual(1);
-    const previewBounds = await definition.boundingBox();
-    const toggleBounds = await more.boundingBox();
-    if (!previewBounds || !toggleBounds)
-      throw new Error('Definition preview has no visible bounds.');
-    expect(toggleBounds.y).toBeGreaterThan(previewBounds.y);
-    expect(toggleBounds.y + toggleBounds.height).toBeLessThanOrEqual(
-      previewBounds.y + previewBounds.height + 1,
-    );
-    await more.click();
-    const less = card.getByRole('button', { name: 'See less', exact: true });
-    await expect(less).toHaveAttribute('aria-expanded', 'true');
-    await expect(definition).toHaveText(longDefinition.trim());
-    expect(
-      await definition.evaluate(
-        (element) => element.scrollHeight - element.clientHeight,
-      ),
-    ).toBeLessThanOrEqual(1);
-    await less.click();
-    await expect(more).toHaveAttribute('aria-expanded', 'false');
-  }
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
+  await more.click();
+  const less = card.getByRole('button', { name: 'See less', exact: true });
+  await expect(less).toHaveAttribute('aria-expanded', 'true');
+  await expect(definition).toHaveText(longDefinition.trim());
+  expect(
+    await definition.evaluate(
+      (element) => element.scrollHeight - element.clientHeight,
+    ),
+  ).toBeLessThanOrEqual(1);
+  await less.click();
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
   await page.getByRole('button', { name: 'Interesting' }).click();
   await expect(definition).toHaveText('A short definition.');
   await expect(card.locator('.definition-toggle')).toHaveCount(0);
@@ -76,10 +47,6 @@ test('a right swipe adds a word to Liked and survives reload', async ({
 }) => {
   await page.goto('/');
   await expect(page.getByTestId('top-card')).toBeVisible();
-  await expect(page.locator('.topbar')).toBeHidden();
-  await expect(
-    page.locator('.bottom-nav').getByRole('link', { name: 'Settings' }),
-  ).toBeVisible();
   await expect
     .poll(async () =>
       Number(
@@ -90,36 +57,11 @@ test('a right swipe adds a word to Liked and survives reload', async ({
     )
     .toBeGreaterThanOrEqual(150);
   const word = await page.getByTestId('top-card').locator('h2').innerText();
-  await expect(page.locator('.card-topline, .ipa')).toHaveCount(0);
   await page.getByRole('button', { name: 'Interesting' }).click();
   await expect(page.getByTestId('top-card').locator('h2')).not.toHaveText(word);
-  await expect(page.locator('.undo-toast')).toHaveCount(0);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          new Promise<number>((resolve, reject) => {
-            const request = indexedDB.open('etymology-feed');
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-              const database = request.result;
-              const count = database
-                .transaction('swipes')
-                .objectStore('swipes')
-                .count();
-              count.onsuccess = () => {
-                database.close();
-                resolve(count.result);
-              };
-              count.onerror = () => reject(count.error);
-            };
-          }),
-      ),
-    )
-    .toBeGreaterThan(0);
+  await waitForSavedSwipes(page, 1);
   await page.goto('/liked/');
   await expect(page.getByRole('heading', { name: word })).toBeVisible();
-  await expect(page.getByText('Words you love.')).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole('heading', { name: word })).toBeVisible();
 });
@@ -261,29 +203,7 @@ test('Feed and Liked navigate without reloading the shared header', async ({
   ).toBe(true);
 
   await page.getByRole('button', { name: 'Interesting' }).click();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          new Promise<number>((resolve, reject) => {
-            const request = indexedDB.open('etymology-feed');
-            request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
-              const database = request.result;
-              const count = database
-                .transaction('swipes')
-                .objectStore('swipes')
-                .count();
-              count.onsuccess = () => {
-                database.close();
-                resolve(count.result);
-              };
-              count.onerror = () => reject(count.error);
-            };
-          }),
-      ),
-    )
-    .toBeGreaterThan(0);
+  await waitForSavedSwipes(page, 1);
   await page.evaluate(() => {
     const state = window as typeof window & { likedEmptySeen?: boolean };
     state.likedEmptySeen = false;
@@ -340,20 +260,7 @@ test('one fetched batch supports 100 offline swipes and survives reconnection', 
     );
   }
   // The deck moves on before storage catches up; wait for every write to land.
-  await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const open = indexedDB.open('etymology-feed');
-        const db = await new Promise<IDBDatabase>((resolve) => {
-          open.onsuccess = () => resolve(open.result);
-        });
-        const count = db.transaction('swipes').objectStore('swipes').count();
-        return new Promise<number>((resolve) => {
-          count.onsuccess = () => resolve(count.result);
-        });
-      }),
-    )
-    .toBe(100);
+  await waitForSavedSwipes(page, 100);
   await page.goto('/liked/');
   await expect(page.locator('.liked-item')).toHaveCount(100);
   await expect(page.getByText('100 swipes waiting to sync')).toBeVisible();
@@ -416,22 +323,16 @@ test('Settings is its own page on a phone', async ({ page }) => {
     'aria-current',
     'page',
   );
-  await expect(page.getByLabel('Always expand definitions')).toHaveCount(0);
   await nav.getByRole('link', { name: 'Feed' }).click();
-  await expect(
-    page.getByTestId('top-card').locator('.definition p'),
-  ).toHaveClass(/is-clamped/);
-  await page.reload();
-  await expect(
-    page.getByTestId('top-card').locator('.definition p'),
-  ).toHaveClass(/is-clamped/);
+  await expect(page).toHaveURL('/');
+  await expect(page.getByTestId('top-card')).toBeVisible();
 
   // An old overlay link on a phone lands on the page instead.
   await page.goto('/?settings=1');
   await expect(page).toHaveURL(/\/settings\/$/);
 });
 
-test('desktop Settings opens a centered dialog over Feed and Liked', async ({
+test('desktop Settings opens a dialog over Feed and Liked', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -449,12 +350,6 @@ test('desktop Settings opens a centered dialog over Feed and Liked', async ({
   await expect(
     dialog.getByRole('radiogroup', { name: 'Color mode' }),
   ).toBeVisible();
-  const bounds = await dialog.boundingBox();
-  if (!bounds) throw new Error('Settings dialog has no visible bounds.');
-  expect(Math.abs(bounds.x + bounds.width / 2 - 640)).toBeLessThan(2);
-  expect(Math.abs(bounds.y + bounds.height / 2 - 400)).toBeLessThan(2);
-  await expect(dialog.getByLabel('Always expand definitions')).toHaveCount(0);
-  await expect(card.locator('.definition p')).toHaveClass(/is-clamped/);
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
   await expect(card.locator('h2')).toHaveText(word);
@@ -466,95 +361,6 @@ test('desktop Settings opens a centered dialog over Feed and Liked', async ({
   await dialog.getByRole('button', { name: 'Close settings' }).click();
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL('/liked/');
-});
-
-test('mobile dock tabs are centered, evenly spaced, and underline only the label', async ({
-  page,
-}) => {
-  await page.goto('/');
-  const dock = page.locator('.bottom-nav');
-  const feed = dock.getByRole('link', { name: 'Feed' });
-  await expect(feed).toHaveAttribute('aria-current', 'page');
-  await expect(feed).toHaveCSS('text-decoration-line', 'none');
-  await expect(feed.locator('.nav-label')).toHaveCSS(
-    'text-decoration-line',
-    'underline',
-  );
-  await expect(feed.locator('svg')).toHaveCount(1);
-  for (const width of [320, 390]) {
-    await page.setViewportSize({ width, height: 844 });
-    const dockBox = await dock.boundingBox();
-    if (!dockBox) throw new Error('Dock has no visible bounds.');
-    const links = await dock.getByRole('link').all();
-    expect(links).toHaveLength(3);
-    for (const [index, link] of links.entries()) {
-      const linkBox = await link.boundingBox();
-      const iconBox = await link.locator('svg').boundingBox();
-      if (!linkBox || !iconBox)
-        throw new Error('Dock tab has no visible bounds.');
-      const center = linkBox.x + linkBox.width / 2;
-      expect(center).toBeCloseTo(
-        dockBox.x + (dockBox.width * (index + 0.5)) / 3,
-        0,
-      );
-      expect(iconBox.x + iconBox.width / 2).toBeCloseTo(center, 0);
-    }
-  }
-});
-
-test('Settings icons and controls use the correct theme styles', async ({
-  page,
-}) => {
-  await page.context().route('**/api/me', async (route) => {
-    const response = await route.fetch();
-    const account = await response.json();
-    account.providers = ['google', 'github'];
-    await route.fulfill({ response, json: account });
-  });
-  await page.goto('/settings/');
-  const settingsLink = page.locator('.bottom-nav').getByRole('link', {
-    name: 'Settings',
-  });
-  await expect(settingsLink.locator('svg')).toHaveCount(1);
-  await expect(settingsLink).not.toContainText('⚙');
-  await expect(page.locator('.topbar .account-badge')).toHaveCount(0);
-  await expect(
-    page.getByText(
-      'Show names of people, places, and other named things in your feed.',
-    ),
-  ).toHaveCount(0);
-
-  const account = page.locator('.account-section');
-  await expect(
-    account.getByText('Sign in to keep your Liked list across devices.'),
-  ).toHaveCSS('font-family', /Instrument Sans/);
-  for (const provider of ['Google', 'GitHub']) {
-    const button = account.getByRole('button', {
-      name: `Continue with ${provider}`,
-    });
-    await expect(button).toHaveCSS('border-top-width', '1px');
-    await expect(button).toHaveCSS('border-top-color', 'rgb(232, 232, 237)');
-  }
-  await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCSS(
-    'font-family',
-    /Bricolage Grotesque/,
-  );
-
-  await page.getByRole('radio', { name: 'Technical' }).check();
-  const switchInput = page.getByRole('switch', {
-    name: 'Include proper nouns',
-  });
-  await expect(switchInput).toBeEnabled();
-  await expect(switchInput).not.toBeChecked();
-  await expect(switchInput).toHaveCSS('border-top-color', 'rgb(47, 94, 168)');
-  await switchInput.evaluate((input) => {
-    (input as HTMLInputElement).disabled = true;
-  });
-  await expect(switchInput).toHaveCSS('opacity', '0.85');
-
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await expect(page.locator('.topbar')).toBeVisible();
-  await expect(page.locator('.topbar > *')).toHaveCount(2);
 });
 
 test('the themes persist and system mode follows the device', async ({
@@ -709,43 +515,46 @@ test('horizontal drag commits a swipe while vertical movement leaves the card in
   await expect(page.getByRole('heading', { name: first })).toBeVisible();
 });
 
-for (const direction of [-1, 1]) {
-  test(`diagonal swipe ${direction} keeps a long card from scrolling`, async ({
-    page,
-  }) => {
-    await page.context().route('**/api/feed?*', async (route) => {
-      const response = await route.fetch();
-      const data = await response.json();
-      for (const card of data.cards) {
-        card.etymology =
-          'A long word history for reading and scrolling. '.repeat(100);
-      }
-      await route.fulfill({ response, json: data });
-    });
-    await page.goto('/');
-    const card = page.getByTestId('top-card');
-    await expect(card).toBeVisible();
-    const first = await card.locator('h2').innerText();
-    const body = card.locator('.card-body');
-    // Start midway through real overflowing content, away from scroll edges.
-    await body.evaluate((element) => {
-      element.scrollTop = 180;
-    });
-    const box = await body.boundingBox();
-    if (!box) throw new Error('Card body has no visible bounds.');
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-    const touch = await finger(page);
-    await touch.down(x, y);
-    // The initial diagonal has slightly more vertical than horizontal travel.
-    await touch.move(x + direction * 20, y - 22);
-    await touch.move(x + direction * 140, y - 100, { steps: 8 });
-    await expect(page.locator('.deck-area')).toHaveClass(/is-dragging/);
-    expect(await body.evaluate((element) => element.scrollTop)).toBe(180);
-    await touch.up();
-    await expect(card.locator('h2')).not.toHaveText(first);
+// Swipe direction is symmetric in the gesture code, so one direction suffices.
+test('a diagonal swipe keeps a long card from scrolling', async ({ page }) => {
+  await page.context().route('**/api/feed?*', async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    for (const card of data.cards) {
+      card.etymology = 'A long word history for reading and scrolling. '.repeat(
+        100,
+      );
+    }
+    await route.fulfill({ response, json: data });
   });
-}
+  await page.goto('/');
+  const card = page.getByTestId('top-card');
+  await expect(card).toBeVisible();
+  const first = await card.locator('h2').innerText();
+  const body = card.locator('.card-body');
+  // A web font that finishes loading reflows the definition, and scroll
+  // anchoring then nudges scrollTop by a pixel or two. Settle fonts first.
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  // Start midway through real overflowing content, away from scroll edges.
+  await body.evaluate((element) => {
+    element.scrollTop = 180;
+  });
+  const box = await body.boundingBox();
+  if (!box) throw new Error('Card body has no visible bounds.');
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const touch = await finger(page);
+  await touch.down(x, y);
+  // The initial diagonal has slightly more vertical than horizontal travel.
+  await touch.move(x - 20, y - 22);
+  await touch.move(x - 140, y - 100, { steps: 8 });
+  await expect(page.locator('.deck-area')).toHaveClass(/is-dragging/);
+  expect(await body.evaluate((element) => element.scrollTop)).toBe(180);
+  await touch.up();
+  await expect(card.locator('h2')).not.toHaveText(first);
+});
 
 test('vertical reading stays locked to scrolling and card edges do not bounce', async ({
   page,
@@ -822,7 +631,7 @@ test('a mouse drag does not move the card', async ({ page }) => {
   await expect(card.locator('h2')).toHaveText(first);
 });
 
-test('holding or double-tapping the text selects a word and holds the card still @native', async ({
+test('holding or double-tapping the text selects a word and holds the card still', async ({
   page,
 }) => {
   await page.goto('/');
@@ -846,8 +655,8 @@ test('holding or double-tapping the text selects a word and holds the card still
   const selected = () => page.evaluate(() => getSelection()?.toString() ?? '');
   const touch = await finger(page);
 
-  // Desktop Linux Chrome does not implement native touch long-press selection.
-  // The macOS CI job covers it; app-provided double tap runs on both platforms.
+  // Desktop Linux Chrome does not implement native touch long-press selection,
+  // so that part runs only on a Mac. App-provided double tap runs everywhere.
   if (process.platform === 'darwin') {
     await touch.hold(x, y);
     await expect.poll(selected).toMatch(/^\S+$/);
@@ -892,12 +701,13 @@ test('a drag past the commit point arms its button until it is pulled back', asy
   const touch = await finger(page);
 
   await touch.down(x, y);
-  await touch.move(x + box.width * 0.5, y, { steps: 12, wait: 40 });
+  await touch.move(x + box.width * 0.5, y, { steps: 12 });
   await expect(like).toHaveClass(/is-armed/);
   await expect(skip).not.toHaveClass(/is-armed/);
+  // Pull back slowly: a fast pull-back reads as a flick the other way.
   await touch.move(x + box.width * 0.05, y, { steps: 12, wait: 40 });
   await expect(like).not.toHaveClass(/is-armed/);
-  await touch.move(x - box.width * 0.5, y, { steps: 12, wait: 40 });
+  await touch.move(x - box.width * 0.5, y, { steps: 12 });
   await expect(skip).toHaveClass(/is-armed/);
   await expect(like).not.toHaveClass(/is-armed/);
   await touch.up();

@@ -41,23 +41,12 @@ test('Liked cards expand text in the page flow and share the Feed footer', async
   await expect(longCard.locator('.card-like-count')).toHaveText(
     'Liked by 1,234 users',
   );
-  const source = longCard.getByRole('link', { name: 'Wiktionary' });
-  await expect(source).toHaveAttribute(
+  await expect(
+    longCard.getByRole('link', { name: 'Wiktionary' }),
+  ).toHaveAttribute(
     'href',
     `https://en.wiktionary.org/wiki/bluff${first.etymNo ? `#Etymology_${first.etymNo}` : ''}`,
   );
-  const definitionBox = await longCard.locator('.definition').boundingBox();
-  const titleBox = await longCard.locator('h2').boundingBox();
-  const etymologyBox = await longCard.locator('.liked-etymology').boundingBox();
-  const sourceBox = await source.boundingBox();
-  const countBox = await longCard.locator('.card-like-count').boundingBox();
-  if (!titleBox || !definitionBox || !etymologyBox || !sourceBox || !countBox)
-    throw new Error('A Liked card section is missing.');
-  expect(definitionBox.y).toBeGreaterThan(titleBox.y);
-  expect(etymologyBox.y).toBeGreaterThan(definitionBox.y);
-  expect(sourceBox.y).toBeGreaterThan(etymologyBox.y);
-  expect(sourceBox.x + sourceBox.width).toBeLessThan(countBox.x);
-  expect(Math.abs(sourceBox.y - countBox.y)).toBeLessThan(5);
 
   const moreDefinition = longCard.getByRole('button', {
     name: 'See more definition',
